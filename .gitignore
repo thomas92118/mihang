@@ -1,0 +1,25 @@
+# Godot 4+ cache & internal files
+.godot/
+.tools/
+
+# Build artifacts
+build/
+bin/
+*.pck
+*.apk
+*.aab
+*.exe
+*.zip
+
+# Temporary & cache files
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.bak

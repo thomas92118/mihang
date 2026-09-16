@@ -1,0 +1,296 @@
+{
+  "coral": {
+    "file": "assets/models/coral.glb",
+    "dimensions_blender_xyz": [
+      1.898,
+      1.889,
+      2.25
+    ],
+    "dimensions_godot_xyz": [
+      1.898,
+      2.25,
+      1.889
+    ],
+    "triangles": 2192
+  },
+  "tube_coral": {
+    "file": "assets/models/tube_coral.glb",
+    "dimensions_blender_xyz": [
+      1.49,
+      1.229,
+      2.22
+    ],
+    "dimensions_godot_xyz": [
+      1.49,
+      2.22,
+      1.229
+    ],
+    "triangles": 680
+  },
+  "kelp": {
+    "file": "assets/models/kelp.glb",
+    "dimensions_blender_xyz": [
+      1.918,
+      1.97,
+      4.75
+    ],
+    "dimensions_godot_xyz": [
+      1.918,
+      4.75,
+      1.97
+    ],
+    "triangles": 1244
+  },
+  "rock": {
+    "file": "assets/models/rock.glb",
+    "dimensions_blender_xyz": [
+      2.989,
+      2.16,
+      1.784
+    ],
+    "dimensions_godot_xyz": [
+      2.989,
+      1.784,
+      2.16
+    ],
+    "triangles": 240
+  },
+  "fish": {
+    "file": "assets/models/fish.glb",
+    "dimensions_blender_xyz": [
+      0.56,
+      0.75,
+      0.49
+    ],
+    "dimensions_godot_xyz": [
+      0.56,
+      0.49,
+      0.75
+    ],
+    "triangles": 727
+  },
+  "pod": {
+    "file": "assets/models/pod.glb",
+    "dimensions_blender_xyz": [
+      4.7,
+      4.894,
+      4.215
+    ],
+    "dimensions_godot_xyz": [
+      4.7,
+      4.215,
+      4.894
+    ],
+    "triangles": 6164
+  },
+  "ruins": {
+    "file": "assets/models/ruins.glb",
+    "dimensions_blender_xyz": [
+      8.29,
+      1.8,
+      6.211
+    ],
+    "dimensions_godot_xyz": [
+      8.29,
+      6.211,
+      1.8
+    ],
+    "triangles": 2216
+  },
+  "shipwreck": {
+    "file": "assets/models/shipwreck.glb",
+    "dimensions_blender_xyz": [
+      4.52,
+      10.139,
+      6.43
+    ],
+    "dimensions_godot_xyz": [
+      4.52,
+      6.43,
+      10.139
+    ],
+    "triangles": 7508
+  },
+  "anemone": {
+    "file": "assets/models/anemone.glb",
+    "dimensions_blender_xyz": [
+      3.002,
+      2.982,
+      2.01
+    ],
+    "dimensions_godot_xyz": [
+      3.002,
+      2.01,
+      2.982
+    ],
+    "triangles": 3564
+  },
+  "crystal_spire": {
+    "file": "assets/models/crystal_spire.glb",
+    "dimensions_blender_xyz": [
+      3.292,
+      2.915,
+      5.5
+    ],
+    "dimensions_godot_xyz": [
+      3.292,
+      5.5,
+      2.915
+    ],
+    "triangles": 450
+  },
+  "jellyfish": {
+    "file": "assets/models/jellyfish.glb",
+    "dimensions_blender_xyz": [
+      1.57,
+      1.57,
+      2.935
+    ],
+    "dimensions_godot_xyz": [
+      1.57,
+      2.935,
+      1.57
+    ],
+    "triangles": 2432
+  },
+  "resource_titanium": {
+    "file": "assets/models/resource_titanium.glb",
+    "dimensions_blender_xyz": [
+      0.615,
+      0.476,
+      0.593
+    ],
+    "dimensions_godot_xyz": [
+      0.615,
+      0.593,
+      0.476
+    ],
+    "triangles": 100
+  },
+  "resource_copper": {
+    "file": "assets/models/resource_copper.glb",
+    "dimensions_blender_xyz": [
+      0.615,
+      0.476,
+      0.593
+    ],
+    "dimensions_godot_xyz": [
+      0.615,
+      0.593,
+      0.476
+    ],
+    "triangles": 100
+  },
+  "resource_quartz": {
+    "file": "assets/models/resource_quartz.glb",
+    "dimensions_blender_xyz": [
+      0.572,
+      0.408,
+      0.74
+    ],
+    "dimensions_godot_xyz": [
+      0.572,
+      0.74,
+      0.408
+    ],
+    "triangles": 110
+  },
+  "resource_kelp": {
+    "file": "assets/models/resource_kelp.glb",
+    "dimensions_blender_xyz": [
+      0.6,
+      0.348,
+      0.7
+    ],
+    "dimensions_godot_xyz": [
+      0.6,
+      0.7,
+      0.348
+    ],
+    "triangles": 132
+  },
+  "fish_small": {
+    "file": "assets/models/fish_small.glb",
+    "dimensions_blender_xyz": [
+      0.44,
+      0.56,
+      0.37
+    ],
+    "dimensions_godot_xyz": [
+      0.44,
+      0.37,
+      0.56
+    ],
+    "triangles": 767
+  },
+  "fish_predator": {
+    "file": "assets/models/fish_predator.glb",
+    "dimensions_blender_xyz": [
+      2.3,
+      3.9,
+      1.6
+    ],
+    "dimensions_godot_xyz": [
+      2.3,
+      1.6,
+      3.9
+    ],
+    "triangles": 966
+  },
+  "fish_abyss": {
+    "file": "assets/models/fish_abyss.glb",
+    "dimensions_blender_xyz": [
+      0.875,
+      2.974,
+      1.595
+    ],
+    "dimensions_godot_xyz": [
+      0.875,
+      1.595,
+      2.974
+    ],
+    "triangles": 1416
+  },
+  "weapon_knife": {
+    "file": "assets/models/weapon_knife.glb",
+    "dimensions_blender_xyz": [
+      0.065,
+      0.418,
+      0.032
+    ],
+    "dimensions_godot_xyz": [
+      0.065,
+      0.032,
+      0.418
+    ],
+    "triangles": 1508
+  },
+  "weapon_axe": {
+    "file": "assets/models/weapon_axe.glb",
+    "dimensions_blender_xyz": [
+      0.29,
+      0.54,
+      0.055
+    ],
+    "dimensions_godot_xyz": [
+      0.29,
+      0.055,
+      0.54
+    ],
+    "triangles": 2406
+  },
+  "weapon_sonic": {
+    "file": "assets/models/weapon_sonic.glb",
+    "dimensions_blender_xyz": [
+      0.178,
+      0.8,
+      0.326
+    ],
+    "dimensions_godot_xyz": [
+      0.178,
+      0.326,
+      0.8
+    ],
+    "triangles": 3160
+  }
+}
