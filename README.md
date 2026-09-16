@@ -65,7 +65,7 @@
 
 ## 开始
 
-Windows 双击 **开始游戏.bat**；macOS 双击 **开始游戏.command**。也可以在 Godot 4 中导入 `project.godot`，按 F6/F5 运行主场景。
+Windows 双击 **开始游戏.bat**；macOS 双击 **开始游戏.command**；本项目已在 `.tools/Godot.app` 准备好本地 macOS 引擎。也可以在 Godot 4 中导入 `project.godot`，按 F6/F5 运行主场景。
 
 ```sh
 .tools/Godot.app/Contents/MacOS/Godot --path .
@@ -105,7 +105,7 @@ Windows 双击 **开始游戏.bat**；macOS 双击 **开始游戏.command**。�
 
 - `scripts/`：潜水控制器、武器持握与程序化打击系统、生态鱼群与掠食者追猎 AI、生存与探险状态管理、HUD 动态仪表盘、游戏总控。
 - `shaders/`：海底深度感知沙质衰减着色器（`sand.gdshader`）、动态海浪表面着色器（`water.gdshader`）、阳光束体积光（`shaft.gdshader`）。
-- `assets/models/`：Blender 5.2.1 LTS 导出的 21 个 GLB 资产模型（潜水战术刀、破拆战斧、声波脉冲枪、发光小金鱼、巡弋暗礁鲨、深渊鮟鱇巨兽、逃生舱、失事科考潜艇、古代遗迹拱门、鹿角珊瑚、管状珊瑚、巨型发光海葵、深渊玄武岩水晶柱、发光水母、海藻、海床岩石等）。
+- `assets/models/`：Blender 5.2.1 LTS 导出的 28 个原创高品质 GLB 资产模型（新增巨型鬼蝠鲼、深海绿海龟、深渊发光巨乌贼、底栖巨螯蟹、扇形海柳珊瑚、热泉巨型管虫群落、海星与发光海胆群；升级潜水刀/战斧/声波脉冲枪、发光小金鱼、巡弋暗礁鲨、深渊鮟鱇巨兽、逃生舱、失事潜艇、鹿角珊瑚、管状珊瑚、海葵、水晶柱、水母、海藻与海床岩石等）。
 - `tools/create_assets.py`：可复现的 Blender 建模与材质导出脚本。
 - `assets/audio/`：低多边形潜航环境音效与矿物采集音。
 - `docs/`：高质量截图与运行配置指南。
@@ -125,12 +125,6 @@ Windows 双击 **开始游戏.bat**；macOS 双击 **开始游戏.command**。�
 - **Windows 一键打包**：直接双击 `一键打包.bat`，即可在 `build/` 目录下生成包含全部资源的单文件 `深蓝回声.exe`。
 - **导出预设**：项目根目录已包含标准 `export_presets.cfg`，可直接配合 Godot 4 导出模板使用。
 
-## 开源协议与声明
+## 许可证
 
-### 许可证
 本项目基于 [MIT 许可证](LICENSE) 开源。
-
-### 免责与版权声明
-1. 本项目为个人/独立开发的海洋探险生存游戏原型，旨在探索 Godot 4 渲染与游戏机制实现。
-2. 游戏中部分设计灵感来源于《深海迷航》（Subnautica），《Subnautica》及其商标与知识产权归 Unknown Worlds Entertainment / KRAFTON 所有。本项目与其无任何商业关联或官方合作。
-3. 本项目内所有 3D 模型与贴图均由程序化脚本（`tools/create_assets.py`）及 Blender 原创制作。

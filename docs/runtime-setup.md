@@ -7,21 +7,22 @@
 在项目目录启动游戏：
 
 ```sh
-.tools/Godot.app/Contents/MacOS/Godot --path .
+rtk proxy .tools/Godot.app/Contents/MacOS/Godot --path .
 ```
 
 导入资源后退出，再运行 120 帧检查启动错误：
 
 ```sh
-.tools/Godot.app/Contents/MacOS/Godot --headless --path . --import
-.tools/Godot.app/Contents/MacOS/Godot --headless --path . --quit-after 120
+rtk proxy .tools/Godot.app/Contents/MacOS/Godot --headless --path . --import
+rtk proxy .tools/Godot.app/Contents/MacOS/Godot --headless --path . --quit-after 120
 ```
 
 打开编辑器：
 
 ```sh
-.tools/Godot.app/Contents/MacOS/Godot --editor --path .
+rtk proxy .tools/Godot.app/Contents/MacOS/Godot --editor --path .
 ```
+
 `--check-only --script res://scripts/example.gd` 只解析指定脚本，不能替代游戏运行验证。`--import` 会等待导入完成后退出，不能仅用第一帧就退出的 `--quit` 代替。
 
 截图需要正常渲染窗口；`--headless` 使用 dummy renderer。脚本应等待 `RenderingServer.frame_post_draw`，再调用 `get_viewport().get_texture().get_image().save_png(path)`；过早在 `_ready()` 读取可能得到黑图。

@@ -9,6 +9,10 @@ void vertex() {
 
 float sediment(vec3 position, vec3 weights) {
 	// Project onto all three axes so cliff faces retain the same texture scale.
+	// For predominantly horizontal seabed (>94% vertical normal), sample XZ directly to save 66% texture bandwidth.
+	if (weights.y > 0.94) {
+		return texture(sediment_noise, position.xz).r;
+	}
 	return texture(sediment_noise, position.yz).r * weights.x
 		+ texture(sediment_noise, position.xz).r * weights.y
 		+ texture(sediment_noise, position.xy).r * weights.z;
@@ -23,7 +27,8 @@ void fragment() {
 	float patch = sediment(world_pos * 0.004, weights);
 	float detail = sediment(world_pos * 0.07, weights);
 	float gravel = sediment(world_pos * 0.45, weights);
-	float grain = sediment(world_pos * 6.0, weights);
+	// Skip high-frequency grain sampling beyond its fade distance (14m)
+	float grain = grain_fade > 0.005 ? sediment(world_pos * 6.0, weights) : 0.5;
 	float depth = max(-world_pos.y, 0.0);
 	float deep = smoothstep(22.0, 72.0, depth + (patch - 0.5) * 12.0);
 	float steep = smoothstep(0.12, 0.46, 1.0 - abs(world_normal.y));

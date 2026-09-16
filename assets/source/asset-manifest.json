@@ -2,44 +2,80 @@
   "coral": {
     "file": "assets/models/coral.glb",
     "dimensions_blender_xyz": [
-      1.898,
-      1.889,
-      2.25
+      2.028,
+      2.065,
+      2.355
     ],
     "dimensions_godot_xyz": [
-      1.898,
-      2.25,
-      1.889
+      2.028,
+      2.355,
+      2.065
     ],
-    "triangles": 2192
+    "triangles": 5436,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/coral.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/coral_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/coral_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/coral_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/coral_emission.png"
+    }
   },
   "tube_coral": {
     "file": "assets/models/tube_coral.glb",
     "dimensions_blender_xyz": [
-      1.49,
-      1.229,
-      2.22
+      1.713,
+      1.392,
+      2.635
     ],
     "dimensions_godot_xyz": [
-      1.49,
-      2.22,
-      1.229
+      1.713,
+      2.635,
+      1.392
     ],
-    "triangles": 680
+    "triangles": 7004,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/tube_coral.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/tube_coral_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/tube_coral_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/tube_coral_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/tube_coral_emission.png"
+    }
   },
   "kelp": {
     "file": "assets/models/kelp.glb",
     "dimensions_blender_xyz": [
-      1.918,
-      1.97,
-      4.75
+      2.239,
+      2.304,
+      5.114
     ],
     "dimensions_godot_xyz": [
-      1.918,
-      4.75,
-      1.97
+      2.239,
+      5.114,
+      2.304
     ],
-    "triangles": 1244
+    "triangles": 4666,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/kelp.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/kelp_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/kelp_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/kelp_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/kelp_emission.png"
+    }
   },
   "rock": {
     "file": "assets/models/rock.glb",
@@ -53,21 +89,47 @@
       1.784,
       2.16
     ],
-    "triangles": 240
+    "triangles": 2520,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/rock.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/rock_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/rock_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/rock_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/rock_emission.png"
+    }
   },
   "fish": {
     "file": "assets/models/fish.glb",
     "dimensions_blender_xyz": [
-      0.56,
-      0.75,
-      0.49
+      0.64,
+      0.84,
+      0.54
     ],
     "dimensions_godot_xyz": [
-      0.56,
-      0.49,
-      0.75
+      0.64,
+      0.54,
+      0.84
     ],
-    "triangles": 727
+    "triangles": 1904,
+    "bones": 6,
+    "animations": [
+      "swim"
+    ],
+    "reference": "assets/source/alien-ocean-v2/references/fish.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/fish_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/fish_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/fish_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/fish_emission.png"
+    }
   },
   "pod": {
     "file": "assets/models/pod.glb",
@@ -81,7 +143,19 @@
       4.215,
       4.894
     ],
-    "triangles": 6164
+    "triangles": 5828,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/pod.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/pod_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/pod_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/pod_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/pod_emission.png"
+    }
   },
   "ruins": {
     "file": "assets/models/ruins.glb",
@@ -95,7 +169,19 @@
       6.211,
       1.8
     ],
-    "triangles": 2216
+    "triangles": 2268,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/ruins.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/ruins_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/ruins_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/ruins_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/ruins_emission.png"
+    }
   },
   "shipwreck": {
     "file": "assets/models/shipwreck.glb",
@@ -109,7 +195,19 @@
       6.43,
       10.139
     ],
-    "triangles": 7508
+    "triangles": 7100,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/shipwreck.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/shipwreck_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/shipwreck_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/shipwreck_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/shipwreck_emission.png"
+    }
   },
   "anemone": {
     "file": "assets/models/anemone.glb",
@@ -123,7 +221,19 @@
       2.01,
       2.982
     ],
-    "triangles": 3564
+    "triangles": 5108,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/anemone.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/anemone_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/anemone_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/anemone_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/anemone_emission.png"
+    }
   },
   "crystal_spire": {
     "file": "assets/models/crystal_spire.glb",
@@ -137,7 +247,19 @@
       5.5,
       2.915
     ],
-    "triangles": 450
+    "triangles": 2364,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/crystal_spire.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/crystal_spire_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/crystal_spire_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/crystal_spire_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/crystal_spire_emission.png"
+    }
   },
   "jellyfish": {
     "file": "assets/models/jellyfish.glb",
@@ -151,7 +273,21 @@
       2.935,
       1.57
     ],
-    "triangles": 2432
+    "triangles": 5208,
+    "bones": 38,
+    "animations": [
+      "pulse"
+    ],
+    "reference": "assets/source/alien-ocean-v2/references/jellyfish.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/jellyfish_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/jellyfish_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/jellyfish_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/jellyfish_emission.png"
+    }
   },
   "resource_titanium": {
     "file": "assets/models/resource_titanium.glb",
@@ -165,7 +301,19 @@
       0.593,
       0.476
     ],
-    "triangles": 100
+    "triangles": 1136,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/resource_titanium.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/resource_titanium_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/resource_titanium_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/resource_titanium_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/resource_titanium_emission.png"
+    }
   },
   "resource_copper": {
     "file": "assets/models/resource_copper.glb",
@@ -179,7 +327,19 @@
       0.593,
       0.476
     ],
-    "triangles": 100
+    "triangles": 1152,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/resource_copper.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/resource_copper_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/resource_copper_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/resource_copper_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/resource_copper_emission.png"
+    }
   },
   "resource_quartz": {
     "file": "assets/models/resource_quartz.glb",
@@ -193,104 +353,399 @@
       0.74,
       0.408
     ],
-    "triangles": 110
+    "triangles": 476,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/resource_quartz.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/resource_quartz_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/resource_quartz_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/resource_quartz_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/resource_quartz_emission.png"
+    }
   },
   "resource_kelp": {
     "file": "assets/models/resource_kelp.glb",
     "dimensions_blender_xyz": [
-      0.6,
-      0.348,
+      0.609,
+      0.353,
       0.7
     ],
     "dimensions_godot_xyz": [
-      0.6,
+      0.609,
       0.7,
-      0.348
+      0.353
     ],
-    "triangles": 132
+    "triangles": 944,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/resource_kelp.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/resource_kelp_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/resource_kelp_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/resource_kelp_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/resource_kelp_emission.png"
+    }
   },
   "fish_small": {
     "file": "assets/models/fish_small.glb",
     "dimensions_blender_xyz": [
-      0.44,
-      0.56,
-      0.37
+      0.48,
+      0.61,
+      0.43
     ],
     "dimensions_godot_xyz": [
-      0.44,
-      0.37,
-      0.56
+      0.48,
+      0.43,
+      0.61
     ],
-    "triangles": 767
+    "triangles": 2056,
+    "bones": 6,
+    "animations": [
+      "swim"
+    ],
+    "reference": "assets/source/alien-ocean-v2/references/fish_small.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/fish_small_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/fish_small_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/fish_small_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/fish_small_emission.png"
+    }
   },
   "fish_predator": {
     "file": "assets/models/fish_predator.glb",
     "dimensions_blender_xyz": [
-      2.3,
-      3.9,
-      1.6
+      2.5,
+      4.08,
+      1.75
     ],
     "dimensions_godot_xyz": [
-      2.3,
-      1.6,
-      3.9
+      2.5,
+      1.75,
+      4.08
     ],
-    "triangles": 966
+    "triangles": 10164,
+    "bones": 7,
+    "animations": [
+      "swim",
+      "bite"
+    ],
+    "reference": "assets/source/alien-ocean-v2/references/fish_predator.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/fish_predator_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/fish_predator_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/fish_predator_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/fish_predator_emission.png"
+    }
   },
   "fish_abyss": {
     "file": "assets/models/fish_abyss.glb",
     "dimensions_blender_xyz": [
-      0.875,
-      2.974,
-      1.595
+      0.913,
+      3.214,
+      1.716
     ],
     "dimensions_godot_xyz": [
-      0.875,
-      1.595,
-      2.974
+      0.913,
+      1.716,
+      3.214
     ],
-    "triangles": 1416
+    "triangles": 10920,
+    "bones": 7,
+    "animations": [
+      "swim",
+      "bite"
+    ],
+    "reference": "assets/source/alien-ocean-v2/references/fish_abyss.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/fish_abyss_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/fish_abyss_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/fish_abyss_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/fish_abyss_emission.png"
+    }
   },
   "weapon_knife": {
     "file": "assets/models/weapon_knife.glb",
     "dimensions_blender_xyz": [
-      0.065,
-      0.418,
-      0.032
+      0.044,
+      0.421,
+      0.072
     ],
     "dimensions_godot_xyz": [
-      0.065,
-      0.032,
-      0.418
+      0.044,
+      0.072,
+      0.421
     ],
-    "triangles": 1508
+    "triangles": 2296,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/weapon_knife.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/weapon_knife_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/weapon_knife_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/weapon_knife_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/weapon_knife_emission.png"
+    }
   },
   "weapon_axe": {
     "file": "assets/models/weapon_axe.glb",
     "dimensions_blender_xyz": [
-      0.29,
-      0.54,
-      0.055
+      0.045,
+      0.553,
+      0.3
     ],
     "dimensions_godot_xyz": [
-      0.29,
-      0.055,
-      0.54
+      0.045,
+      0.3,
+      0.553
     ],
-    "triangles": 2406
+    "triangles": 1390,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/weapon_axe.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/weapon_axe_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/weapon_axe_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/weapon_axe_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/weapon_axe_emission.png"
+    }
   },
   "weapon_sonic": {
     "file": "assets/models/weapon_sonic.glb",
     "dimensions_blender_xyz": [
       0.178,
-      0.8,
-      0.326
+      0.87,
+      0.348
     ],
     "dimensions_godot_xyz": [
       0.178,
-      0.326,
-      0.8
+      0.348,
+      0.87
     ],
-    "triangles": 3160
+    "triangles": 3060,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/weapon_sonic.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/weapon_sonic_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/weapon_sonic_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/weapon_sonic_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/weapon_sonic_emission.png"
+    }
+  },
+  "manta_ray": {
+    "file": "assets/models/manta_ray.glb",
+    "dimensions_blender_xyz": [
+      4.509,
+      4.841,
+      0.5
+    ],
+    "dimensions_godot_xyz": [
+      4.509,
+      0.5,
+      4.841
+    ],
+    "triangles": 3788,
+    "bones": 5,
+    "animations": [
+      "swim"
+    ],
+    "reference": "assets/source/alien-ocean-v2/references/manta_ray.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/manta_ray_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/manta_ray_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/manta_ray_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/manta_ray_emission.png"
+    }
+  },
+  "sea_turtle": {
+    "file": "assets/models/sea_turtle.glb",
+    "dimensions_blender_xyz": [
+      3.009,
+      2.338,
+      0.71
+    ],
+    "dimensions_godot_xyz": [
+      3.009,
+      0.71,
+      2.338
+    ],
+    "triangles": 3010,
+    "bones": 5,
+    "animations": [
+      "swim"
+    ],
+    "reference": "assets/source/alien-ocean-v2/references/sea_turtle.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/sea_turtle_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/sea_turtle_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/sea_turtle_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/sea_turtle_emission.png"
+    }
+  },
+  "squid": {
+    "file": "assets/models/squid.glb",
+    "dimensions_blender_xyz": [
+      1.44,
+      4.39,
+      0.775
+    ],
+    "dimensions_godot_xyz": [
+      1.44,
+      0.775,
+      4.39
+    ],
+    "triangles": 7976,
+    "bones": 33,
+    "animations": [
+      "swim"
+    ],
+    "reference": "assets/source/alien-ocean-v2/references/squid.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/squid_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/squid_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/squid_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/squid_emission.png"
+    }
+  },
+  "crab": {
+    "file": "assets/models/crab.glb",
+    "dimensions_blender_xyz": [
+      2.064,
+      1.683,
+      0.509
+    ],
+    "dimensions_godot_xyz": [
+      2.064,
+      0.509,
+      1.683
+    ],
+    "triangles": 6022,
+    "bones": 27,
+    "animations": [
+      "walk",
+      "defend"
+    ],
+    "reference": "assets/source/alien-ocean-v2/references/crab.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 2048,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/crab_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/crab_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/crab_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/crab_emission.png"
+    }
+  },
+  "sea_fan": {
+    "file": "assets/models/sea_fan.glb",
+    "dimensions_blender_xyz": [
+      2.235,
+      0.84,
+      2.652
+    ],
+    "dimensions_godot_xyz": [
+      2.235,
+      2.652,
+      0.84
+    ],
+    "triangles": 2516,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/sea_fan.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/sea_fan_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/sea_fan_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/sea_fan_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/sea_fan_emission.png"
+    }
+  },
+  "tubeworms": {
+    "file": "assets/models/tubeworms.glb",
+    "dimensions_blender_xyz": [
+      1.697,
+      1.478,
+      2.376
+    ],
+    "dimensions_godot_xyz": [
+      1.697,
+      2.376,
+      1.478
+    ],
+    "triangles": 8224,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/tubeworms.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/tubeworms_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/tubeworms_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/tubeworms_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/tubeworms_emission.png"
+    }
+  },
+  "starfish_urchin": {
+    "file": "assets/models/starfish_urchin.glb",
+    "dimensions_blender_xyz": [
+      1.37,
+      1.24,
+      0.607
+    ],
+    "dimensions_godot_xyz": [
+      1.37,
+      0.607,
+      1.24
+    ],
+    "triangles": 5936,
+    "bones": 0,
+    "animations": [],
+    "reference": "assets/source/alien-ocean-v2/references/starfish_urchin.png",
+    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
+    "texture_resolution": 1024,
+    "materials": 1,
+    "textures": {
+      "albedo": "assets/source/alien-ocean-v2/textures/starfish_urchin_albedo.png",
+      "normal": "assets/source/alien-ocean-v2/textures/starfish_urchin_normal.png",
+      "orm": "assets/source/alien-ocean-v2/textures/starfish_urchin_orm.png",
+      "emission": "assets/source/alien-ocean-v2/textures/starfish_urchin_emission.png"
+    }
   }
 }

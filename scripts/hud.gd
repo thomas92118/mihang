@@ -41,6 +41,8 @@ var pinned_panel: Panel
 var pinned_title: Label
 var pinned_progress: Label
 var pin_buttons: Dictionary = {}
+var hit_marker: Label
+var hit_marker_timer: float = 0.0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -71,6 +73,22 @@ func _process(delta: float) -> void:
 		toast_time = maxf(0.0, toast_time - delta)
 		toast_label.modulate.a = minf(toast_time * 2.0, 1.0)
 		toast_label.visible = toast_time > 0.0 and active_screen == "play"
+	if hit_marker_timer > 0.0:
+		hit_marker_timer = maxf(0.0, hit_marker_timer - delta)
+		if is_instance_valid(hit_marker):
+			hit_marker.modulate.a = clampf(hit_marker_timer / 0.22, 0.0, 1.0)
+			hit_marker.scale = hit_marker.scale.lerp(Vector2.ONE, delta * 16.0)
+			hit_marker.visible = hit_marker_timer > 0.0
+	elif is_instance_valid(hit_marker) and hit_marker.visible:
+		hit_marker.visible = false
+
+func trigger_hit_marker(is_kill: bool = false) -> void:
+	if not is_instance_valid(hit_marker):
+		return
+	hit_marker_timer = 0.22
+	hit_marker.modulate = Color(1.0, 0.28, 0.28, 1.0) if is_kill else Color(1.0, 1.0, 1.0, 1.0)
+	hit_marker.scale = Vector2(1.35, 1.35)
+	hit_marker.visible = true
 
 func _build_instruments() -> void:
 	instruments = _full(root)
@@ -122,6 +140,11 @@ func _build_instruments() -> void:
 
 	var reticle := _label(instruments, "+", Rect2(-12, -16, 24, 32), 22, Color(0.83, 1, 0.98, 0.8), Vector2(0.5, 0.5))
 	reticle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	hit_marker = _label(instruments, "✕", Rect2(-14, -18, 28, 36), 22, Color(1, 1, 1, 0), Vector2(0.5, 0.5))
+	hit_marker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hit_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hit_marker.visible = false
 
 	# 左侧生命支持面板
 	var life := _panel(instruments, Rect2(42, -175, 260, 117), Vector2(0, 1))
@@ -343,42 +366,43 @@ func update_hud(data: Dictionary) -> void:
 	var has_axe: bool = weapons.has("axe")
 	var has_sonic: bool = weapons.has("sonic")
 
-	var tank_button: Button = craft_buttons["tank"]
-	var fins_button: Button = craft_buttons["fins"]
-	tank_button.disabled = tank
-	tank_button.text = "已装备" if tank else "制作"
-	fins_button.disabled = fins
-	fins_button.text = "已装备" if fins else "制作"
+	if active_screen == "craft":
+		var tank_button: Button = craft_buttons["tank"]
+		var fins_button: Button = craft_buttons["fins"]
+		tank_button.disabled = tank
+		tank_button.text = "已装备" if tank else "制作"
+		fins_button.disabled = fins
+		fins_button.text = "已装备" if fins else "制作"
 
-	if craft_buttons.has("rebreather"):
-		craft_buttons["rebreather"].disabled = rebreather
-		craft_buttons["rebreather"].text = "已装备" if rebreather else "制作"
-	if craft_buttons.has("biomod_dash"):
-		craft_buttons["biomod_dash"].disabled = biomod_dash
-		craft_buttons["biomod_dash"].text = "已激活" if biomod_dash else "制作"
+		if craft_buttons.has("rebreather"):
+			craft_buttons["rebreather"].disabled = rebreather
+			craft_buttons["rebreather"].text = "已装备" if rebreather else "制作"
+		if craft_buttons.has("biomod_dash"):
+			craft_buttons["biomod_dash"].disabled = biomod_dash
+			craft_buttons["biomod_dash"].text = "已激活" if biomod_dash else "制作"
 
-	var pinned_key: String = str(pinned_info.get("recipe", ""))
-	for k: String in pin_buttons:
-		pin_buttons[k].text = "取消追踪" if k == pinned_key else "追踪"
+		var pinned_key: String = str(pinned_info.get("recipe", ""))
+		for k: String in pin_buttons:
+			pin_buttons[k].text = "取消追踪" if k == pinned_key else "追踪"
 
-	if craft_buttons.has("axe"):
-		var axe_button: Button = craft_buttons["axe"]
-		axe_button.disabled = has_axe
-		axe_button.text = "已拥有" if has_axe else "制作"
-	if craft_buttons.has("sonic"):
-		var sonic_button: Button = craft_buttons["sonic"]
-		sonic_button.disabled = has_sonic
-		sonic_button.text = "已拥有" if has_sonic else "制作"
+		if craft_buttons.has("axe"):
+			var axe_button: Button = craft_buttons["axe"]
+			axe_button.disabled = has_axe
+			axe_button.text = "已拥有" if has_axe else "制作"
+		if craft_buttons.has("sonic"):
+			var sonic_button: Button = craft_buttons["sonic"]
+			sonic_button.disabled = has_sonic
+			sonic_button.text = "已拥有" if has_sonic else "制作"
 
-	if craft_buttons.has("reinforce_sharp"):
-		var can_sharp: bool = int(inventory.get("shark_fragment", 0)) >= 1 and int(inventory.get("titanium", 0)) >= 1
-		craft_buttons["reinforce_sharp"].disabled = not can_sharp
-		craft_buttons["reinforce_sharp"].text = "深铸锻造" if can_sharp else "材料不足"
+		if craft_buttons.has("reinforce_sharp"):
+			var can_sharp: bool = int(inventory.get("shark_fragment", 0)) >= 1 and int(inventory.get("titanium", 0)) >= 1
+			craft_buttons["reinforce_sharp"].disabled = not can_sharp
+			craft_buttons["reinforce_sharp"].text = "深铸锻造" if can_sharp else "材料不足"
 
-	if craft_buttons.has("reinforce_sonic"):
-		var can_sonic: bool = int(inventory.get("abyss_fragment", 0)) >= 1 and int(inventory.get("quartz", 0)) >= 1
-		craft_buttons["reinforce_sonic"].disabled = not can_sonic
-		craft_buttons["reinforce_sonic"].text = "深铸锻造" if can_sonic else "材料不足"
+		if craft_buttons.has("reinforce_sonic"):
+			var can_sonic: bool = int(inventory.get("abyss_fragment", 0)) >= 1 and int(inventory.get("quartz", 0)) >= 1
+			craft_buttons["reinforce_sonic"].disabled = not can_sonic
+			craft_buttons["reinforce_sonic"].text = "深铸锻造" if can_sonic else "材料不足"
 
 	# 更新底部武器状态栏与强化等级
 	var cur_w: String = str(data.get("current_weapon", "knife"))

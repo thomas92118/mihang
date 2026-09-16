@@ -4,6 +4,8 @@ const Ocean = preload("res://scripts/ocean.gd")
 const Diver = preload("res://scripts/diver.gd")
 const Survival = preload("res://scripts/survival.gd")
 const HUD = preload("res://scripts/hud.gd")
+const CombatVFX = preload("res://scripts/combat_vfx.gd")
+const UnderwaterAudio = preload("res://scripts/underwater_audio.gd")
 
 const LANDMARKS := {
 	"shallows": {"name": "逃生舱浅礁", "pos": Vector3(0, -9, 8), "radius": 28.0, "desc": "阳光明媚的浅海珊瑚林"},
@@ -26,7 +28,9 @@ var effect: AudioStreamPlayer
 var home_arrow: Label
 var screen_shade: ColorRect
 var damage_flash_time: float = 0.0
-
+var attack_input_buffered: bool = false
+var attack_buffer_timer: float = 0.0
+const ATTACK_BUFFER_WINDOW: float = 0.18
 func _ready() -> void:
 	_setup_input()
 	ocean = Ocean.new()
@@ -79,6 +83,10 @@ func _setup_input() -> void:
 	var descend := InputEventKey.new()
 	descend.physical_keycode = KEY_C
 	InputMap.action_add_event("descend", descend)
+
+	var mouse_attack := InputEventMouseButton.new()
+	mouse_attack.button_index = MOUSE_BUTTON_LEFT
+	InputMap.action_add_event("attack", mouse_attack)
 
 func _reset_position() -> void:
 	diver.position = Vector3(0, -9.0, 17.0)
@@ -147,7 +155,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("interact") and screen == "play":
 		_interact()
 	elif event.is_action_pressed("attack") and screen == "play":
-		_perform_attack()
+		if is_instance_valid(diver) and diver.attack_cooldown <= 0.0:
+			_perform_attack()
+		else:
+			attack_input_buffered = true
+			attack_buffer_timer = ATTACK_BUFFER_WINDOW
 	elif event.is_action_pressed("dash") and screen == "play":
 		_perform_dash()
 	elif event.is_action_pressed("weapon_1") and screen == "play":
@@ -163,6 +175,7 @@ func _switch_weapon(weapon_id: String) -> void:
 		hud.toast("尚未解锁【%s】，请在逃生舱制造台制作" % names.get(weapon_id, weapon_id))
 		return
 	diver.set_weapon(weapon_id)
+	UnderwaterAudio.play_sound(get_tree(), "weapon_equip", -5.0, randf_range(0.96, 1.04))
 	hud.toast("已装备【%s】" % names.get(weapon_id, weapon_id))
 
 func _perform_attack() -> void:
@@ -170,6 +183,30 @@ func _perform_attack() -> void:
 	var atk: Dictionary = diver.attack()
 	if atk.is_empty():
 		return
+
+	var weapon_type: String = str(atk.get("weapon", "knife"))
+	# 播放水下挥击 / 开火声效
+	match weapon_type:
+		"knife":
+			UnderwaterAudio.play_sound(get_tree(), "knife_slash", -6.0, randf_range(0.95, 1.05))
+		"axe":
+			UnderwaterAudio.play_sound(get_tree(), "axe_swing", -3.5, randf_range(0.92, 1.02))
+		"sonic":
+			UnderwaterAudio.play_sound(get_tree(), "sonic_blast", -2.0, randf_range(0.98, 1.02))
+
+	var active_delay: float = float(atk.get("active_delay", 0.0))
+	if active_delay <= 0.001:
+		_resolve_attack_hit(atk)
+	else:
+		get_tree().create_timer(active_delay).timeout.connect(func():
+			if is_instance_valid(self) and screen == "play" and is_instance_valid(diver):
+				_resolve_attack_hit(atk)
+		)
+
+func _resolve_attack_hit(atk: Dictionary) -> void:
+	if not is_instance_valid(diver) or not is_instance_valid(ocean):
+		return
+	var weapon_type: String = str(atk.get("weapon", "knife"))
 	var camera: Camera3D = diver.camera
 	var from: Vector3 = camera.global_position
 	var dir: Vector3 = -camera.global_basis.z
@@ -189,6 +226,41 @@ func _perform_attack() -> void:
 		var hit_count: int = int(hit.get("hit_count", 1))
 		var killed_names: Array = hit.get("killed_names", [])
 		var drops: Array = hit.get("dropped_items", [])
+		var is_any_killed: bool = not killed_names.is_empty()
+
+		# 水下微卡肉（Hitstop）增强打击阻抗感
+		var hitstop_dur: float = 0.08 if weapon_type == "axe" else (0.038 if weapon_type == "knife" else 0.06)
+		diver.trigger_hitstop(hitstop_dur)
+
+		# 播放对应武器的水下受击音效与打击确认音
+		match weapon_type:
+			"knife":
+				UnderwaterAudio.play_sound(get_tree(), "knife_hit", -4.0, randf_range(0.95, 1.05))
+			"axe":
+				UnderwaterAudio.play_sound(get_tree(), "axe_hit", -1.5, randf_range(0.92, 1.04))
+			"sonic":
+				UnderwaterAudio.play_sound(get_tree(), "sonic_hit", -2.5, randf_range(0.95, 1.05))
+		UnderwaterAudio.play_sound(get_tree(), "hit_confirm", -7.0, 1.0)
+		if is_any_killed:
+			UnderwaterAudio.play_sound(get_tree(), "kill_sound", -4.5, 1.0)
+
+		# 触发准星受击动效
+		if is_instance_valid(hud):
+			hud.trigger_hit_marker(is_any_killed)
+
+		# 在受击空间坐标生成 3D 爆点特效与 3D 伤害飘字
+		var hit_positions: Array = hit.get("hit_positions", [])
+		var hit_kinds: Array = hit.get("hit_kinds", [])
+		var total_dmg: float = float(atk.get("damage", 32.0))
+		if hit_positions.is_empty():
+			hit_positions.append(from + dir * minf(float(atk["range"]), 4.0))
+		for i in range(hit_positions.size()):
+			var p_pos: Vector3 = hit_positions[i]
+			var p_kind: String = str(hit_kinds[i]) if i < hit_kinds.size() else ""
+			var is_pred: bool = p_kind == "predator" or p_kind == "abyss"
+			CombatVFX.spawn_hit_burst(self, p_pos, -dir, weapon_type, is_pred, is_any_killed)
+			CombatVFX.spawn_damage_number(self, p_pos, total_dmg, weapon_type, is_pred or weapon_type == "axe")
+
 		var drop_hint := ""
 		if not drops.is_empty():
 			var drop_name_list: Array[String] = []
@@ -219,6 +291,14 @@ func _process(delta: float) -> void:
 	var safe: bool = distance < 7.0 or diver.position.y > -0.6
 
 	if screen == "play":
+		if attack_input_buffered:
+			attack_buffer_timer -= delta
+			if attack_buffer_timer <= 0.0:
+				attack_input_buffered = false
+			elif is_instance_valid(diver) and diver.attack_cooldown <= 0.0:
+				attack_input_buffered = false
+				_perform_attack()
+
 		if state.tick(delta, safe, diver.sprinting, depth):
 			state.recover()
 			_reset_position()
@@ -426,6 +506,13 @@ func _world_check() -> void:
 	assert(ocean.fish.size() == 134, "Should have 134 total fish across all tiers")
 	assert(ocean.small_fish.size() == 54, "Should have 54 small edible fish")
 	assert(ocean.predators.size() == 32, "Should have 32 aggressive predators (18 sharks + 14 abyss monsters)")
+	assert(ocean.rays.size() == 4, "Should have 4 manta rays")
+	assert(ocean.turtles.size() == 6, "Should have 6 sea turtles")
+	assert(ocean.squids.size() == 12, "Should have 12 deep sea squids")
+	assert(ocean.crabs.size() == 18, "Should have 18 benthic crabs")
+	assert(ocean.tubeworm_colonies.size() == 14, "Should have 14 tubeworm colonies")
+	assert(ocean.sea_fans.size() == 22, "Should have 22 sea fans")
+	assert(ocean.starfish.size() == 24, "Should have 24 starfish urchin colonies")
 
 	_start("survival")
 
@@ -543,7 +630,7 @@ func _world_check() -> void:
 	assert(state.landmarks_discovered.size() == LANDMARKS.size())
 	assert(screen == "play", "Exploration mode must remain in active play mode with no time limits")
 
-	print("PASS: world assets (100 resources, 134 fish, 32 predators, 54 edible fish), weapons (knife/axe/sonic), fishing/eating (+25HP/+20O2), predator AI/attacks, rescue victory, endless exploration & 7 landmarks")
+	print("PASS: world assets (100 resources, 134 fish, 32 predators, 54 edible fish, 4 rays, 6 turtles, 12 squids, 18 crabs, 14 tubeworm colonies, 22 sea fans, 24 starfish colonies), weapons (knife/axe/sonic), fishing/eating (+25HP/+20O2), predator AI/attacks, rescue victory, endless exploration & 7 landmarks")
 	await get_tree().create_timer(0.35).timeout
 	get_tree().quit()
 

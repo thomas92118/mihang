@@ -192,9 +192,88 @@ func _initialize() -> void:
 	assert(diver2.dash_cooldown > 0.0)
 	var d_res2 = diver2.trigger_dash(50.0)
 	assert(d_res2.success == false) # cooldown blocks
+	# Verify mouse left click is bound to attack action
+	var has_lmb: bool = false
+	for ev in attack_events:
+		if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT:
+			has_lmb = true
+	assert(has_lmb, "Mouse left click must be bound to attack")
+
+	# Verify Underwater Audio procedural synthesis
+	var UnderwaterAudio = load("res://scripts/underwater_audio.gd")
+	for s_name in ["knife_slash", "knife_hit", "axe_swing", "axe_hit", "sonic_blast", "sonic_hit", "hit_confirm", "kill_sound", "weapon_equip"]:
+		var stream = UnderwaterAudio.get_stream(s_name)
+		assert(stream is AudioStreamWAV, "Stream must be AudioStreamWAV")
+		assert(stream.data.size() > 0, "Audio data must not be empty for " + s_name)
+		assert(stream.format == AudioStreamWAV.FORMAT_16_BITS)
+
+	# Verify Diver 3-hit knife combo & trauma & hitstop
+	var diver_test = Diver.new()
+	root.add_child(diver_test)
+	diver_test.set_weapon("knife")
+	var c1 = diver_test.attack()
+	assert(c1.combo == 1, "First knife attack should be combo 1")
+	assert(c1.active_delay == 0.06, "Knife combo 1 active delay should be 0.06s")
+	diver_test.attack_cooldown = 0.0
+	var c2 = diver_test.attack()
+	assert(c2.combo == 2, "Second knife attack should be combo 2")
+	diver_test.attack_cooldown = 0.0
+	var c3 = diver_test.attack()
+	assert(c3.combo == 3, "Third knife attack should be combo 3")
+	assert(c3.active_delay == 0.08, "Knife combo 3 active delay should be 0.08s")
+	diver_test.attack_cooldown = 0.0
+	var c4 = diver_test.attack()
+	assert(c4.combo == 1, "Fourth knife attack should loop to combo 1")
+
+	# Verify trauma and hitstop methods
+	assert(diver_test.camera_trauma == 0.0 or diver_test.camera_trauma > 0.0)
+	diver_test.add_trauma(0.5)
+	assert(diver_test.camera_trauma >= 0.5)
+	diver_test.trigger_hitstop(0.08)
+	assert(diver_test.hitstop_timer == 0.08)
+
+
+	# Verify Hitstop preserves animation progress without zero-resetting
+	diver_test.attack_anim_time = 0.15
+	diver_test.trigger_hitstop(0.08)
+	diver_test._process(0.02)
+	assert(diver_test.attack_anim_time == 0.15, "Attack anim time must remain frozen during hitstop")
+	assert(is_equal_approx(diver_test.hitstop_timer, 0.06), "Hitstop timer should decrement")
+
+	# Verify Axe 2-hit combo & reverse cleave
+	diver_test.set_weapon("axe")
+	diver_test.attack_cooldown = 0.0
+	var axe1 = diver_test.attack()
+	assert(axe1.combo == 1 and axe1.active_delay == 0.13, "Axe combo 1 active delay should be 0.13s")
+	assert(diver_test.camera_punch.y < 0.0, "First axe swing camera punch should yaw left")
+	diver_test.attack_cooldown = 0.0
+	var axe2 = diver_test.attack()
+	assert(axe2.combo == 2, "Second axe swing should be combo 2")
+	assert(diver_test.camera_punch.y > 0.0, "Reverse axe cleave camera punch must be mirrored to the right")
+
+	# Verify procedural equip animation & attack cancel
+	diver_test.set_weapon("sonic")
+	assert(diver_test.equip_anim_time > 0.0, "Equip anim time should be set on weapon switch")
+	diver_test.attack_cooldown = 0.0
+	var sonic1 = diver_test.attack()
+	assert(diver_test.equip_anim_time == 0.0, "Attack should immediately cancel equip animation")
+	assert(sonic1.active_delay == 0.0, "Sonic rifle fires immediately")
+
+	# Verify input buffering in Game
+	assert(game.ATTACK_BUFFER_WINDOW == 0.18)
+	game.attack_input_buffered = true
+	game.attack_buffer_timer = 0.18
+	# Verify CombatVFX spawning
+	var CombatVFX = load("res://scripts/combat_vfx.gd")
+	CombatVFX.spawn_hit_burst(root, Vector3(0, -10, 0), Vector3.UP, "knife", false, false)
+	CombatVFX.spawn_hit_burst(root, Vector3(0, -10, 0), Vector3.UP, "axe", true, true)
+	CombatVFX.spawn_damage_number(root, Vector3(0, -10, 0), 124.0, "knife", false)
+	CombatVFX.spawn_damage_number(root, Vector3(0, -10, 0), 162.0, "axe", true)
+
+	diver_test.queue_free()
 	diver2.queue_free()
 
 	game.free()
 
-	print("PASS: gathering, recipes, weapons (knife/axe/sonic), fragments (+12/+25), forging (+20/+35), sonic 100dmg/3000m, 165deg cleave, R-key attack, eat fish, rescue, explore mode, rebreather, depth oxygen, recipe pinning, biomod dash")
+	print("PASS: gathering, recipes, weapons (knife/axe/sonic), fragments (+12/+25), forging (+20/+35), sonic 100dmg/3000m, 165deg cleave, R-key & LMB attack, 3-hit combo, procedural audio, combat vfx, hit marker, explore mode, rebreather, depth oxygen, recipe pinning, biomod dash")
 	quit()

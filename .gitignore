@@ -17,9 +17,19 @@ bin/
 .DS_Store
 Thumbs.db
 desktop.ini
+__pycache__/
 
 # IDE & Editor files
 .vscode/
 .idea/
 *.swp
 *.bak
+.codegraph/
+
+# Large Blender & raw asset sources (intermediate generation artifacts)
+*.blend1
+assets/source/alien-ocean-v2/
+
+# Model previews in assets/models
+assets/models/*.png
+assets/models/*.png.import
