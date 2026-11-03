@@ -43,6 +43,33 @@ var pinned_progress: Label
 var pin_buttons: Dictionary = {}
 var hit_marker: Label
 var hit_marker_timer: float = 0.0
+var reticle: Label
+var aim_frame: Panel
+var scope_overlay: ColorRect
+var scope_label: Label
+var charge_label: Label
+var charge_bar: ProgressBar
+var weapon_hint: Label
+var boss_panel: Panel
+var boss_name: Label
+var boss_bar: ProgressBar
+var boss_warning: Label
+var sub_panel: Panel
+var sub_name_label: Label
+var sub_hull_bar: ProgressBar
+var sub_hull_label: Label
+var sub_speed_label: Label
+var sub_weapon_label: Label
+var booster_indicator: Label
+var torpedo_panel: Panel
+var torpedo_title: Label
+var torpedo_telemetry: Label
+var torpedo_reticle: Label
+var tame_panel: Panel
+var tame_title: Label
+var tame_slots_label: Label
+var tame_mount_label: Label
+var shield_label: Label
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -50,8 +77,11 @@ func _ready() -> void:
 	add_child(root)
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var font := SystemFont.new()
-	font.font_names = PackedStringArray(["PingFang SC", "Noto Sans CJK SC", "Heiti SC"])
+	var font: FontFile = preload("res://assets/fonts/NotoSansSC-Subset.otf")
+	var sym_font: FontFile = preload("res://assets/fonts/Symbols-Subset.ttf")
+	if not font.fallbacks.has(sym_font):
+		font.fallbacks = [sym_font]
+	ThemeDB.fallback_font = font
 	var theme := Theme.new()
 	theme.default_font = font
 	theme.default_font_size = 16
@@ -138,8 +168,43 @@ func _build_instruments() -> void:
 	pinned_title = _label(pinned_panel, "【配方追踪】", Rect2(12, 6, 225, 20), 11, CYAN)
 	pinned_progress = _label(pinned_panel, "", Rect2(12, 27, 225, 20), 11, INK)
 
-	var reticle := _label(instruments, "+", Rect2(-12, -16, 24, 32), 22, Color(0.83, 1, 0.98, 0.8), Vector2(0.5, 0.5))
+	reticle = _label(instruments, "+", Rect2(-12, -16, 24, 32), 22, Color(0.83, 1, 0.98, 0.8), Vector2(0.5, 0.5))
 	reticle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	aim_frame = _panel(instruments, Rect2(-165, -110, 330, 220), Vector2(0.5, 0.5))
+	aim_frame.add_theme_stylebox_override("panel", _style(Color.TRANSPARENT, Color(0.2, 0.6, 1.0, 0.35), 12))
+	_label(aim_frame, "精密瞄准  /  T 退出", Rect2(12, 9, 250, 20), 11, CYAN)
+	aim_frame.hide()
+	scope_overlay = ColorRect.new()
+	_place(scope_overlay, instruments, Rect2())
+	scope_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scope_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var scope_material := ShaderMaterial.new()
+	scope_material.shader = preload("res://shaders/scope.gdshader")
+	scope_overlay.material = scope_material
+	scope_overlay.hide()
+	scope_label = _label(instruments, "", Rect2(-240, 180, 480, 24), 13, CYAN, Vector2(0.5, 0.5))
+	scope_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	scope_label.hide()
+	charge_label = _label(instruments, "", Rect2(-160, 35, 320, 24), 14, CYAN, Vector2(0.5, 0.5))
+	charge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	charge_label.add_theme_stylebox_override("normal", _style(Color(0.015, 0.055, 0.09, 0.92), Color(0.1, 0.4, 0.8, 0.8)))
+	charge_bar = ProgressBar.new()
+	_place(charge_bar, instruments, Rect2(-90, 65, 180, 5), Vector2(0.5, 0.5))
+	charge_bar.show_percentage = false
+	charge_bar.max_value = 1.0
+	charge_bar.add_theme_stylebox_override("background", _style(Color(0.08, 0.2, 0.3, 0.8)))
+	charge_bar.add_theme_stylebox_override("fill", _style(Color(0.15, 0.55, 1.0)))
+	charge_bar.hide()
+	boss_panel = _panel(instruments, Rect2(-270, 192, 540, 80), Vector2(0.5, 0))
+	boss_name = _label(boss_panel, "深渊水龙 · 潮汐君主", Rect2(16, 8, 508, 25), 16, INK)
+	boss_bar = ProgressBar.new()
+	_place(boss_bar, boss_panel, Rect2(16, 38, 508, 7))
+	boss_bar.show_percentage = false
+	boss_bar.add_theme_stylebox_override("background", _style(Color(0.08, 0.19, 0.27)))
+	boss_bar.add_theme_stylebox_override("fill", _style(Color(0.12, 0.55, 1.0)))
+	boss_warning = _label(boss_panel, "", Rect2(16, 51, 508, 21), 12, ORANGE)
+	boss_warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	boss_panel.hide()
 
 	hit_marker = _label(instruments, "✕", Rect2(-14, -18, 28, 36), 22, Color(1, 1, 1, 0), Vector2(0.5, 0.5))
 	hit_marker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -176,13 +241,51 @@ func _build_instruments() -> void:
 	equipment_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	var weapon_panel := _panel(instruments, Rect2(-240, -136, 480, 42), Vector2(0.5, 1))
-	weapon_bar_label = _label(weapon_panel, "[1 潜水刀]    2 破拆斧    3 声波脉冲枪", Rect2(10, 10, 460, 24), 13, CYAN)
+	weapon_bar_label = _label(weapon_panel, "[1 潜水刀]    2 破拆斧    3 蓝光静滞枪", Rect2(10, 10, 460, 24), 13, CYAN)
 	weapon_bar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	weapon_hint = _label(instruments, "", Rect2(-370, -208, 740, 24), 13, CYAN, Vector2(0.5, 1))
+	weapon_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	target_value = _label(instruments, "", Rect2(-300, -88, 600, 33), 17, INK, Vector2(0.5, 1))
 	target_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
-	var hints := _label(instruments, "WASD 移动   空格 上浮   C/Ctrl 下潜   Shift 加速   Q 涡流冲刺   R 武器攻击   1/2/3 武器   E 交互/捕食   F 探照灯   Tab 制作   Esc 暂停", Rect2(-640, -36, 1280, 22), 11, MUTED, Vector2(0.5, 1))
+	# 潜水艇驾驶舱 HUD 面板
+	sub_panel = _panel(instruments, Rect2(-320, -150, 640, 72), Vector2(0.5, 1))
+	sub_name_label = _label(sub_panel, "【深海斥候号】巡航潜艇", Rect2(15, 8, 260, 22), 14, CYAN)
+	sub_speed_label = _label(sub_panel, "航速: 0.0 m/s", Rect2(280, 8, 160, 22), 13, INK)
+	sub_weapon_label = _label(sub_panel, "车载鱼雷 [就绪]", Rect2(445, 8, 180, 22), 13, CYAN)
+	sub_hull_bar = ProgressBar.new()
+	_place(sub_hull_bar, sub_panel, Rect2(15, 34, 420, 16))
+	sub_hull_bar.max_value = 1.0
+	sub_hull_bar.value = 1.0
+	sub_hull_bar.show_percentage = false
+	sub_hull_bar.add_theme_stylebox_override("fill", _style(Color(0.12, 0.75, 0.85)))
+	sub_hull_bar.add_theme_stylebox_override("background", _style(Color(0.04, 0.1, 0.15, 0.9)))
+	sub_hull_label = _label(sub_panel, "耐压装甲 100%", Rect2(15, 34, 420, 16), 11, INK)
+	sub_hull_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var sub_ctrl := _label(sub_panel, "WASD 航行  ·  空格/C 升降  ·  Shift 加速  ·  R/左键 鱼雷火炮  ·  E 离开潜艇", Rect2(15, 52, 610, 16), 11, MUTED)
+	sub_ctrl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub_panel.hide()
+
+	# 手持迷你助推器状态指示
+	booster_indicator = _label(instruments, "⚡ 水下迷你助推器巡航中 [按 H 收起 · 移速翻倍]", Rect2(-240, -136, 480, 42), 13, CYAN, Vector2(0.5, 1))
+	booster_indicator.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	booster_indicator.add_theme_stylebox_override("normal", _style(PANEL, Color(0.12, 0.72, 0.95, 0.6)))
+	booster_indicator.hide()
+
+	# 导引鱼雷机载前视摄像机 HUD
+
+	# 契约坐骑与战宠随从面板 (Tamed Beasts / Mounts HUD)
+	tame_panel = _panel(instruments, Rect2(42, -188, 480, 102), Vector2(0, 1))
+	tame_title = _label(tame_panel, "◈ 契约坐骑与战宠 (0/10) · 按 G 骑乘/离鞍 · 5-0 快捷选宠", Rect2(12, 6, 456, 18), 11, CYAN)
+	tame_slots_label = _label(tame_panel, "手持4号【光标枪】射击目标，战宠即刻全军出击围攻！", Rect2(12, 28, 456, 42), 11, MUTED)
+	tame_mount_label = _label(tame_panel, "战宠在周围极近处徘徊护卫 · 等待光标枪射击指令", Rect2(12, 72, 456, 18), 11, INK)
+
+	# 单手能量护盾状态指示标签
+	shield_label = _label(instruments, "[C] 单手能量盾: [收起]", Rect2(42, -225, 260, 24), 12, MUTED, Vector2(0, 1))
+	shield_label.add_theme_stylebox_override("normal", _style(PANEL, Color(0.12, 0.72, 0.95, 0.4)))
+
+	var hints := _label(instruments, "W 前进  S 后退  A 左拐  D 右拐  空格 上升  Ctrl 下降  Shift 加速  C 举盾/收盾  Z 召回战宠  G 坐骑  5-0 选宠  1-4 武器(4:光标枪)  R 攻击/标记  E 交互/驯服  Tab 制作", Rect2(-640, -36, 1280, 22), 11, MUTED, Vector2(0.5, 1))
 	hints.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 func _build_main() -> void:
@@ -206,13 +309,13 @@ func _build_main() -> void:
 	_label(menu, "01 浅海珊瑚礁     02 暮光大陆坡     03 深渊地热裂谷", Rect2(74, 526, 650, 30), 13, INK)
 
 	_button(menu, "生存挑战模式     →", Rect2(74, 580, 270, 54), func() -> void: start_requested.emit("survival"), true)
-	_label(menu, "有限氧气 · 规避巨兽 · 制作武器与装备 · 修复信标通关", Rect2(76, 642, 270, 22), 12, MUTED)
+	_label(menu, "有限氧气 · 制作装备 · 击败深渊水龙通关", Rect2(76, 642, 270, 22), 12, MUTED)
 
 	var explore_btn := _button(menu, "自由探险模式     ✦", Rect2(364, 580, 270, 54), func() -> void: start_requested.emit("explore"), false)
 	explore_btn.add_theme_color_override("font_color", CYAN)
-	_label(menu, "无限氧气 · 全武器配备 · 勘探浅海与百米深渊", Rect2(366, 642, 270, 22), 12, CYAN)
+	_label(menu, "无限氧气 · 全武器配备 · 挑战终章水龙", Rect2(366, 642, 270, 22), 12, CYAN)
 
-	_label(menu, "WASD 游动 · 鼠标观察 · R 键攻击 · 1/2/3 武器 · E 采集/食用 · F 探照灯 · Tab 制作", Rect2(75, 686, 650, 26), 12, MUTED)
+	_label(menu, "R 激光 / 蓄力 3 秒松手静滞球 · Y 远距镜 · 3 蓝光枪 · 深渊祭坛触发 Boss 战", Rect2(75, 686, 720, 26), 12, MUTED)
 	_label(menu, "原创海域生存与探险  /  GODOT × BLENDER", Rect2(73, -49, 650, 23), 10, MUTED, Vector2(0, 1))
 	_label(menu, "EXPEDITION ACTIVE\n多层深海生态系统已上线", Rect2(-280, -101, 230, 61), 14, INK, Vector2(1, 1)).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
@@ -238,11 +341,11 @@ func _build_craft() -> void:
 	_recipe(card, "fins", "02", "轻量脚蹼", "提升水下游动速度 50%", "1 钛 + 2 海藻", 188)
 	_recipe(card, "rebreather", "03", "深海循环呼吸器", "抵消深水压强耗氧惩罚 · 百米深渊必需", "2 钛 + 1 铜 + 2 海藻", 248)
 	_recipe(card, "axe", "04", "破拆战斧", "近战重型劈砍 · 165° 范围横扫群伤 · 70 基础伤害", "2 钛 + 1 铜", 308)
-	_recipe(card, "sonic", "05", "声波脉冲枪", "数千米超远距贯穿音波打击 · 100 基础伤害 · 震退眩晕", "2 钛 + 2 石英 + 1 铜", 368)
+	_recipe(card, "sonic", "05", "蓝光静滞枪", "环境自适应蓝色激光 · 蓄力 3 秒静滞球 · Y 远距镜", "2 钛 + 2 石英 + 1 铜", 368)
 	_recipe(card, "biomod_dash", "06", "生体模组·涡流突进", "按 Q 爆发突进 16 米紧急避咬 · 强化武装等级", "1 鲨齿碎片 + 2 钛", 428)
 	_recipe(card, "reinforce_sharp", "07", "深铸武器·锋锐硬化", "精研近战刃口 · 全武器攻击力额外 +20", "1 鲨齿碎片 + 1 钛", 488)
 	_recipe(card, "reinforce_sonic", "08", "深铸武器·晶体共鸣", "聚焦渊底脉冲 · 全武器攻击力额外 +35", "1 晶核碎片 + 1 石英", 548)
-	_recipe(card, "beacon", "09", "修复求救信标", "完成求救通信 · 达成救援任务", "3 钛 + 2 铜 + 2 石英", 608)
+	_recipe(card, "beacon", "09", "修复求救信标", "完成返航通信准备 · 最终击败水龙通关", "3 钛 + 2 铜 + 2 石英", 608)
 
 	_button(card, "返回潜航", Rect2(32, 668, 160, 38), func() -> void: resume_requested.emit())
 	_label(card, "点击【追踪】可在水下实时监视材料 · Tab / Esc 关闭", Rect2(202, 674, 520, 25), 11, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -410,12 +513,125 @@ func update_hud(data: Dictionary) -> void:
 	var w_bonus: float = float(data.get("damage_bonus", 0.0))
 	var k_txt: String = "【1 潜水刀】" if cur_w == "knife" else "1 潜水刀"
 	var a_txt: String = ("【2 破拆斧】" if cur_w == "axe" else "2 破拆斧") + ("" if has_axe else " (未制作)")
-	var s_txt: String = ("【3 声波脉冲枪】" if cur_w == "sonic" else "3 声波脉冲枪") + ("" if has_sonic else " (未制作)")
+	var s_txt: String = ("【3 蓝光枪】" if cur_w == "sonic" else "3 蓝光枪") + ("" if has_sonic else " (未制作)")
 	var upgrade_info: String = "   ·   武装强化 Lv.%d (+%d 伤)" % [w_level, int(w_bonus)] if w_level > 0 else ""
 	weapon_bar_label.text = "%s      %s      %s%s" % [k_txt, a_txt, s_txt, upgrade_info]
+	var is_gun := cur_w == "sonic"
+	var aiming: bool = is_gun and bool(data.get("aiming", false))
+	var scoped: bool = is_gun and bool(data.get("scoped", false))
+	var charging: bool = is_gun and bool(data.get("charging", false))
+	aim_frame.visible = aiming and not scoped
+	scope_overlay.visible = scoped
+	scope_label.visible = scoped
+	var in_sub: bool = bool(data.get("in_submarine", false))
+	var booster_on: bool = bool(data.get("booster_active", false))
+	equipment_value.visible = not scoped and not in_sub
+	weapon_hint.visible = not scoped and not in_sub and not booster_on
+	scope_label.text = "8× 远距镜  /  测距 %d m  /  Y 退出" % roundi(float(data.get("scope_distance", 2000.0)))
+	reticle.visible = not scoped
+	reticle.text = "·" if aiming else "+"
+	charge_label.visible = charging
+	charge_bar.visible = charging
+	charge_bar.value = float(data.get("charge_ratio", 0.0))
+	charge_label.text = "静滞大招就绪 · 松开发射" if bool(data.get("charge_ready", false)) else "蓄能  %.1f / 3.0 秒" % (charge_bar.value * 3.0)
+	var cooldown: float = float(data.get("gun_cooldown", 0.0))
+	weapon_hint.text = ("能量恢复 %.1f 秒" % cooldown) if is_gun and cooldown > 0.0 else ("短按 R / 左键：激光    蓄力 3 秒松手：静滞大招    T 瞄准 / Y 远距镜" if is_gun else "")
+	var boss: Dictionary = data.get("boss", {})
+	var fighting: bool = bool(boss.get("active", false))
+	boss_panel.visible = fighting
+	boss_bar.max_value = float(boss.get("max_health", 1800.0))
+	boss_bar.value = float(boss.get("health", 1800.0))
+	boss_name.text = "%s  %d / %d" % [str(boss.get("name", "深渊水龙")), ceili(boss_bar.value), int(boss_bar.max_value)]
+	var frozen: float = float(boss.get("frozen", 0.0))
+	boss_warning.text = "静滞冻结 %.1f 秒 · 立即用激光攻击" % frozen if frozen > 0.0 else str(boss.get("warning", ""))
+
+	# 潜水艇驾驶舱状态更新
+	sub_panel.visible = in_sub
+	booster_indicator.visible = booster_on and not in_sub
+	weapon_bar_label.get_parent().visible = not in_sub and not booster_on
+	if in_sub:
+		sub_name_label.text = "【%s】" % str(data.get("sub_name", "潜水艇"))
+		var hull_cur: float = float(data.get("sub_hull", 800.0))
+		var hull_max: float = float(data.get("sub_max_hull", 800.0))
+		var hull_pct: float = clampf(hull_cur / maxf(hull_max, 1.0), 0.0, 1.0)
+		sub_hull_bar.value = hull_pct
+		sub_hull_label.text = "耐压装甲 %d / %d (%d%%)" % [roundi(hull_cur), roundi(hull_max), roundi(hull_pct * 100.0)]
+		var sub_spd: float = float(data.get("sub_speed", 0.0))
+		sub_speed_label.text = "航速: %.1f m/s (%d节)" % [sub_spd, roundi(sub_spd * 1.944)]
+		var torp_guided: bool = bool(data.get("torpedo_guided", false))
+		var w_ready: bool = bool(data.get("sub_weapon_ready", true))
+		var w_cd: float = float(data.get("sub_cooldown", 0.0))
+		var s_name_str := str(data.get("sub_name", ""))
+		if s_name_str.contains("微型"):
+			sub_weapon_label.text = "电磁脉冲炮 [就绪 · T/Y瞄准]" if w_ready else "电磁脉冲炮 [冷却 %.1fs]" % w_cd
+		elif torp_guided:
+			sub_weapon_label.text = "车载鱼雷 [飞行中]"
+		elif w_ready:
+			sub_weapon_label.text = "车载鱼雷 [就绪 · R发射]"
+		else:
+			sub_weapon_label.text = "车载鱼雷 [装填 %.1fs]" % w_cd
+
+	# 更新契约坐骑面板状态
+	var beasts: Array = data.get("tamed_beasts", [])
+	var mount_idx: int = int(data.get("active_mount_idx", -1))
+	var beast_cnt: int = beasts.size()
+	var atk_mult: float = pow(2.0, maxf(0.0, float(beast_cnt - 1))) if beast_cnt > 0 else 1.0
+	tame_title.text = "◈ 契约坐骑与战宠 (%d/20) · 攻击加成: ×%.0f · 按 G 骑乘/离鞍" % [beast_cnt, atk_mult]
+	if beast_cnt == 0:
+		tame_slots_label.text = "大型猛兽/Boss近血时，用声波枪蓄力静滞后靠近按 E 驯服 (上限20只)！"
+		tame_mount_label.text = "战宠在人物后方待命 · 10米内遇活物或4号【光标枪】标记时出击！"
+	else:
+		var slots_str := ""
+		for i in range(mini(beast_cnt, 10)):
+			var b_info: Dictionary = beasts[i]
+			var tag := "[★]" if i == mount_idx else "[护]"
+			var hotkey_str := str(i + 5) if i < 5 else str((i - 5) % 10)
+			slots_str += "%s:%s%s " % [hotkey_str, tag, str(b_info.get("name", "海兽")).substr(0, 3)]
+		if beast_cnt > 10:
+			slots_str += "...(+%d)" % (beast_cnt - 10)
+		tame_slots_label.text = slots_str
+		if mount_idx >= 0 and mount_idx < beast_cnt:
+			tame_mount_label.text = "★ 当前骑乘: %s (W 前进 · C 下降 · 空格 上升 · A 左拐 · D 右拐)" % beasts[mount_idx].get("name", "海兽")
+		else:
+			tame_mount_label.text = "%d 只战宠在后方整齐列队跟随 · 随停随止 · 10米内遇活物主动出击" % beast_cnt
+
+	var is_shield: bool = bool(data.get("shield_active", false))
+	shield_label.text = "[C] 单手能量盾: [防御中 🛡️]" if is_shield else "[C] 单手能量盾: [收起]"
+	shield_label.add_theme_color_override("font_color", CYAN if is_shield else MUTED)
+
+	if fighting:
+		mission_title.text = "【巨兽决战】%s" % str(boss.get("name", "深渊领主"))
+		mission_detail.text = "近血时用声波枪静滞可按 E 契约驯服为坐骑！"
+	elif bool(data.get("mother_tree_active", false)):
+		var items_cnt: int = int(data.get("tree_items_collected", 0))
+		if items_cnt >= 3:
+			mission_title.text = "【终极逃生】返回逃生舱基地的中央控制台" 
+			mission_detail.text = "母树核心遗物已集齐 (3/3) · 制作深海星际跃迁引擎逃生！"
+		else:
+			var dist_tree: float = float(data.get("distance_mother_tree", 300.0))
+			mission_title.text = "【深海母树现世】潜入母树圣所收集核心遗物"
+			mission_detail.text = "深海极渊母树 %d 米 · 收集核心物资 (%d/3)" % [roundi(dist_tree), items_cnt]
+	elif int(data.get("conquered_bosses_count", 0)) < 4:
+		var c_cnt: int = int(data.get("conquered_bosses_count", 0))
+		mission_title.text = "【深海征途】平息或驯服四大深海领主 (%d/4)" % c_cnt
+		mission_detail.text = "水龙 / 飞鱼 / 巨章 / 灵龟 · 征服4只后开启母树终章"
+	elif has_sonic or bool(data.get("beacon_ready", false)):
+		mission_title.text = "终章 · 前往深渊祭坛"
+		mission_detail.text = "水龙领域 %d 米 · 36 米内开战" % roundi(float(data.get("distance_boss", 0.0)))
+	else:
+		mission_title.text = "制作蓝光枪 · 探索深渊"
+		mission_detail.text = "2 钛 / 2 石英 / 1 铜 · Tab 制造"
 
 	var seconds := int(data.get("elapsed", 0.0))
-	if is_explore:
+	if bool(data.get("escape_crafted", false)):
+		win_title.text = "深渊跃迁逃生成功"
+		win_desc.text = "四大深海领主悉数平息，远古母树星核成功制作跃迁装置！\n你已顺利冲破深海极渊，踏上星际归航之路。"
+		win_time.text = "本次潜航  %02d:%02d  /  母树终章完成 · 逃生成功" % [floori(float(seconds) / 60.0), seconds % 60]
+	elif bool(boss.get("defeated", false)):
+		win_title.text = "深渊水龙已被击败"
+		win_desc.text = "潮汐君主沉入深渊，海域终于恢复平静。\n潜航任务完成，感谢游玩《深蓝回声》。"
+		win_time.text = "本次潜航  %02d:%02d  /  终章完成 · 游戏结束" % [floori(float(seconds) / 60.0), seconds % 60]
+	elif is_explore:
 		win_title.text = "全海域勘测已完成"
 		win_desc.text = "你已探明浅海、暮光海沟与百米深渊的热液喷口全部核心地标。\n深蓝海域向勇敢的探险家致敬！"
 		win_time.text = "本次探险  %02d:%02d  /  勘测度 100%%" % [floori(float(seconds) / 60.0), seconds % 60]

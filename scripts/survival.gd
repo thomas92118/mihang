@@ -8,8 +8,13 @@ const RECIPES := {
 	"beacon": {"titanium": 3, "copper": 2, "quartz": 2},
 	"rebreather": {"titanium": 2, "copper": 1, "kelp": 2},
 	"biomod_dash": {"shark_fragment": 1, "titanium": 2},
+	"reinforced_suit": {"creature_skin": 2, "chitin": 1},
+	"bio_battery": {"fish_meat": 2, "copper": 1},
+	"serrated_blade": {"creature_tooth": 2, "titanium": 1},
 	"reinforce_sharp": {"shark_fragment": 1, "titanium": 1},
 	"reinforce_sonic": {"abyss_fragment": 1, "quartz": 1}
+	,"abyssal_escape_engine": {"mother_tree_essence": 1, "ancient_star_core": 1, "tree_seed": 1}
+	,"marker_gun": {"titanium": 1, "copper": 1}
 }
 
 const RECIPE_NAMES := {
@@ -17,23 +22,31 @@ const RECIPE_NAMES := {
 	"fins": "动力脚蹼",
 	"rebreather": "深海循环呼吸器",
 	"axe": "破拆战斧",
-	"sonic": "声波脉冲枪",
+	"sonic": "蓝光静滞枪",
 	"biomod_dash": "生体模组·涡流突进",
 	"beacon": "求救信标",
+	"reinforced_suit": "海兽绝缘潜航服",
+	"bio_battery": "生物高能电池",
+	"serrated_blade": "深海锯齿骨刃",
 	"reinforce_sharp": "深铸·锋锐硬化",
 	"reinforce_sonic": "深铸·晶体共鸣"
+	,"abyssal_escape_engine": "深海跃迁逃逸器 (终极逃生舰)"
+	,"marker_gun": "光标指示枪 (激光引战)"
 }
 
 var mode: String = "survival"
 var inventory: Dictionary = {
 	"titanium": 0, "copper": 0, "quartz": 0, "kelp": 0, "fish_small": 0,
 	"shark_fragment": 0, "abyss_fragment": 0
+	,"fish_meat": 0, "creature_skin": 0, "creature_tooth": 0, "chitin": 0
+	,"mother_tree_essence": 0, "ancient_star_core": 0, "tree_seed": 0
 }
 var weapons: Array[String] = ["knife"]
 var weapon_upgrade_level: int = 0
 var weapon_attack_bonus: float = 0.0
 var oxygen: float = 90.0
 var max_oxygen: float = 90.0
+var max_health: float = 100.0
 var health: float = 100.0
 var tank: bool = false
 var fins: bool = false
@@ -42,12 +55,20 @@ var biomod_dash: bool = false
 var biomod_vision: bool = false
 var black_box_read: bool = false
 var pinned_recipe: String = "tank"
+var reinforced_suit: bool = false
+var bio_battery: bool = false
 var rescued: bool = false
+var boss_defeated: bool = false
+var all_bosses_defeated: bool = false
+var mother_tree_active: bool = false
+var escape_crafted: bool = false
+var tamed_beast_count: int = 0
 var elapsed: float = 0.0
 var landmarks_discovered: Array[String] = []
 
 func set_mode(new_mode: String) -> void:
 	mode = new_mode
+	boss_defeated = false
 	if mode == "explore":
 		tank = true
 		fins = true
@@ -95,6 +116,7 @@ func get_pinned_info() -> Dictionary:
 	var item_names := {
 		"titanium": "钛", "copper": "铜", "quartz": "石英", "kelp": "海藻",
 		"fish_small": "小鱼", "shark_fragment": "鲨齿", "abyss_fragment": "晶核"
+		,"mother_tree_essence": "生命精华", "ancient_star_core": "星核源石", "tree_seed": "启迪之种"
 	}
 	for kind in cost:
 		var req: int = int(cost[kind])
@@ -153,7 +175,8 @@ func eat_fish() -> Dictionary:
 func take_damage(amount: float) -> bool:
 	if mode == "explore":
 		return false
-	health = maxf(0.0, health - amount)
+	var actual_dmg := amount * (0.6 if reinforced_suit else 1.0)
+	health = maxf(0.0, health - actual_dmg)
 	return health <= 0.0
 
 func craft(recipe: String, near_home: bool) -> String:
@@ -161,6 +184,8 @@ func craft(recipe: String, near_home: bool) -> String:
 		return "未知配方"
 	if (recipe == "tank" and tank) or (recipe == "fins" and fins) or (recipe == "beacon" and rescued):
 		return "已完成此项制作"
+	if (recipe == "reinforced_suit" and reinforced_suit) or (recipe == "bio_battery" and bio_battery):
+		return "该强化已完成，无需重复升级"
 	if recipe == "rebreather" and rebreather:
 		return "已拥有深海循环呼吸器"
 	if recipe == "biomod_dash" and biomod_dash:
@@ -184,6 +209,15 @@ func craft(recipe: String, near_home: bool) -> String:
 			fins = true
 		"rebreather":
 			rebreather = true
+		"reinforced_suit":
+			reinforced_suit = true
+			max_health = 150.0
+			health = 150.0
+		"bio_battery":
+			bio_battery = true
+		"serrated_blade":
+			weapon_attack_bonus += 25.0
+			weapon_upgrade_level += 1
 		"biomod_dash":
 			biomod_dash = true
 			weapon_upgrade_level += 1
@@ -193,6 +227,9 @@ func craft(recipe: String, near_home: bool) -> String:
 		"sonic":
 			if not weapons.has("sonic"):
 				weapons.append("sonic")
+		"marker_gun":
+			if not weapons.has("marker_gun"):
+				weapons.append("marker_gun")
 		"beacon":
 			rescued = true
 		"reinforce_sharp":
@@ -201,6 +238,9 @@ func craft(recipe: String, near_home: bool) -> String:
 		"reinforce_sonic":
 			weapon_attack_bonus += 35.0
 			weapon_upgrade_level += 1
+		"abyssal_escape_engine":
+			escape_crafted = true
+			rescued = true
 	return ""
 
 func tick(delta: float, safe: bool, sprinting: bool, depth: float = 0.0) -> bool:

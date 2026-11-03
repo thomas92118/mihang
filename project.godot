@@ -13,6 +13,9 @@ window/size/window_width_override=1280
 window/size/window_height_override=800
 window/stretch/mode="canvas_items"
 
+[gui]
+theme/custom_font="res://assets/fonts/NotoSansSC-Subset.otf"
+
 [rendering]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

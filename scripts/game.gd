@@ -6,6 +6,9 @@ const Survival = preload("res://scripts/survival.gd")
 const HUD = preload("res://scripts/hud.gd")
 const CombatVFX = preload("res://scripts/combat_vfx.gd")
 const UnderwaterAudio = preload("res://scripts/underwater_audio.gd")
+const EnergyOrb = preload("res://scripts/energy_orb.gd")
+const Submarine = preload("res://scripts/submarine.gd")
+const SubmarineTorpedoCls = preload("res://scripts/submarine_torpedo.gd")
 
 const LANDMARKS := {
 	"shallows": {"name": "逃生舱浅礁", "pos": Vector3(0, -9, 8), "radius": 28.0, "desc": "阳光明媚的浅海珊瑚林"},
@@ -15,10 +18,27 @@ const LANDMARKS := {
 	"abyss": {"name": "深渊裂谷入口", "pos": Vector3(0, -68, -105), "radius": 35.0, "desc": "幽暗寒冷的百米深海大裂谷"},
 	"vents": {"name": "深海地热喷口群", "pos": Vector3(15, -95, -165), "radius": 38.0, "desc": "地壳深处喷涌而出的炽热黑烟囱"},
 	"altar": {"name": "深渊史前祭坛", "pos": Vector3(-50, -88, -170), "radius": 32.0, "desc": "沉眠于百米渊底的发光史前石碑"},
+	"crystal_basin": {"name": "碧蓝晶簇海盆", "pos": Vector3(95, -36, -30), "radius": 34.0, "desc": "生长着幽蓝巨晶的深潜艇科考船坞"},
+	"shipyard": {"name": "深渊重装造船厂", "pos": Vector3(-110, -96, -185), "radius": 42.0, "desc": "沉睡于百米海沟的史前巨型核潜艇船坞"},
+	"phosphor_groves": {"name": "海妖磷光珊瑚林", "pos": Vector3(-85, -42, -50), "radius": 32.0, "desc": "密布巨型发光海葵与鬼蝠鲼群的幽绿珊瑚海谷"},
+	"storm_ridge": {"name": "风暴海脊", "pos": Vector3(145, -18, -40), "radius": 35.0, "desc": "风暴飞鱼龙皇巡弋的雷涌海脊"},
+	"kraken_trench": {"name": "克拉肯海沟", "pos": Vector3(-105, -75, -85), "radius": 36.0, "desc": "深渊巨章领主盘踞的幽暗触手裂谷"},
+	"turtle_basin": {"name": "玄甲巨鳌盆地", "pos": Vector3(-140, -92, -145), "radius": 38.0, "desc": "沉眠远古灵龟神鳌的深渊晶矿盆地"},
+	"outer_void": {"name": "深蓝生态隔离界限", "pos": Vector3(0, -12, -220), "radius": 38.0, "desc": "离开隔离区，进入真正的深蓝外洋世界"},
+	"mother_tree": {"name": "远古深海母树", "pos": Vector3(0, -125, -340), "radius": 48.0, "desc": "伫立在深海极渊核心的史前生命母树圣所"}
 }
 
 var ocean: Node3D
 var diver: CharacterBody3D
+var active_submarine: Submarine = null
+var active_torpedo: Node3D = null
+var tamed_beasts: Array[Dictionary] = []
+var active_mount_idx: int = -1
+var companion_attack_target: Node3D = null
+var persistent_red_dot: Node3D = null
+var companion_orbit_clock: float = 0.0
+var companion_attack_pos: Vector3 = Vector3.ZERO
+var has_target_pos: bool = false
 var hud: CanvasLayer
 var state = Survival.new()
 var screen: String = "main"
@@ -30,11 +50,17 @@ var screen_shade: ColorRect
 var damage_flash_time: float = 0.0
 var attack_input_buffered: bool = false
 var attack_buffer_timer: float = 0.0
+var stasis_fields: Array[Dictionary] = []
+var scope_scan_timer := 0.0
+var scope_distance := 2000.0
 const ATTACK_BUFFER_WINDOW: float = 0.18
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_input()
 	ocean = Ocean.new()
 	add_child(ocean)
+	ocean.boss_encounter_started.connect(_on_boss_encounter_started)
+	ocean.boss_defeated.connect(_on_boss_defeated)
 	diver = Diver.new()
 	add_child(diver)
 	_reset_position()
@@ -60,7 +86,7 @@ func _setup_input() -> void:
 		"left": KEY_A,
 		"right": KEY_D,
 		"ascend": KEY_SPACE,
-		"descend": KEY_CTRL,
+		"descend": KEY_C,
 		"sprint": KEY_SHIFT,
 		"interact": KEY_E,
 		"craft_menu": KEY_TAB,
@@ -69,8 +95,21 @@ func _setup_input() -> void:
 		"weapon_1": KEY_1,
 		"weapon_2": KEY_2,
 		"weapon_3": KEY_3,
+		"weapon_4": KEY_4,
 		"attack": KEY_R,
-		"dash": KEY_Q
+		"aim": KEY_T,
+		"scope": KEY_Y,
+		"dash": KEY_Q,
+		"booster": KEY_H,
+		"mount_toggle": KEY_G,
+		"toggle_shield": KEY_C,
+		"recall_pets": KEY_Z,
+		"mount_slot_1": KEY_5,
+		"mount_slot_2": KEY_6,
+		"mount_slot_3": KEY_7,
+		"mount_slot_4": KEY_8,
+		"mount_slot_5": KEY_9,
+		"mount_slot_6": KEY_0
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -81,7 +120,7 @@ func _setup_input() -> void:
 		InputMap.action_add_event(action, key)
 
 	var descend := InputEventKey.new()
-	descend.physical_keycode = KEY_C
+	descend.physical_keycode = KEY_CTRL
 	InputMap.action_add_event("descend", descend)
 
 	var mouse_attack := InputEventMouseButton.new()
@@ -89,6 +128,9 @@ func _setup_input() -> void:
 	InputMap.action_add_event("attack", mouse_attack)
 
 func _reset_position() -> void:
+	diver.cancel_gun_charge()
+	diver.aiming = false
+	diver.scoped = false
 	diver.position = Vector3(0, -9.0, 17.0)
 	diver.rotation = Vector3.ZERO
 	diver.camera.rotation.x = -0.16
@@ -100,24 +142,47 @@ func _start(chosen_mode: String = "survival") -> void:
 	diver.set_weapon("knife")
 	_set_screen("play")
 	if chosen_mode == "explore":
-		hud.toast("已开启自由探险模式！无限氧气，全武器配备，尽情漫游浅海与百米深渊。")
+		hud.toast("3 蓝光枪 · T 瞄准 / Y 远距镜 · 短按 R 激光，蓄力 3 秒后松手发射静滞球。")
 	else:
 		hud.toast("欢迎来到浅礁区。按 1/2/3 装备武器防身；E 采集矿物或捕食小鱼；Tab 开启制造台。")
 
 func _restart() -> void:
+	get_tree().paused = false
 	get_tree().reload_current_scene()
 
 func _set_screen(value: String) -> void:
 	screen = value
 	diver.active = screen == "play"
+	if screen != "play":
+		diver.cancel_gun_charge()
+		diver.aiming = false
+		diver.scoped = false
+		attack_input_buffered = false
+	get_tree().paused = screen in ["pause", "craft", "win"]
 	hud.set_screen(screen)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if screen == "play" else Input.MOUSE_MODE_VISIBLE
 
 func _get_current_biome(pos: Vector3) -> String:
 	var depth: float = maxf(0, -pos.y)
 	var distance_to_home: float = pos.distance_to(Ocean.HOME)
+	if absf(pos.x) > 215.0 or pos.z > 85.0 or pos.z < -255.0:
+		return "深蓝无尽外洋 · 真正的外面世界 (The Void)"
+	if pos.distance_to(Ocean.BOSS_ARENA_CENTER) < Ocean.BOSS_TRIGGER_RADIUS:
+		return "水龙领域  /  终章 Boss 战"
+	if pos.distance_to(Vector3(95, -36, -30)) < 34.0:
+		return "碧蓝晶簇海盆 (深潜艇船坞)  /  %dm" % roundi(depth)
+	if pos.distance_to(Vector3(-85, -42, -50)) < 32.0:
+		return "海妖磷光珊瑚林  /  %dm" % roundi(depth)
+	if pos.distance_to(Vector3(145, -18, -40)) < 32.0:
+		return "风暴海脊 (风暴飞鱼领地)  /  %dm" % roundi(depth)
+	if pos.distance_to(Vector3(-105, -75, -85)) < 35.0:
+		return "克拉肯海沟 (深渊巨章巢穴)  /  %dm" % roundi(depth)
+	if pos.distance_to(Vector3(-140, -92, -145)) < 35.0:
+		return "玄甲巨鳌盆地 (远古灵龟领地)  /  %dm" % roundi(depth)
 	if distance_to_home < 7.0 or pos.y > -0.6:
 		return "安全区  /  生命支持恢复"
+	if pos.distance_to(Vector3(-110, -96, -185)) < 42.0:
+		return "深渊重装造船厂 (泰坦核潜艇)  /  %dm" % roundi(depth)
 	if pos.distance_to(Vector3(45, -55.7, -55)) < 32.0:
 		return "失事科考潜艇遗址  /  %dm" % roundi(depth)
 	if pos.distance_to(Vector3(15, -95, -165)) < 42.0:
@@ -154,35 +219,117 @@ func _unhandled_input(event: InputEvent) -> void:
 		diver.toggle_lamp()
 	elif event.is_action_pressed("interact") and screen == "play":
 		_interact()
+	elif event.is_action_pressed("booster") and screen == "play":
+		if is_instance_valid(active_submarine):
+			hud.toast("驾驶潜水艇期间无法使用手持助推器")
+		else:
+			var b_on: bool = bool(diver.toggle_booster())
+			if b_on:
+				hud.toast("【手持迷你助推器】已启动 · 移速大幅提升！按 H 收起")
+				UnderwaterAudio.play_sound(get_tree(), "booster_start", -4.0, 1.1)
+			else:
+				hud.toast("【手持迷你助推器】已收起 · 恢复常规游动 (按 H 启动)")
+				UnderwaterAudio.play_sound(get_tree(), "booster_stop", -4.0, 0.9)
 	elif event.is_action_pressed("attack") and screen == "play":
-		if is_instance_valid(diver) and diver.attack_cooldown <= 0.0:
+		if is_instance_valid(active_submarine):
+			_fire_submarine_weapon()
+			return
+		if diver.current_weapon == "sonic":
+			diver.begin_gun_charge()
+		elif is_instance_valid(diver) and diver.attack_cooldown <= 0.0:
 			_perform_attack()
 		else:
 			attack_input_buffered = true
 			attack_buffer_timer = ATTACK_BUFFER_WINDOW
+	elif event.is_action_released("attack") and screen == "play":
+		if diver.current_weapon == "sonic" and not Input.is_action_pressed("attack"):
+			diver.damage_bonus = state.weapon_attack_bonus
+			_dispatch_attack(diver.release_gun_charge())
+	elif event.is_action_pressed("aim") and screen == "play":
+		if is_instance_valid(active_submarine) and active_submarine.sub_type == "mini":
+			active_submarine.toggle_scope()
+			diver.scoped = active_submarine.is_scoped
+			hud.toast("微型潜艇电磁脉冲瞄准镜" + (" [已开启]" if active_submarine.is_scoped else " [已退出]"))
+			return
+		if diver.current_weapon == "sonic":
+			diver.toggle_aim()
+		else:
+			hud.toast("按 3 装备蓝光静滞枪后，可用 T 瞄准")
+	elif event.is_action_pressed("scope") and screen == "play":
+		if is_instance_valid(active_submarine) and active_submarine.sub_type == "mini":
+			active_submarine.toggle_scope()
+			diver.scoped = active_submarine.is_scoped
+			hud.toast("微型潜艇电磁脉冲瞄准镜" + (" [已开启]" if active_submarine.is_scoped else " [已退出]"))
+			return
+		if diver.current_weapon == "sonic":
+			diver.toggle_scope()
+		else:
+			hud.toast("按 3 装备蓝光静滞枪后，可用 Y 打开远距瞄准镜")
 	elif event.is_action_pressed("dash") and screen == "play":
 		_perform_dash()
+	elif event.is_action_pressed("mount_toggle") and screen == "play":
+		if active_mount_idx >= 0:
+			_dismount_beast()
+		elif not tamed_beasts.is_empty():
+			_mount_beast(0)
+		else:
+			hud.toast("尚未契约坐骑！用声波枪静滞近血巨兽后按 E 契约驯服 (最多10只)")
+	elif event.is_action_pressed("mount_slot_1") and screen == "play":
+		if tamed_beasts.size() >= 1: _mount_beast(0)
+	elif event.is_action_pressed("mount_slot_2") and screen == "play":
+		if tamed_beasts.size() >= 2: _mount_beast(1)
+	elif event.is_action_pressed("mount_slot_3") and screen == "play":
+		if tamed_beasts.size() >= 3: _mount_beast(2)
+	elif event.is_action_pressed("mount_slot_4") and screen == "play":
+		if tamed_beasts.size() >= 4: _mount_beast(3)
+	elif event.is_action_pressed("mount_slot_5") and screen == "play":
+		if tamed_beasts.size() >= 5: _mount_beast(4)
+	elif event.is_action_pressed("mount_slot_6") and screen == "play":
+		if tamed_beasts.size() >= 6: _mount_beast(5)
 	elif event.is_action_pressed("weapon_1") and screen == "play":
 		_switch_weapon("knife")
 	elif event.is_action_pressed("weapon_2") and screen == "play":
 		_switch_weapon("axe")
 	elif event.is_action_pressed("weapon_3") and screen == "play":
 		_switch_weapon("sonic")
+	elif event.is_action_pressed("weapon_4") and screen == "play":
+		_switch_weapon("marker_gun")
+	elif event.is_action_pressed("toggle_shield") and screen == "play":
+		var active: bool = diver.toggle_shield()
+		if active:
+			UnderwaterAudio.play_sound(get_tree(), "shield_deploy", -3.0, 1.0)
+			hud.toast("【单手能量盾已展开】单手防御中 · 抵挡前方伤害 · 与所有武器同步使用 (按 C 消除)")
+		else:
+			UnderwaterAudio.play_sound(get_tree(), "shield_retract", -3.0, 1.0)
+			hud.toast("【单手能量盾已收起】")
+	elif event.is_action_pressed("recall_pets") and screen == "play":
+		_recall_pets()
 
 func _switch_weapon(weapon_id: String) -> void:
-	var names := {"knife": "潜水战术刀", "axe": "破拆战斧", "sonic": "声波脉冲枪"}
-	if not state.weapons.has(weapon_id):
+	var names := {"knife": "潜水战术刀", "axe": "破拆战斧", "sonic": "蓝光静滞枪", "marker_gun": "光标指示枪"}
+	if weapon_id != "marker_gun" and not state.weapons.has(weapon_id):
 		hud.toast("尚未解锁【%s】，请在逃生舱制造台制作" % names.get(weapon_id, weapon_id))
 		return
 	diver.set_weapon(weapon_id)
+	attack_input_buffered = false
 	UnderwaterAudio.play_sound(get_tree(), "weapon_equip", -5.0, randf_range(0.96, 1.04))
 	hud.toast("已装备【%s】" % names.get(weapon_id, weapon_id))
 
 func _perform_attack() -> void:
 	diver.damage_bonus = state.weapon_attack_bonus
 	var atk: Dictionary = diver.attack()
+	_dispatch_attack(atk)
+
+func _dispatch_attack(atk: Dictionary) -> void:
 	if atk.is_empty():
 		return
+	if str(atk.get("mode", "")) == "stasis_orb":
+		_launch_energy_orb(atk)
+		return
+	if str(atk.get("mode", "")) == "marker_pointer":
+		_fire_marker_gun(atk)
+		return
+
 
 	var weapon_type: String = str(atk.get("weapon", "knife"))
 	# 播放水下挥击 / 开火声效
@@ -192,19 +339,22 @@ func _perform_attack() -> void:
 		"axe":
 			UnderwaterAudio.play_sound(get_tree(), "axe_swing", -3.5, randf_range(0.92, 1.02))
 		"sonic":
-			UnderwaterAudio.play_sound(get_tree(), "sonic_blast", -2.0, randf_range(0.98, 1.02))
+			UnderwaterAudio.play_sound(get_tree(), "laser", -5.0, randf_range(0.98, 1.02))
 
 	var active_delay: float = float(atk.get("active_delay", 0.0))
 	if active_delay <= 0.001:
 		_resolve_attack_hit(atk)
 	else:
-		get_tree().create_timer(active_delay).timeout.connect(func():
+		get_tree().create_timer(active_delay, false).timeout.connect(func():
 			if is_instance_valid(self) and screen == "play" and is_instance_valid(diver):
 				_resolve_attack_hit(atk)
 		)
 
 func _resolve_attack_hit(atk: Dictionary) -> void:
 	if not is_instance_valid(diver) or not is_instance_valid(ocean):
+		return
+	if str(atk.get("mode", "")) == "laser":
+		_fire_laser(atk)
 		return
 	var weapon_type: String = str(atk.get("weapon", "knife"))
 	var camera: Camera3D = diver.camera
@@ -221,6 +371,174 @@ func _resolve_attack_hit(atk: Dictionary) -> void:
 		max_targets,
 		cleave_angle
 	)
+	_present_attack_hit(atk, hit, from, dir)
+
+func _fire_laser(atk: Dictionary) -> Dictionary:
+	var camera: Camera3D = diver.camera
+	var direction := -camera.global_basis.z
+	var excluded: Array[RID] = [diver.get_rid()]
+	var aim_hit: Dictionary = ocean.trace_laser(camera.global_position, direction, float(atk["range"]), excluded)
+	var muzzle: Vector3 = diver.get_muzzle_position()
+	var aim_point: Vector3 = aim_hit["position"]
+	var to_aim: Vector3 = aim_point - muzzle
+	# A second trace prevents firing through a wall next to the barrel.
+	var hit: Dictionary = ocean.trace_laser(muzzle, to_aim.normalized(), to_aim.length() + 0.05, excluded)
+	var at: Vector3 = hit["position"]
+	CombatVFX.spawn_laser(self, muzzle, at, ocean.get_laser_color())
+	var damage_result := {}
+	var creature: Node3D = hit.get("creature", null)
+	if is_instance_valid(creature):
+		damage_result = ocean.damage_creature(creature, float(atk["damage"]))
+		_present_attack_hit(atk, damage_result, muzzle, direction)
+		companion_attack_target = creature
+	elif hit.has("collider"):
+		CombatVFX.spawn_hit_burst(self, at, -direction, "sonic")
+	return damage_result
+
+func _launch_energy_orb(atk: Dictionary) -> Node3D:
+	var orb := EnergyOrb.new()
+	orb.direction = -diver.camera.global_basis.z
+	orb.field_radius = float(atk["field_radius"])
+	orb.freeze_duration = float(atk["freeze_duration"])
+	orb.excluded = [diver.get_rid()]
+	orb.detonated.connect(_detonate_stasis)
+	add_child(orb)
+	orb.global_position = diver.get_muzzle_position()
+	UnderwaterAudio.play_sound(get_tree(), "sonic_blast", -4.0, 0.7)
+	return orb
+
+func _fire_submarine_weapon() -> void:
+	if not is_instance_valid(active_submarine):
+		return
+	var torp_data: Dictionary = active_submarine.fire_weapon()
+	if torp_data.is_empty():
+		return
+	if str(torp_data.get("mode", "")) == "emp_beam":
+		var from: Vector3 = torp_data["from"]
+		var dir: Vector3 = -diver.camera.global_basis.z
+		var excluded: Array[RID] = [diver.get_rid(), active_submarine.get_rid()]
+		var hit: Dictionary = ocean.trace_laser(from, dir, float(torp_data["range"]), excluded)
+		var at: Vector3 = hit["position"]
+		CombatVFX.spawn_laser(self, from, at, Color(0.2, 0.95, 1.0))
+		UnderwaterAudio.play_sound(get_tree(), "laser", -4.0, 1.15)
+		var creature: Node3D = hit.get("creature", null)
+		if is_instance_valid(creature):
+			ocean.damage_creature(creature, float(torp_data["damage"]))
+			creature.set_meta("stun_timer", 3.0)
+			CombatVFX.spawn_hit_burst(self, at, -dir, "sonic", true, false)
+			hud.toast("微型潜艇电磁脉冲命中！造成 %d 点伤害" % int(torp_data["damage"]))
+		elif hit.has("collider"):
+			CombatVFX.spawn_hit_burst(self, at, -dir, "sonic", false, false)
+		return
+
+	var torp := SubmarineTorpedoCls.new()
+	torp.direction = torp_data["direction"]
+	torp.speed = float(torp_data["speed"])
+	torp.damage = float(torp_data["damage"])
+	torp.explosion_radius = float(torp_data["radius"])
+	torp.has_shockwave = bool(torp_data.get("shockwave", false))
+	torp.excluded = [diver.get_rid(), active_submarine.get_rid()]
+	torp.ocean_ref = ocean
+	torp.is_guided = true
+	torp.guiding_camera = diver.camera
+	add_child(torp)
+	torp.global_position = torp_data["from"]
+	active_torpedo = torp
+	UnderwaterAudio.play_sound(get_tree(), "sub_torpedo_launch", -4.0, 1.0)
+	hud.toast("【车载鱼雷已射出】正在沿瞄准线飞向目标！")
+
+func _detonate_stasis(at: Vector3, radius: float, duration: float) -> void:
+	if screen != "play":
+		return
+	stasis_fields.append({"position": at, "radius": radius, "remaining": duration})
+	var frozen: int = ocean.freeze_creatures(at, radius, duration)
+	CombatVFX.spawn_stasis_burst(self, at, radius, duration)
+	UnderwaterAudio.play_sound(get_tree(), "sonic_hit", -4.0, 0.65)
+	hud.toast("静滞场展开 · %d 只生物暂停 %.1f 秒" % [frozen, duration])
+
+func _physics_process(delta: float) -> void:
+	if screen != "play":
+		return
+	for i in range(stasis_fields.size() - 1, -1, -1):
+		var field: Dictionary = stasis_fields[i]
+		field["remaining"] = float(field["remaining"]) - delta
+		if float(field["remaining"]) <= 0.0:
+			stasis_fields.remove_at(i)
+		else:
+			ocean.freeze_creatures(field["position"], float(field["radius"]), float(field["remaining"]))
+
+	if is_instance_valid(active_submarine):
+		state.oxygen = state.max_oxygen
+		var input := Input.get_vector("left", "right", "forward", "backward")
+		var vert := Input.get_axis("descend", "ascend")
+		var is_boost := Input.is_action_pressed("sprint")
+		active_submarine.pilot_direct(delta, input, vert, is_boost, diver.camera.global_basis)
+		diver.global_position = active_submarine.cockpit_seat.global_position if is_instance_valid(active_submarine.cockpit_seat) else active_submarine.global_position
+		diver.velocity = active_submarine.velocity
+	elif active_mount_idx >= 0 and active_mount_idx < tamed_beasts.size():
+		var m_entry: Dictionary = tamed_beasts[active_mount_idx]
+		var m_node: Node3D = m_entry.get("node")
+		if not is_instance_valid(m_node) or bool(m_node.get_meta("dead", false)):
+			_dismount_beast()
+		else:
+			# 1. 坐骑转向机动 (A 左拐, D 右拐)：敏捷平滑偏航与水动力侧倾
+			var turn_val := 0.0
+			if Input.is_action_pressed("left"): turn_val += 1.0
+			if Input.is_action_pressed("right"): turn_val -= 1.0
+			if turn_val != 0.0:
+				m_node.rotate_y(turn_val * 2.8 * delta)
+				diver.rotate_y(turn_val * 2.8 * delta)
+
+			var roll_target := clampf(-turn_val * 0.28, -0.32, 0.32)
+			m_node.rotation.z = lerp_angle(m_node.rotation.z, roll_target, delta * 7.5)
+
+			# 2. 坐骑俯仰升降 (空格 上升, C 下降)
+			var vert_val := Input.get_axis("descend", "ascend")
+			var pitch_target := clampf(-vert_val * 0.28, -0.35, 0.35)
+			m_node.rotation.x = lerp_angle(m_node.rotation.x, pitch_target, delta * 6.5)
+
+			# 3. 推进动力 (W 前进, S 后退)
+			var fwd_val := 0.0
+			if Input.is_action_pressed("forward"): fwd_val += 1.0
+			if Input.is_action_pressed("backward"): fwd_val -= 0.55
+
+			var is_boost: bool = Input.is_action_pressed("sprint")
+			var spd: float = float(m_entry.get("speed", 22.0)) * (1.65 if is_boost else 1.0)
+
+			var m_fwd := -m_node.global_basis.z
+			var move_vec := m_fwd * fwd_val + Vector3(0, vert_val * 0.95, 0)
+			m_node.position += move_vec.limit_length() * spd * delta
+			if m_node.has_method("animate"):
+				m_node.animate(delta * (1.8 if is_boost else 1.0))
+
+			var floor_y := Ocean.floor_height(m_node.position.x, m_node.position.z) + 1.2
+			m_node.position.y = clampf(m_node.position.y, floor_y, 0.5)
+			m_node.position.x = clampf(m_node.position.x, -440.0, 440.0)
+			m_node.position.z = clampf(m_node.position.z, -470.0, 210.0)
+
+			diver.global_position = m_node.global_position + m_node.global_basis * Vector3(0, 1.8, 0.2)
+			diver.velocity = Vector3.ZERO
+
+	_tick_companion_followers(delta)
+
+func _on_boss_encounter_started() -> void:
+	hud.toast("【终章 Boss 战】深渊水龙苏醒！用 T 瞄准，蓄力静滞球创造攻击机会。")
+	if not diver.lamp.visible:
+		diver.toggle_lamp()
+	diver.add_trauma(0.3)
+
+func _on_boss_defeated() -> void:
+	var c_cnt: int = ocean.conquered_bosses.size() if is_instance_valid(ocean) else 1
+	hud.toast("【深海领主平息】四大巨兽征服进度: %d / 4" % c_cnt)
+	if c_cnt >= 4:
+		state.all_bosses_defeated = true
+		state.boss_defeated = true
+		hud.toast("【神迹降临】四大巨兽全部制伏！远古母树于深海极渊 (坐标 0, -125, -340) 苏醒！游向母树！")
+	elif state.mode == "explore" and c_cnt == 1:
+		state.boss_defeated = true
+
+func _present_attack_hit(atk: Dictionary, hit: Dictionary, from: Vector3, dir: Vector3) -> void:
+	var weapon_type: String = str(atk.get("weapon", "knife"))
 	if not hit.is_empty():
 		effect.play()
 		var hit_count: int = int(hit.get("hit_count", 1))
@@ -273,7 +591,7 @@ func _resolve_attack_hit(atk: Dictionary) -> void:
 				hud.toast("击杀 %d 只生物（%s），尸体上浮%s" % [killed_names.size(), "、".join(killed_names), drop_hint])
 			else:
 				hud.toast("击杀【%s】，尸体上浮%s" % [hit["name"], drop_hint])
-		else:
+		elif bool(hit.get("is_sonic", false)):
 			if hit_count > 1:
 				hud.toast("声波脉冲同时震晕 %d 只生物" % hit_count)
 			else:
@@ -301,8 +619,12 @@ func _process(delta: float) -> void:
 
 		if state.tick(delta, safe, diver.sprinting, depth):
 			state.recover()
-			_reset_position()
-			hud.toast("应急浮力装置已将你送回逃生舱。采集材料与装备已保留。")
+			var revive_pos: Vector3 = diver.position + Vector3(0, 3.5, 0)
+			var floor_y: float = Ocean.floor_height(revive_pos.x, revive_pos.z) + 1.8
+			revive_pos.y = maxf(revive_pos.y, floor_y)
+			diver.position = revive_pos
+			diver.velocity = Vector3.ZERO
+			hud.toast("【氧气耗尽就地苏生】应急备用氧舱激活！已在当前海域就近苏醒！")
 		if state.mode != "explore":
 			if state.oxygen < 25.0 and not low_oxygen_warned:
 				low_oxygen_warned = true
@@ -313,13 +635,39 @@ func _process(delta: float) -> void:
 		# 捕食者 AI 推进与攻击检测
 		var bites: Array[Dictionary] = ocean.tick_predators(diver.global_position, delta, diver.lamp.visible)
 		for bite in bites:
-			var dead: bool = state.take_damage(float(bite["damage"]))
-			damage_flash_time = 0.65
-			hud.toast("【遭受袭击】遭 %s 猛烈撕咬！受到 %d 点伤害！" % [bite["name"], int(bite["damage"])])
-			if dead:
-				state.recover()
-				_reset_position()
-				hud.toast("深海掠食巨兽造成致命重伤！应急救援系统已启动送回逃生舱。")
+			# 探险模式生命无限，完全不扣血受害
+			if state.mode == "explore":
+				continue
+			# 契约坐骑战宠无法伤害主人
+			if bite.get("is_tamed", false):
+				continue
+			if is_instance_valid(active_submarine):
+				var sub_dead: bool = active_submarine.take_damage(float(bite["damage"]))
+				hud.toast("【装甲受损】%s 撞击潜艇！装甲余量 %d%%" % [bite["name"], int(active_submarine.get_hull_ratio() * 100.0)])
+				UnderwaterAudio.play_sound(get_tree(), "axe_hit", -3.0, 0.85)
+				if sub_dead:
+					hud.toast("【警报】潜艇外壳破碎！紧急逃生注水！")
+					_disembark_submarine()
+			else:
+				# 单手能量护盾防御：按 C 举盾时 100% 抵挡来自前方的伤害！
+				if diver.shield_active:
+					CombatVFX.spawn_shield_deflect(self, diver.global_position - diver.camera.global_basis.z * 0.7, diver.camera.global_basis.z)
+					UnderwaterAudio.play_sound(get_tree(), "shield_block", -2.0, randf_range(0.95, 1.05))
+					hud.toast("【单手护盾格挡】成功阻挡了 %s 的扑咬！伤害完全消除！" % str(bite["name"]))
+					continue
+
+				var dead: bool = state.take_damage(float(bite["damage"]))
+				damage_flash_time = 0.65
+				hud.toast("【遭受袭击】遭 %s 猛烈撕咬！受到 %d 点伤害！" % [bite["name"], int(bite["damage"])])
+				if dead:
+					ocean.reset_boss_encounter()
+					state.recover()
+					var revive_pos: Vector3 = diver.position + Vector3(0, 3.5, 0)
+					var floor_y: float = Ocean.floor_height(revive_pos.x, revive_pos.z) + 1.8
+					revive_pos.y = maxf(revive_pos.y, floor_y)
+					diver.position = revive_pos
+					diver.velocity = Vector3.ZERO
+					hud.toast("【就地应急苏生】深海生化再生液注入！已在遇险附近海域就近复苏，探险进度保留！")
 
 		_check_landmarks()
 		_update_target()
@@ -328,10 +676,46 @@ func _process(delta: float) -> void:
 	diver.exploration_mode = state.mode == "explore"
 	diver.biomod_dash_unlocked = state.biomod_dash
 	diver.biomod_vision_unlocked = state.biomod_vision
-	ocean.set_depth(depth)
+	ocean.set_depth(depth, diver.scoped)
+	if screen == "play" and diver.scoped:
+		scope_scan_timer -= delta
+		if scope_scan_timer <= 0.0:
+			scope_scan_timer = 0.12
+			var scope_exclusions: Array[RID] = [diver.get_rid()]
+			var scan: Dictionary = ocean.trace_laser(diver.camera.global_position, -diver.camera.global_basis.z, 2000.0, scope_exclusions)
+			scope_distance = diver.camera.global_position.distance_to(scan["position"])
 
 	var prompt: String = ""
-	if is_instance_valid(target):
+	var nearby_sub: Node3D = ocean.find_nearby_submarine(diver.global_position, 8.5) if is_instance_valid(ocean) else null
+	var tame_cand: Node3D = _find_tameable_candidate()
+
+	if is_instance_valid(active_submarine):
+		prompt = ""
+	elif active_mount_idx >= 0 and active_mount_idx < tamed_beasts.size():
+		prompt = "G / E  离开坐骑【%s】(转为跟随护卫)" % str(tamed_beasts[active_mount_idx]["name"])
+	elif is_instance_valid(tame_cand):
+		prompt = "E  契约驯服【%s】(声波静滞受控！契约为忠诚坐骑战宠)" % str(tame_cand.get_meta("name", "巨兽"))
+	elif is_instance_valid(target) and str(target.get_meta("kind", "")) in ["mother_tree_essence", "ancient_star_core", "tree_seed"]:
+		prompt = "E  采摘收取【%s】" % str(target.get_meta("name", "母树核心遗物"))
+	elif diver.global_position.distance_to(Ocean.HOME + Vector3(2.2, 0.4, 1.4)) < 4.5:
+		var has_ess := int(state.inventory.get("mother_tree_essence", 0))
+		var has_cor := int(state.inventory.get("ancient_star_core", 0))
+		var has_sed := int(state.inventory.get("tree_seed", 0))
+		if has_ess >= 1 and has_cor >= 1 and has_sed >= 1:
+			prompt = "E  操作控制台制作【深海跃迁逃逸器】(离开深海！)"
+		else:
+			prompt = "E  中央逃生控制台 (母树核心遗物 %d/3 · 集齐后制作逃生舰)" % (has_ess + has_cor + has_sed)
+	elif is_instance_valid(target) and bool(target.get_meta("dead", false)) and bool(target.get_meta("can_loot", false)) and not bool(target.get_meta("looted", false)):
+		var c_name: String = str(target.get_meta("name", "海洋生物"))
+		prompt = "E  搜刮【%s】尸体 (获取海兽生肉、坚韧兽皮与骨齿材料)" % c_name
+	elif is_instance_valid(target) and str(target.get_meta("kind", "")) == "submarine":
+		var sub: Node = target.get_meta("sub_ref", target)
+		var s_name: String = str(sub.sub_name if "sub_name" in sub else "潜水艇")
+		prompt = "E  登舰驾驶【%s】(高速航行 / 车载鱼雷系统)" % s_name
+	elif is_instance_valid(nearby_sub):
+		var s_name: String = str(nearby_sub.sub_name if "sub_name" in nearby_sub else "潜水艇")
+		prompt = "E  登舰驾驶【%s】(高速航行 / 车载鱼雷系统)" % s_name
+	elif is_instance_valid(target):
 		var target_kind: String = str(target.get_meta("kind"))
 		if target_kind == "black_box":
 			prompt = "E  调查失事科考潜艇黑匣子 (读取深渊日志)"
@@ -363,6 +747,16 @@ func _process(delta: float) -> void:
 		"elapsed": state.elapsed,
 		"weapons": state.weapons,
 		"current_weapon": diver.current_weapon,
+		"aiming": diver.aiming,
+		"scoped": diver.scoped,
+		"scope_distance": scope_distance,
+		"charging": diver.gun_trigger_held,
+		"charge_ratio": diver.get_charge_ratio(),
+		"charge_ready": diver.charge_time >= Diver.CHARGE_THRESHOLD,
+		"gun_cooldown": diver.attack_cooldown,
+		"boss": ocean.get_boss_status(),
+		"distance_boss": diver.position.distance_to(Ocean.BOSS_ARENA_CENTER),
+		"beacon_ready": state.rescued,
 		"weapon_level": state.weapon_upgrade_level,
 		"damage_bonus": state.weapon_attack_bonus,
 		"pinned_info": state.get_pinned_info(),
@@ -370,6 +764,27 @@ func _process(delta: float) -> void:
 		"biomod_dash": state.biomod_dash,
 		"dash_cooldown": diver.dash_cooldown,
 		"sprinting": diver.sprinting
+		,"booster_active": diver.booster_active,
+		"in_submarine": is_instance_valid(active_submarine),
+		"sub_name": active_submarine.sub_name if is_instance_valid(active_submarine) else "",
+		"sub_hull": active_submarine.hull if is_instance_valid(active_submarine) else 0.0,
+		"sub_max_hull": active_submarine.max_hull if is_instance_valid(active_submarine) else 1.0,
+		"sub_speed": active_submarine.current_speed if is_instance_valid(active_submarine) else 0.0,
+		"sub_weapon_ready": active_submarine.attack_cooldown <= 0.0 if is_instance_valid(active_submarine) else true,
+		"sub_cooldown": active_submarine.attack_cooldown if is_instance_valid(active_submarine) else 0.0
+		,"torpedo_guided": is_instance_valid(active_torpedo) and not active_torpedo.exploded,
+		"in_torpedo_camera": is_instance_valid(active_torpedo) and active_torpedo.has_camera_focus,
+		"torpedo_speed": active_torpedo.speed if is_instance_valid(active_torpedo) else 48.0,
+		"torpedo_life_left": maxf(0.0, active_torpedo.max_lifetime - active_torpedo.lifetime) if is_instance_valid(active_torpedo) else 0.0
+		,"tamed_beasts": tamed_beasts,
+		"active_mount_idx": active_mount_idx,
+		"is_mounted": active_mount_idx >= 0,
+		"mother_tree_active": ocean.mother_tree_spawned_flag if is_instance_valid(ocean) else false,
+		"distance_mother_tree": diver.global_position.distance_to(Vector3(0, -125, -340)),
+		"tree_items_collected": int(state.inventory.get("mother_tree_essence", 0)) + int(state.inventory.get("ancient_star_core", 0)) + int(state.inventory.get("tree_seed", 0)),
+		"conquered_bosses_count": ocean.conquered_bosses.size() if is_instance_valid(ocean) else 0,
+		"escape_crafted": state.escape_crafted,
+		"shield_active": diver.shield_active
 	})
 	_update_home_marker(distance)
 
@@ -393,6 +808,44 @@ func _update_target() -> void:
 		target = hit.collider
 
 func _interact() -> void:
+	if is_instance_valid(active_submarine):
+		_disembark_submarine()
+		return
+	if active_mount_idx >= 0:
+		_dismount_beast()
+		return
+	var tame_cand: Node3D = _find_tameable_candidate()
+	if is_instance_valid(tame_cand):
+		_tame_creature(tame_cand)
+		return
+	var tamed_cand: Node3D = _find_nearby_tamed_beast()
+	if is_instance_valid(tamed_cand) and active_mount_idx < 0:
+		var b_idx: int = _get_tamed_beast_index(tamed_cand)
+		if b_idx >= 0:
+			_mount_beast(b_idx)
+			return
+	if is_instance_valid(target) and str(target.get_meta("kind", "")) in ["mother_tree_essence", "ancient_star_core", "tree_seed"]:
+		_collect_mother_tree_item(target)
+		return
+	if is_instance_valid(ocean):
+		for m_item in ocean.mother_tree_items:
+			if is_instance_valid(m_item) and diver.global_position.distance_to(m_item.global_position) < 4.2:
+				_collect_mother_tree_item(m_item)
+				return
+	if (is_instance_valid(target) and str(target.get_meta("kind", "")) == "escape_console") or diver.global_position.distance_to(Ocean.HOME + Vector3(2.2, 0.4, 1.4)) < 4.5:
+		_interact_escape_console()
+		return
+	if is_instance_valid(target) and bool(target.get_meta("dead", false)) and bool(target.get_meta("can_loot", false)) and not bool(target.get_meta("looted", false)):
+		_loot_corpse(target)
+		return
+	if is_instance_valid(target) and str(target.get_meta("kind", "")) == "submarine":
+		var sub: Node = target.get_meta("sub_ref", target)
+		_board_submarine(sub)
+		return
+	var nearby_sub: Node3D = ocean.find_nearby_submarine(diver.global_position, 8.5) if is_instance_valid(ocean) else null
+	if is_instance_valid(nearby_sub):
+		_board_submarine(nearby_sub)
+		return
 	if not is_instance_valid(target):
 		return
 	var kind: String = str(target.get_meta("kind"))
@@ -430,6 +883,49 @@ func _interact() -> void:
 		target = null
 		effect.play()
 
+func _loot_corpse(body: Node3D) -> void:
+	body.set_meta("looted", true)
+	var k: String = str(body.get_meta("kind", ""))
+	var c_name: String = str(body.get_meta("name", "海洋生物"))
+	var is_pred: bool = k in ["predator", "abyss", "sea_spider"] or k.begins_with("boss")
+	state.inventory["fish_meat"] = int(state.inventory.get("fish_meat", 0)) + randi_range(1, 3)
+	state.inventory["creature_skin"] = int(state.inventory.get("creature_skin", 0)) + randi_range(1, 2)
+	state.inventory["chitin"] = int(state.inventory.get("chitin", 0)) + 1
+	if is_pred:
+		state.inventory["creature_tooth"] = int(state.inventory.get("creature_tooth", 0)) + randi_range(1, 2)
+	UnderwaterAudio.play_sound(get_tree(), "knife_hit", -4.0, 1.2)
+	hud.toast("已搜刮【%s】尸体：获得生肉、韧性兽皮与甲壳骨刺！" % c_name)
+	var tw := create_tween()
+	tw.tween_interval(1.5)
+	tw.tween_property(body, "scale", Vector3.ZERO, 0.4)
+	tw.tween_callback(body.queue_free)
+
+func _board_submarine(sub: Node3D) -> void:
+	active_submarine = sub as Submarine
+	if not active_submarine:
+		return
+	active_submarine.board(diver)
+	diver.cancel_gun_charge()
+	if diver.booster_active:
+		diver.toggle_booster()
+	if is_instance_valid(diver.weapon_mount):
+		diver.weapon_mount.visible = false
+	UnderwaterAudio.play_sound(get_tree(), "sub_enter", -3.5, 1.0)
+	hud.toast("【已登舰驾驶】" + active_submarine.sub_name + " · WASD 航行 / 空格 C 升降 / R 鱼雷 / E 离舰")
+
+func _disembark_submarine() -> void:
+	if not is_instance_valid(active_submarine):
+		return
+	var exit_pos := active_submarine.disembark()
+	diver.global_position = exit_pos
+	diver.velocity = Vector3.ZERO
+	if is_instance_valid(diver.weapon_mount):
+		diver.weapon_mount.visible = true
+	var sub_name_left := active_submarine.sub_name
+	active_submarine = null
+	UnderwaterAudio.play_sound(get_tree(), "sub_exit", -4.0, 1.0)
+	hud.toast("已离开【%s】，恢复自由潜水游动" % sub_name_left)
+
 func _craft(recipe: String) -> void:
 	var error: String = state.craft(recipe, diver.position.distance_to(Ocean.HOME) < 7.0)
 	if not error.is_empty():
@@ -437,8 +933,9 @@ func _craft(recipe: String) -> void:
 		return
 	effect.play()
 	diver.damage_bonus = state.weapon_attack_bonus
-	if state.rescued:
-		_set_screen("win")
+	if recipe == "beacon":
+		hud.toast("信标已修复！最终目标：前往深渊祭坛，击败水龙后返航。")
+		_set_screen("play")
 	else:
 		match recipe:
 			"tank":
@@ -448,11 +945,22 @@ func _craft(recipe: String) -> void:
 			"axe":
 				hud.toast("破拆战斧已制造 · 按 2 装备")
 			"sonic":
-				hud.toast("声波脉冲枪已制造 · 按 3 装备")
+				hud.toast("蓝光静滞枪已制造 · 3 装备 / Y 远距镜 / 蓄力 R 3 秒松手发射静滞球")
 			"reinforce_sharp":
 				hud.toast("【制造台深铸】锋锐度精研完成！全武器攻击力额外 +20！")
 			"reinforce_sonic":
 				hud.toast("【制造台深铸】共振发生器聚焦完成！全武器攻击力额外 +35！")
+			"abyssal_escape_engine":
+				hud.toast("【深海星际跃迁引擎】已制作完成！准备逃离深海！")
+				UnderwaterAudio.play_sound(get_tree(), "warp_escape")
+				CombatVFX.spawn_tame_ring(self, Ocean.HOME + Vector3(2.2, 0.4, 1.4), 6.0)
+				_set_screen("win")
+			"reinforced_suit":
+				hud.toast("【装备升级】海兽绝缘潜航服已装配！生命上限 +50 · 减免 40% 伤害")
+			"bio_battery":
+				hud.toast("【载具强化】生物高能电池已激活！潜艇与助推器航速提升 25%")
+			"serrated_blade":
+				hud.toast("【武器精工】深海锯齿骨刃已研磨！全武器伤害额外 +25！")
 
 func _setup_audio() -> void:
 	var ambience := AudioStreamPlayer.new()
@@ -476,6 +984,7 @@ func _setup_overlay() -> void:
 	screen_shade.color = Color(0.5, 0.05, 0.035, 0)
 	overlay.add_child(screen_shade)
 	home_arrow = Label.new()
+	home_arrow.add_theme_font_override("font", preload("res://assets/fonts/NotoSansSC-Subset.otf"))
 	home_arrow.add_theme_font_size_override("font_size", 16)
 	home_arrow.add_theme_color_override("font_color", Color(0.75, 1.0, 0.87))
 	home_arrow.add_theme_color_override("font_shadow_color", Color(0.0, 0.1, 0.15, 0.8))
@@ -563,7 +1072,7 @@ func _world_check() -> void:
 	_switch_weapon("sonic")
 	assert(diver.current_weapon == "sonic")
 	var sonic_atk: Dictionary = diver.attack()
-	assert(sonic_atk.get("weapon") == "sonic" and sonic_atk.get("is_sonic") == true)
+	assert(sonic_atk.get("weapon") == "sonic" and sonic_atk.get("mode") == "laser")
 
 	# Test predator combat: strike predator with sonic rifle
 	var predator: Node3D = ocean.predators[0]
@@ -584,7 +1093,8 @@ func _world_check() -> void:
 	assert(ocean.small_fish.has(prey))
 	prey.position.y = -12.0
 	ocean._process(1.0)
-	assert(prey.position.y > -12.0)
+	assert(prey.position.y <= -12.0 and bool(prey.get_meta("dead")), "Dead fish must sink toward seabed in limp state")
+	assert(bool(prey.get_meta("can_loot")), "Dead fish must be lootable")
 
 	# Weapon kills large predators into fragments that float up
 	var pred2: Node3D = ocean.predators[0]
@@ -610,7 +1120,7 @@ func _world_check() -> void:
 	assert(diver.dash_cooldown > 0.0)
 
 	_craft("beacon")
-	assert(screen == "win")
+	assert(state.rescued and screen == "play", "Repairing the beacon must leave the final Boss encounter available")
 
 	# Test exploration mode: infinite oxygen, all weapons unlocked, 7 landmarks
 	_start("explore")
@@ -630,7 +1140,7 @@ func _world_check() -> void:
 	assert(state.landmarks_discovered.size() == LANDMARKS.size())
 	assert(screen == "play", "Exploration mode must remain in active play mode with no time limits")
 
-	print("PASS: world assets (100 resources, 134 fish, 32 predators, 54 edible fish, 4 rays, 6 turtles, 12 squids, 18 crabs, 14 tubeworm colonies, 22 sea fans, 24 starfish colonies), weapons (knife/axe/sonic), fishing/eating (+25HP/+20O2), predator AI/attacks, rescue victory, endless exploration & 7 landmarks")
+	print("PASS: world assets, melee/laser weapons, fishing, predator AI, crafting, beacon preparation, exploration and 7 landmarks")
 	await get_tree().create_timer(0.35).timeout
 	get_tree().quit()
 
@@ -696,3 +1206,327 @@ func _on_pin_recipe(recipe: String) -> void:
 		hud.toast("已取消配方追踪")
 	else:
 		hud.toast("已追踪配方【%s】" % str(info.get("name", recipe)))
+
+func _can_tame_creature(c: Node3D) -> bool:
+	if not is_instance_valid(c) or bool(c.get_meta("dead", false)) or bool(c.get_meta("tamed", false)):
+		return false
+	var frozen: float = float(c.get_meta("freeze_timer", 0.0))
+	if frozen <= 0.0 and not c.has_node("StasisAura"):
+		return false
+	var kind: String = str(c.get_meta("kind", ""))
+	var is_boss: bool = kind.begins_with("boss") or c == ocean.water_dragon or c in ocean.boss_nodes.values()
+	var hp: float = float(c.get_meta("health", 100.0))
+	var max_hp: float = float(c.get_meta("max_health", 100.0))
+	if is_boss:
+		return hp <= max_hp * 0.35
+	elif kind in ["predator", "abyss", "sea_wolf", "sea_spider"]:
+		return true
+	return false
+
+func _find_tameable_candidate() -> Node3D:
+	if not is_instance_valid(ocean):
+		return null
+	var cand_list: Array[Node3D] = ocean.get_creatures()
+	for c in cand_list:
+		if is_instance_valid(c) and _can_tame_creature(c):
+			if diver.global_position.distance_to(c.global_position) <= 10.0:
+				return c
+	return null
+
+func _find_nearby_tamed_beast() -> Node3D:
+	for b in tamed_beasts:
+		var node: Node3D = b.get("node")
+		if is_instance_valid(node) and diver.global_position.distance_to(node.global_position) <= 6.5:
+			return node
+	return null
+
+func _get_tamed_beast_index(node: Node3D) -> int:
+	for i in range(tamed_beasts.size()):
+		if tamed_beasts[i].get("node") == node:
+			return i
+	return -1
+
+func _tame_creature(c: Node3D) -> void:
+	if tamed_beasts.size() >= 20:
+		hud.toast("【契约上限】最多同时契约 20 只坐骑战宠！")
+		return
+	var c_name := str(c.get_meta("name", "深海战兽"))
+	var kind := str(c.get_meta("kind", ""))
+	c.set_meta("tamed", true)
+	c.set_meta("freeze_timer", 0.0)
+	if c.has_method("set_tamed"): c.set_tamed(true)
+	if c.has_node("StasisAura"): c.get_node("StasisAura").queue_free()
+	for b_id in ocean.boss_nodes:
+		if c == ocean.boss_nodes[b_id]:
+			ocean.mark_boss_tamed(b_id)
+			break
+	var beast_info := {
+		"node": c,
+		"kind": kind,
+		"name": c_name,
+		"health": float(c.get_meta("health", 600.0)),
+		"max_health": float(c.get_meta("max_health", 600.0)),
+		"speed": 22.0 if kind.begins_with("boss") else 17.5,
+		"damage": 55.0 if kind.begins_with("boss") else 32.0
+	}
+	tamed_beasts.append(beast_info)
+	state.tamed_beast_count = tamed_beasts.size()
+	CombatVFX.spawn_tame_ring(self, c.global_position, 5.0)
+	UnderwaterAudio.play_sound(get_tree(), "tame_success")
+	if active_mount_idx < 0:
+		_mount_beast(tamed_beasts.size() - 1)
+	else:
+		var cur_mult := pow(2.0, maxf(0.0, float(tamed_beasts.size() - 1)))
+		hud.toast("【契约缔结】成功驯服【%s】！(已契约: %d/20 · 全体攻击力提高至: ×%.0f)" % [c_name, tamed_beasts.size(), cur_mult])
+
+func _mount_beast(idx: int) -> void:
+	if idx < 0 or idx >= tamed_beasts.size():
+		return
+	if is_instance_valid(active_submarine):
+		hud.toast("驾驶潜水艇期间无法骑乘生物！")
+		return
+	active_mount_idx = idx
+	UnderwaterAudio.play_sound(get_tree(), "mount_ride")
+	hud.toast("【驾驭坐骑】已骑乘【%s】· W 前进 / C 下降 / 空格 上升 / A 左拐 / D 右拐 / G 离鞍" % tamed_beasts[idx]["name"])
+
+func _dismount_beast() -> void:
+	if active_mount_idx >= 0:
+		hud.toast("【已下坐骑】契约战兽进入护卫阵型跟随！")
+		active_mount_idx = -1
+
+func _tick_companion_followers(delta: float) -> void:
+	companion_orbit_clock += delta
+	var player_leader_pos: Vector3 = diver.global_position
+	var player_leader_basis: Basis = diver.global_basis
+	if active_mount_idx >= 0 and active_mount_idx < tamed_beasts.size():
+		var cur_m: Node3D = tamed_beasts[active_mount_idx].get("node")
+		if is_instance_valid(cur_m):
+			player_leader_pos = cur_m.global_position
+			player_leader_basis = cur_m.global_basis
+	if is_instance_valid(companion_attack_target) and (bool(companion_attack_target.get_meta("dead", false)) or bool(companion_attack_target.get_meta("tamed", false))):
+		companion_attack_target = null
+		if is_instance_valid(persistent_red_dot):
+			persistent_red_dot.queue_free()
+			persistent_red_dot = null
+
+	# 10 米以内如果出现活物，自动发起攻击
+	if companion_attack_target == null and not has_target_pos and is_instance_valid(ocean):
+		var living_creatures: Array[Node3D] = []
+		for c in ocean.get_creatures(): living_creatures.append(c)
+		for p in ocean.predators: living_creatures.append(p)
+		for w in ocean.sea_wolves: living_creatures.append(w)
+		var closest_living: Node3D = null
+		var closest_d: float = 10.0
+		for cand in living_creatures:
+			if is_instance_valid(cand) and not bool(cand.get_meta("tamed", false)) and not bool(cand.get_meta("dead", false)):
+				var d: float = cand.global_position.distance_to(player_leader_pos)
+				if d <= closest_d:
+					closest_d = d
+					closest_living = cand
+		if closest_living != null:
+			companion_attack_target = closest_living
+			hud.toast("【警戒防卫】10米内侦测到活物【%s】！战宠自动出击！" % str(closest_living.get_meta("name", "海洋生物")))
+
+	var num_followers := 0
+	for b in tamed_beasts:
+		if is_instance_valid(b.get("node")) and not bool(b["node"].get_meta("dead", false)):
+			num_followers += 1
+	if active_mount_idx >= 0:
+		num_followers = max(0, num_followers - 1)
+
+	var follower_slot := 0
+	for i in range(tamed_beasts.size()):
+		if i == active_mount_idx:
+			continue
+		var beast_entry: Dictionary = tamed_beasts[i]
+		var f_node: Node3D = beast_entry.get("node")
+		if not is_instance_valid(f_node) or bool(f_node.get_meta("dead", false)):
+			continue
+		if f_node.has_method("animate"): f_node.animate(delta)
+		var f_spd: float = float(beast_entry.get("speed", 16.0)) * 1.25
+		var dist_from_player: float = f_node.global_position.distance_to(player_leader_pos)
+		if dist_from_player > 28.0:
+			f_node.position = player_leader_pos + player_leader_basis.z * (4.0 + float(follower_slot % 4) * 2.5)
+
+		if is_instance_valid(companion_attack_target):
+			var to_t: Vector3 = companion_attack_target.global_position - f_node.global_position
+			var dist_t := to_t.length()
+			var target_dest := companion_attack_target.global_position - to_t.normalized() * 2.5
+			f_node.position = f_node.position.move_toward(target_dest, f_spd * delta * 1.5)
+			if to_t.length_squared() > 0.001:
+				var up_t := Vector3.UP if absf(to_t.normalized().y) < 0.95 else Vector3.FORWARD
+				f_node.look_at(f_node.global_position + to_t, up_t, true)
+			var cd: float = maxf(0.0, float(f_node.get_meta("companion_atk_cd", 0.0)) - delta)
+			f_node.set_meta("companion_atk_cd", cd)
+			if dist_t < 4.8 and cd <= 0.0:
+				f_node.set_meta("companion_atk_cd", 1.2)
+				var atk_mult: float = pow(2.0, maxf(0.0, float(tamed_beasts.size() - 1)))
+				var dmg: float = float(beast_entry.get("damage", 40.0)) * atk_mult
+				ocean.damage_creature(companion_attack_target, dmg)
+				CombatVFX.spawn_hit_burst(self, companion_attack_target.global_position, -to_t.normalized(), "knife", true)
+				CombatVFX.spawn_damage_number(self, companion_attack_target.global_position + Vector3(0, 1.2, 0), dmg, "axe", true)
+				UnderwaterAudio.play_sound(get_tree(), "knife_hit", -3.0, randf_range(0.9, 1.1))
+				hud.toast("【战宠协同】%s 撕咬目标！造成 %d 伤害 (战力加成 ×%.0f)" % [beast_entry.get("name", "战宠"), int(dmg), atk_mult])
+		elif has_target_pos:
+			var to_p: Vector3 = companion_attack_pos - f_node.global_position
+			var dist_p := to_p.length()
+			f_node.position = f_node.position.move_toward(companion_attack_pos, f_spd * delta * 1.4)
+			if to_p.length_squared() > 0.001:
+				var up_p := Vector3.UP if absf(to_p.normalized().y) < 0.95 else Vector3.FORWARD
+				f_node.look_at(f_node.global_position + to_p, up_p, true)
+			if dist_p < 3.2:
+				for pred in ocean.predators + ocean.sea_wolves:
+					if is_instance_valid(pred) and not bool(pred.get_meta("dead", false)) and not bool(pred.get_meta("tamed", false)):
+						if pred.global_position.distance_to(companion_attack_pos) < 8.0:
+							companion_attack_target = pred
+							has_target_pos = false
+							break
+		else:
+			# 跟在人物的后方，不转圈；随行跟随，人物停下时也在其后方平稳停下
+			var row: int = int(follower_slot / 4)
+			var col: int = (follower_slot % 4) - 2
+			follower_slot += 1
+
+			# 后方编队间距：player_leader_basis.z 即人物正后方
+			var rear_dist: float = 3.6 + float(row) * 3.2
+			var lateral_spread: float = (float(col) + 0.5) * 2.4
+			var vert_spread: float = (float(row % 2) - 0.5) * 0.7
+			var rear_slot_pos: Vector3 = player_leader_pos + player_leader_basis.z * rear_dist + player_leader_basis.x * lateral_spread + Vector3(0, vert_spread, 0)
+
+			var dist_to_slot: float = f_node.global_position.distance_to(rear_slot_pos)
+			dist_from_player = f_node.global_position.distance_to(player_leader_pos)
+
+			if dist_from_player > 28.0:
+				f_node.position = rear_slot_pos
+				dist_to_slot = 0.0
+
+			# 移动到后方编队位置，到达后平稳静止停在后方
+			if dist_to_slot > 0.08:
+				var move_rate: float = clampf(dist_to_slot / 2.5, 0.25, 2.4)
+				f_node.position = f_node.position.move_toward(rear_slot_pos, f_spd * delta * move_rate)
+
+			# 保持面向前方护卫朝向
+			var forward_head := -player_leader_basis.z
+			if forward_head.length_squared() > 0.001:
+				var up_f := Vector3.UP if absf(forward_head.y) < 0.95 else Vector3.FORWARD
+				f_node.look_at(f_node.position + forward_head, up_f, true)
+
+func _command_companions_attack(from: Vector3, dir: Vector3) -> void:
+	if tamed_beasts.is_empty():
+		return
+	var excluded_rid: Array[RID] = [diver.get_rid()]
+	var scan: Dictionary = ocean.trace_laser(from, dir, 45.0, excluded_rid)
+	var c: Node3D = scan.get("creature", null)
+	if is_instance_valid(c) and not bool(c.get_meta("tamed", false)) and not bool(c.get_meta("dead", false)):
+		companion_attack_target = c
+		hud.toast("【集火指令】战宠队伍协同进攻【%s】！" % str(c.get_meta("name", "目标")))
+
+func _recall_pets() -> void:
+	if tamed_beasts.is_empty():
+		hud.toast("当前无契约战宠可召回")
+		return
+	companion_attack_target = null
+	has_target_pos = false
+	if is_instance_valid(persistent_red_dot):
+		persistent_red_dot.queue_free()
+		persistent_red_dot = null
+
+	var player_leader_pos: Vector3 = diver.global_position
+	var player_leader_basis: Basis = diver.global_basis
+	if active_mount_idx >= 0 and active_mount_idx < tamed_beasts.size():
+		var cur_m: Node3D = tamed_beasts[active_mount_idx].get("node")
+		if is_instance_valid(cur_m):
+			player_leader_pos = cur_m.global_position
+			player_leader_basis = cur_m.global_basis
+
+	var follower_slot := 0
+	for i in range(tamed_beasts.size()):
+		if i == active_mount_idx:
+			continue
+		var f_node: Node3D = tamed_beasts[i].get("node")
+		if not is_instance_valid(f_node) or bool(f_node.get_meta("dead", false)):
+			continue
+		var row: int = int(follower_slot / 4)
+		var col: int = (follower_slot % 4) - 2
+		follower_slot += 1
+		var rear_dist: float = 3.6 + float(row) * 3.2
+		var lateral_spread: float = (float(col) + 0.5) * 2.4
+		var vert_spread: float = (float(row % 2) - 0.5) * 0.7
+		var rear_slot_pos: Vector3 = player_leader_pos + player_leader_basis.z * rear_dist + player_leader_basis.x * lateral_spread + Vector3(0, vert_spread, 0)
+		f_node.position = rear_slot_pos
+		f_node.set_meta("companion_atk_cd", 0.0)
+		var forward_head := -player_leader_basis.z
+		if forward_head.length_squared() > 0.001:
+			var up_f := Vector3.UP if absf(forward_head.y) < 0.95 else Vector3.FORWARD
+			f_node.look_at(f_node.position + forward_head, up_f, true)
+
+	UnderwaterAudio.play_sound(get_tree(), "pet_recall")
+	CombatVFX.spawn_tame_ring(self, player_leader_pos, 4.0)
+	hud.toast("【战宠全员召回】所有契约战兽已立即归队，在后方列队护卫！")
+
+func _fire_marker_gun(atk: Dictionary) -> void:
+	var camera: Camera3D = diver.camera
+	var direction := -camera.global_basis.z
+	var muzzle: Vector3 = diver.get_muzzle_position()
+	var excluded_rid: Array[RID] = [diver.get_rid()]
+	var scan: Dictionary = ocean.trace_laser(camera.global_position, direction, 2500.0, excluded_rid)
+	var hit_pos: Vector3 = scan["position"]
+	var creature: Node3D = scan.get("creature", null)
+
+	# 1. 类似激光笔发射鲜红激光束
+	CombatVFX.spawn_laser(self, muzzle, hit_pos, Color(1.0, 0.05, 0.05))
+	UnderwaterAudio.play_sound(get_tree(), "laser_marker", -3.0, 1.0)
+
+	# 2. 目标身上生成小红点 (松手后红点仍然存在)
+	if not is_instance_valid(persistent_red_dot):
+		persistent_red_dot = CombatVFX.spawn_persistent_red_dot(hit_pos, null)
+	elif persistent_red_dot.get_parent() != null:
+		persistent_red_dot.get_parent().remove_child(persistent_red_dot)
+
+	if is_instance_valid(creature) and not bool(creature.get_meta("tamed", false)):
+		creature.add_child(persistent_red_dot)
+		persistent_red_dot.global_position = hit_pos
+		companion_attack_target = creature
+		has_target_pos = false
+		hud.toast("【光标红点标记】战宠锁定目标【%s】！全速出击进攻！" % str(creature.get_meta("name", "敌对生物")))
+	else:
+		add_child(persistent_red_dot)
+		persistent_red_dot.global_position = hit_pos
+		companion_attack_pos = hit_pos
+		has_target_pos = true
+		companion_attack_target = null
+		hud.toast("【光标红点标记】已指定进攻位置！战宠奔赴坐标点！")
+
+func _collect_mother_tree_item(item: Node3D) -> void:
+	if not is_instance_valid(item):
+		return
+	var kind: String = str(item.get_meta("kind", ""))
+	var item_name: String = str(item.get_meta("name", "母树核心遗物"))
+	state.collect(kind)
+	ocean.mother_tree_items.erase(item)
+	item.queue_free()
+	target = null
+	UnderwaterAudio.play_sound(get_tree(), "tame_success", -2.0, 1.25)
+	CombatVFX.spawn_tame_ring(self, diver.global_position, 3.5)
+	var has_ess := int(state.inventory.get("mother_tree_essence", 0))
+	var has_cor := int(state.inventory.get("ancient_star_core", 0))
+	var has_sed := int(state.inventory.get("tree_seed", 0))
+	var collected := has_ess + has_cor + has_sed
+	if collected >= 3:
+		hud.toast("【母树遗物齐集】3大圣物全部获得！立即返回逃生舱基地的中央控制台制作逃生舰！")
+	else:
+		hud.toast("【遗物收取】已获得【%s】！已集齐 %d / 3" % [item_name, collected])
+
+func _interact_escape_console() -> void:
+	var has_ess := int(state.inventory.get("mother_tree_essence", 0))
+	var has_cor := int(state.inventory.get("ancient_star_core", 0))
+	var has_sed := int(state.inventory.get("tree_seed", 0))
+	if has_ess >= 1 and has_cor >= 1 and has_sed >= 1:
+		state.craft("abyssal_escape_engine", true)
+		UnderwaterAudio.play_sound(get_tree(), "warp_escape")
+		CombatVFX.spawn_tame_ring(self, Ocean.HOME + Vector3(2.2, 0.4, 1.4), 6.0)
+		hud.toast("【跃迁核心注入完成】逃生舰系统全面启动！准备星际跃迁！")
+		stasis_fields.clear()
+		_set_screen("win")
+	else:
+		hud.toast("【逃生控制台】需放入深海母树核心3大遗物：母树精华(%d/1) 星核源石(%d/1) 启迪之种(%d/1)" % [has_ess, has_cor, has_sed])

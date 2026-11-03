@@ -1,0 +1,13 @@
+{
+  "name": "abyssal-echo-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:web": "node tools/build_web.mjs",
+    "upload:assets": "node tools/upload_assets.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:preview": "node tools/upload_assets.mjs && wrangler deploy --temporary"
+  }
+}

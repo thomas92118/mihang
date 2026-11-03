@@ -19,6 +19,8 @@ static func get_stream(sound_name: String) -> AudioStreamWAV:
 			stream = _generate_axe_hit()
 		"sonic_blast":
 			stream = _generate_sonic_blast()
+		"laser":
+			stream = _generate_laser()
 		"sonic_hit":
 			stream = _generate_sonic_hit()
 		"hit_confirm":
@@ -27,6 +29,36 @@ static func get_stream(sound_name: String) -> AudioStreamWAV:
 			stream = _generate_kill_sound()
 		"weapon_equip":
 			stream = _generate_weapon_equip()
+		"booster_start":
+			stream = _generate_booster_start()
+		"booster_stop":
+			stream = _generate_booster_stop()
+		"sub_torpedo_launch":
+			stream = _generate_sub_torpedo_launch()
+		"sub_torpedo_hit":
+			stream = _generate_sub_torpedo_hit()
+		"sub_heavy_blast":
+			stream = _generate_sub_heavy_blast()
+		"sub_enter":
+			stream = _generate_sub_enter()
+		"sub_exit":
+			stream = _generate_sub_exit()
+		"tame_success":
+			stream = _generate_tame_success()
+		"mount_ride":
+			stream = _generate_mount_ride()
+		"warp_escape":
+			stream = _generate_warp_escape()
+		"laser_marker":
+			stream = _generate_laser_marker()
+		"shield_deploy":
+			stream = _generate_shield_deploy()
+		"shield_retract":
+			stream = _generate_shield_retract()
+		"shield_block":
+			stream = _generate_shield_block()
+		"pet_recall":
+			stream = _generate_pet_recall()
 	if stream:
 		_cache[sound_name] = stream
 	return stream
@@ -57,6 +89,17 @@ static func _create_wav(samples: PackedFloat32Array, mix_rate: int = 22050) -> A
 		bytes.encode_s16(i * 2, int_val)
 	wav.data = bytes
 	return wav
+
+static func _generate_laser() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var samples := PackedFloat32Array()
+	samples.resize(int(mix_rate * 0.18))
+	var phase := 0.0
+	for i in range(samples.size()):
+		var t := float(i) / mix_rate
+		phase += TAU * lerpf(2400.0, 650.0, t / 0.18) / mix_rate
+		samples[i] = sin(phase) * exp(-t * 25.0) * minf(1.0, t * 300.0) * 0.65
+	return _create_wav(samples, mix_rate)
 
 # 1. 战术刀破水挥刃音效 (800Hz -> 240Hz 扫频 + 高通粉噪)
 static func _generate_knife_slash() -> AudioStreamWAV:
@@ -227,4 +270,250 @@ static func _generate_weapon_equip() -> AudioStreamWAV:
 		var click := sin(click_phase) * click_env * 0.4
 		var water := (randf() * 2.0 - 1.0) * 0.2 * env
 		samples[i] = (tone + click + water) * env * 0.8
+	return _create_wav(samples, mix_rate)
+
+# 10. 水下迷你助推器启动旋翼加速音效 (电驱涡轮高频升频)
+static func _generate_booster_start() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.32
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := minf(1.0, t * 12.0) * (1.0 - (t / duration) * 0.25)
+		var freq: float = lerpf(260.0, 920.0, pow(t / duration, 1.4))
+		phase += freq * TAU / float(mix_rate)
+		var tone := sin(phase) * 0.55 + sin(phase * 2.0) * 0.2
+		var bubbles := (randf() * 2.0 - 1.0) * 0.28 * env
+		samples[i] = (tone + bubbles) * env * 0.82
+	return _create_wav(samples, mix_rate)
+
+# 11. 水下迷你助推器熄火降频音效
+static func _generate_booster_stop() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.28
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := exp(-t * 8.5)
+		var freq: float = lerpf(780.0, 180.0, t / duration)
+		phase += freq * TAU / float(mix_rate)
+		samples[i] = sin(phase) * env * 0.72
+	return _create_wav(samples, mix_rate)
+
+# 12. 潜艇鱼雷管气动弹射射击音效
+static func _generate_sub_torpedo_launch() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.35
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := exp(-t * 9.5)
+		var freq: float = lerpf(450.0, 95.0, t / duration)
+		phase += freq * TAU / float(mix_rate)
+		var hiss := (randf() * 2.0 - 1.0) * 0.42 * exp(-t * 22.0)
+		samples[i] = (sin(phase) * 0.65 + hiss) * env * 0.95
+	return _create_wav(samples, mix_rate)
+
+# 13. 鱼雷水下爆破音效
+static func _generate_sub_torpedo_hit() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.48
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := exp(-t * 6.0)
+		var freq: float = lerpf(160.0, 42.0, t / duration)
+		phase += freq * TAU / float(mix_rate)
+		var rumble := (randf() * 2.0 - 1.0) * 0.5 * exp(-t * 12.0)
+		samples[i] = (sin(phase) * 0.7 + rumble) * env * 0.92
+	return _create_wav(samples, mix_rate)
+
+# 14. 泰坦巨型潜艇震荡深水重炮灭世轰击音效
+static func _generate_sub_heavy_blast() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.85
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := exp(-t * 3.8)
+		var freq: float = lerpf(92.0, 24.0, t / duration)
+		phase += freq * TAU / float(mix_rate)
+		var sub := sin(phase) * 0.85 + sin(phase * 0.5) * 0.35
+		var crunch := (randf() * 2.0 - 1.0) * 0.65 * exp(-t * 18.0)
+		samples[i] = (sub + crunch) * env * 0.98
+	return _create_wav(samples, mix_rate)
+
+# 15. 登舰气密舱门闭锁液压音效
+static func _generate_sub_enter() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.28
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := sin((t / duration) * PI) * exp(-t * 5.0)
+		var freq: float = lerpf(380.0, 160.0, t / duration)
+		phase += freq * TAU / float(mix_rate)
+		samples[i] = sin(phase) * env * 0.75
+	return _create_wav(samples, mix_rate)
+
+# 16. 离开潜艇泄压注水音效
+static func _generate_sub_exit() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.24
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := exp(-t * 10.0)
+		var hiss := (randf() * 2.0 - 1.0) * 0.6 * env
+		samples[i] = hiss * 0.8
+	return _create_wav(samples, mix_rate)
+
+static func _generate_tame_success() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.65
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var p1 := 0.0
+	var p2 := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := sin((t / duration) * PI) * exp(-t * 1.8)
+		var f1: float = lerpf(520.0, 880.0, t / duration)
+		var f2: float = lerpf(780.0, 1320.0, t / duration)
+		p1 += f1 * TAU / float(mix_rate)
+		p2 += f2 * TAU / float(mix_rate)
+		samples[i] = (sin(p1) * 0.5 + sin(p2) * 0.35) * env
+	return _create_wav(samples, mix_rate)
+
+static func _generate_mount_ride() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.38
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := sin((t / duration) * PI) * 0.6
+		var freq: float = lerpf(140.0, 260.0, t / duration)
+		phase += freq * TAU / float(mix_rate)
+		samples[i] = sin(phase) * env
+	return _create_wav(samples, mix_rate)
+
+static func _generate_warp_escape() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 1.2
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := clampf(t / 0.3, 0.0, 1.0) * exp(-t * 0.8)
+		var freq: float = lerpf(220.0, 1200.0, (t / duration) * (t / duration))
+		phase += freq * TAU / float(mix_rate)
+		samples[i] = sin(phase) * env * 0.7
+	return _create_wav(samples, mix_rate)
+
+static func _generate_laser_marker() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.16
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := sin((t / duration) * PI) * exp(-t * 8.0)
+		var freq: float = lerpf(1800.0, 950.0, t / duration)
+		phase += freq * TAU / float(mix_rate)
+		samples[i] = sin(phase) * env * 0.5
+	return _create_wav(samples, mix_rate)
+
+static func _generate_shield_deploy() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.28
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := sin((t / duration) * PI) * 0.85
+		var freq: float = lerpf(260.0, 780.0, (t / duration) * (t / duration))
+		phase += freq * TAU / float(mix_rate)
+		samples[i] = sin(phase) * env
+	return _create_wav(samples, mix_rate)
+
+static func _generate_shield_retract() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.22
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := sin((t / duration) * PI) * exp(-t * 6.0) * 0.7
+		var freq: float = lerpf(650.0, 180.0, t / duration)
+		phase += freq * TAU / float(mix_rate)
+		samples[i] = sin(phase) * env
+	return _create_wav(samples, mix_rate)
+
+static func _generate_shield_block() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.32
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := exp(-t * 9.0)
+		var f1: float = 880.0
+		var f2: float = 1320.0
+		phase += f1 * TAU / float(mix_rate)
+		var tone := sin(phase) * 0.6 + sin(phase * 1.5) * 0.4
+		var noise := (randf() * 2.0 - 1.0) * 0.35 * exp(-t * 18.0)
+		samples[i] = (tone + noise) * env
+	return _create_wav(samples, mix_rate)
+
+static func _generate_pet_recall() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.45
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var p1 := 0.0
+	var p2 := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := sin((t / duration) * PI) * 0.75
+		var freq1: float = lerpf(980.0, 1560.0, t / duration)
+		var freq2: float = lerpf(1320.0, 2080.0, t / duration)
+		p1 += freq1 * TAU / float(mix_rate)
+		p2 += freq2 * TAU / float(mix_rate)
+		samples[i] = (sin(p1) * 0.5 + sin(p2) * 0.35) * env
 	return _create_wav(samples, mix_rate)

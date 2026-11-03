@@ -120,16 +120,32 @@ func _initialize() -> void:
 	assert(atk_axe.cleave_angle == 0.12) # 165° arc
 	diver.attack_cooldown = 0.0
 
-	# Test sonic rifle kilometer range & 100 damage
+	# Laser rifle uses one precise damaging hit, with a long-range scope.
 	diver.set_weapon("sonic")
 	var atk_sonic = diver.attack()
 	assert(atk_sonic.weapon == "sonic")
 	assert(atk_sonic.base_damage == 100.0)
 	assert(atk_sonic.damage == 100.0 + 92.0 * 1.5) # 238.0
-	assert(atk_sonic.range == 3000.0) # 3000 meters range
-	assert(atk_sonic.is_sonic == true)
-	assert(atk_sonic.max_targets == 99) # Pierces all enemies along acoustic cone
-	assert(atk_sonic.cleave_angle == 0.35)
+	assert(atk_sonic.range == 2000.0)
+	assert(atk_sonic.mode == "laser")
+	assert(atk_sonic.is_sonic == false)
+	assert(atk_sonic.max_targets == 1)
+	assert(atk_sonic.cleave_angle == 0.999)
+	diver.attack_cooldown = 0.0
+	assert(diver.begin_gun_charge())
+	diver._process(2.99)
+	assert(diver.release_gun_charge().mode == "laser", "A partial charge must not launch the ultimate")
+	diver.attack_cooldown = 0.0
+	assert(diver.begin_gun_charge())
+	diver._process(3.1)
+	assert(diver.gun_trigger_held and diver.get_charge_ratio() == 1.0, "Full charge must wait for release")
+	var ultimate: Dictionary = diver.release_gun_charge()
+	assert(ultimate.mode == "stasis_orb" and ultimate.field_radius == 12.0 and ultimate.freeze_duration == 6.0)
+	assert(not diver.gun_trigger_held)
+	assert(diver.toggle_aim())
+	assert(diver.toggle_scope() and diver.scoped)
+	diver.set_weapon("knife")
+	assert(not diver.aiming and not diver.scoped and not diver.gun_trigger_held)
 	diver.queue_free()
 
 	# Verify unified attack key mapping is bound to KEY_R
@@ -144,6 +160,12 @@ func _initialize() -> void:
 		if ev is InputEventKey and ev.physical_keycode == KEY_R:
 			has_r_key = true
 	assert(has_r_key)
+	for binding in [["aim", KEY_T], ["scope", KEY_Y]]:
+		var found := false
+		for ev in InputMap.action_get_events(binding[0]):
+			if ev is InputEventKey and ev.physical_keycode == binding[1]:
+				found = true
+		assert(found, "Both aim modes need their advertised key bindings")
 
 	# Verify dash key mapping is bound to KEY_Q
 	assert(InputMap.has_action("dash"))
@@ -201,7 +223,7 @@ func _initialize() -> void:
 
 	# Verify Underwater Audio procedural synthesis
 	var UnderwaterAudio = load("res://scripts/underwater_audio.gd")
-	for s_name in ["knife_slash", "knife_hit", "axe_swing", "axe_hit", "sonic_blast", "sonic_hit", "hit_confirm", "kill_sound", "weapon_equip"]:
+	for s_name in ["knife_slash", "knife_hit", "axe_swing", "axe_hit", "sonic_blast", "sonic_hit", "hit_confirm", "kill_sound", "weapon_equip", "booster_start", "booster_stop", "sub_torpedo_launch", "sub_torpedo_hit", "sub_heavy_blast", "sub_enter", "sub_exit"]:
 		var stream = UnderwaterAudio.get_stream(s_name)
 		assert(stream is AudioStreamWAV, "Stream must be AudioStreamWAV")
 		assert(stream.data.size() > 0, "Audio data must not be empty for " + s_name)
@@ -270,10 +292,56 @@ func _initialize() -> void:
 	CombatVFX.spawn_damage_number(root, Vector3(0, -10, 0), 124.0, "knife", false)
 	CombatVFX.spawn_damage_number(root, Vector3(0, -10, 0), 162.0, "axe", true)
 
+	# Verify Handheld Mini Propulsion Booster (Seaglide / H 助推器)
+	var booster_diver = Diver.new()
+	root.add_child(booster_diver)
+	assert(not booster_diver.booster_active)
+	assert(booster_diver.toggle_booster())
+	assert(booster_diver.booster_active)
+	assert(is_instance_valid(booster_diver.booster_node) and booster_diver.booster_node.visible)
+	var has_h_key := false
+	for ev in InputMap.action_get_events("booster"):
+		if ev is InputEventKey and ev.physical_keycode == KEY_H:
+			has_h_key = true
+	assert(has_h_key, "Booster must be mapped to KEY_H")
+	assert(not booster_diver.toggle_booster())
+	assert(not booster_diver.booster_active)
+	booster_diver.queue_free()
+
+	# Verify Submarines (Scout and Titan vehicles)
+	var SubmarineCls = load("res://scripts/submarine.gd")
+	var scout = SubmarineCls.new()
+	scout.configure("scout")
+	root.add_child(scout)
+	assert(scout.sub_type == "scout")
+	assert(scout.cruise_speed == 25.0 and scout.boost_speed == 36.0)
+	assert(scout.max_hull == 900.0)
+	var atk_s: Dictionary = scout.fire_weapon()
+	assert(not atk_s.is_empty() and atk_s["damage"] == 120.0 and atk_s["speed"] == 48.0)
+
+	var titan = SubmarineCls.new()
+	titan.configure("titan")
+	root.add_child(titan)
+	assert(titan.sub_type == "titan")
+	assert(titan.cruise_speed == 20.0 and titan.max_hull == 2800.0)
+	var atk_t: Dictionary = titan.fire_weapon()
+	assert(not atk_t.is_empty() and atk_t["damage"] == 360.0 and atk_t["shockwave"] == true)
+
+	# Test Submarine boarding and disembarking
+	var d_test = Diver.new()
+	root.add_child(d_test)
+	scout.board(d_test)
+	assert(scout.is_piloted and scout.pilot_diver == d_test)
+	var exit_p: Vector3 = scout.disembark()
+	assert(not scout.is_piloted and exit_p.distance_to(scout.position) > 2.0)
+	d_test.queue_free()
+	scout.queue_free()
+	titan.queue_free()
+
 	diver_test.queue_free()
 	diver2.queue_free()
 
 	game.free()
 
-	print("PASS: gathering, recipes, weapons (knife/axe/sonic), fragments (+12/+25), forging (+20/+35), sonic 100dmg/3000m, 165deg cleave, R-key & LMB attack, 3-hit combo, procedural audio, combat vfx, hit marker, explore mode, rebreather, depth oxygen, recipe pinning, biomod dash")
+	print("PASS: survival, crafting, laser rifle, T/Y aiming, 3-second charge with release, handheld booster H, scout/titan submarines, procedural audio, combat VFX, exploration, rebreather and biomods")
 	quit()
