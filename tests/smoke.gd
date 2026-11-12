@@ -142,9 +142,15 @@ func _initialize() -> void:
 	var ultimate: Dictionary = diver.release_gun_charge()
 	assert(ultimate.mode == "stasis_orb" and ultimate.field_radius == 12.0 and ultimate.freeze_duration == 6.0)
 	assert(not diver.gun_trigger_held)
+	assert(diver.third_person_mode and is_instance_valid(diver.diver_model) and diver.diver_model.visible, "Third-person diver 3D model must be active and visible")
+	assert(diver.camera.position.length() > 1.5, "Camera must follow behind the diver in third-person")
 	assert(diver.toggle_aim())
 	assert(diver.toggle_scope() and diver.scoped)
+	diver._process(0.05)
+	assert(not diver.diver_model.visible, "Diver model must hide during 8x optical scope view")
 	diver.set_weapon("knife")
+	diver._process(0.05)
+	assert(diver.diver_model.visible, "Diver model must reappear when leaving scope")
 	assert(not diver.aiming and not diver.scoped and not diver.gun_trigger_held)
 	diver.queue_free()
 
@@ -223,7 +229,7 @@ func _initialize() -> void:
 
 	# Verify Underwater Audio procedural synthesis
 	var UnderwaterAudio = load("res://scripts/underwater_audio.gd")
-	for s_name in ["knife_slash", "knife_hit", "axe_swing", "axe_hit", "sonic_blast", "sonic_hit", "hit_confirm", "kill_sound", "weapon_equip", "booster_start", "booster_stop", "sub_torpedo_launch", "sub_torpedo_hit", "sub_heavy_blast", "sub_enter", "sub_exit"]:
+	for s_name in ["knife_slash", "knife_hit", "axe_swing", "axe_hit", "sonic_blast", "sonic_hit", "hit_confirm", "kill_sound", "weapon_equip", "booster_start", "booster_stop", "sub_torpedo_launch", "sub_torpedo_hit", "sub_heavy_blast", "sub_enter", "sub_exit", "drone_salvage", "sushi_serve", "clam_bubble"]:
 		var stream = UnderwaterAudio.get_stream(s_name)
 		assert(stream is AudioStreamWAV, "Stream must be AudioStreamWAV")
 		assert(stream.data.size() > 0, "Audio data must not be empty for " + s_name)
@@ -236,6 +242,9 @@ func _initialize() -> void:
 	var c1 = diver_test.attack()
 	assert(c1.combo == 1, "First knife attack should be combo 1")
 	assert(c1.active_delay == 0.06, "Knife combo 1 active delay should be 0.06s")
+	assert(diver_test.cleave_mesh.mesh is ArrayMesh and diver_test.cleave_mesh.visible, "Crescent slash ribbon should be visible on slash")
+	assert(is_instance_valid(diver_test.cleave_core_mesh) and is_instance_valid(diver_test.slash_sparks), "Inner core ribbon and slash sparks must exist")
+	assert(is_instance_valid(diver_test.left_forearm_pivot) and is_instance_valid(diver_test.right_forearm_pivot), "Third-person diver must have articulated elbow pivots")
 	diver_test.attack_cooldown = 0.0
 	var c2 = diver_test.attack()
 	assert(c2.combo == 2, "Second knife attack should be combo 2")
@@ -243,9 +252,27 @@ func _initialize() -> void:
 	var c3 = diver_test.attack()
 	assert(c3.combo == 3, "Third knife attack should be combo 3")
 	assert(c3.active_delay == 0.08, "Knife combo 3 active delay should be 0.08s")
+	assert(is_instance_valid(diver_test.thrust_cone_mesh) and diver_test.thrust_cone_mesh.visible, "Combo 3 thrust must display hydro-vortex piercing cone")
+	diver_test.attack_anim_time = diver_test.attack_anim_duration * 0.50
+	diver_test._process(0.02)
+	assert(absf(diver_test.body_combat_yaw) > 0.001 or diver_test.body_combat_lunge.length() > 0.001, "Third-person body must twist/lunge during attack choreography")
+	var knife_node: Node3D = diver_test.weapon_nodes["knife"]
+	var hand_in_diver: Transform3D = diver_test.diver_model.transform * diver_test.body_pivot.transform * diver_test.right_arm_pivot.transform * diver_test.right_forearm_pivot.transform * diver_test.right_hand_socket.transform
+	var knife_in_diver: Transform3D = diver_test.equipment_rig.transform * diver_test.weapon_mount.transform * knife_node.transform
+	var grip_world_pos: Vector3 = knife_in_diver * Vector3(0.0, 0.0, -0.085)
+	assert(hand_in_diver.origin.distance_to(grip_world_pos) < 0.005, "Knife handle grip must stay locked inside the diver's right hand")
+	var thrust_blade_dir: Vector3 = knife_in_diver.basis.z.normalized()
+	assert(thrust_blade_dir.z < -0.95, "Combo 3 lunge thrust must point the knife blade straight forward (-Z)")
 	diver_test.attack_cooldown = 0.0
 	var c4 = diver_test.attack()
 	assert(c4.combo == 1, "Fourth knife attack should loop to combo 1")
+	diver_test.attack_anim_time = diver_test.attack_anim_duration * 0.85
+	diver_test._process(0.01)
+	var c1_windup_hand: Vector3 = (diver_test.diver_model.transform * diver_test.body_pivot.transform * diver_test.right_arm_pivot.transform * diver_test.right_forearm_pivot.transform * diver_test.right_hand_socket.transform).origin
+	diver_test.attack_anim_time = diver_test.attack_anim_duration * 0.40
+	diver_test._process(0.01)
+	var c1_slash_hand: Vector3 = (diver_test.diver_model.transform * diver_test.body_pivot.transform * diver_test.right_arm_pivot.transform * diver_test.right_forearm_pivot.transform * diver_test.right_hand_socket.transform).origin
+	assert(c1_windup_hand.x > c1_slash_hand.x + 0.35 and c1_windup_hand.y > c1_slash_hand.y + 0.20, "Combo 1 must sweep diagonally from upper-right to lower-left")
 
 	# Verify trauma and hitstop methods
 	assert(diver_test.camera_trauma == 0.0 or diver_test.camera_trauma > 0.0)
@@ -338,10 +365,74 @@ func _initialize() -> void:
 	scout.queue_free()
 	titan.queue_free()
 
+	# Verify Photorealistic Coral Reef & Benthic Seabed Elements in Ocean
+	var OceanCls = load("res://scripts/ocean.gd")
+	var ocean = OceanCls.new()
+	root.add_child(ocean)
+	ocean._spawn_coral_reef_colonies()
+	assert(ocean.brain_corals.size() >= 18, "Brain corals must populate the seabed")
+	assert(ocean.staghorn_corals.size() >= 25, "Staghorn corals must populate the seabed")
+	assert(ocean.table_corals.size() >= 18, "Tiered table corals must populate the seabed")
+	assert(ocean.barrel_sponges.size() >= 18, "Giant fluted barrel sponges must populate the seabed")
+	assert(ocean.giant_clams.size() >= 12, "Bioluminescent giant clams must populate the seabed")
+	assert(ocean.sea_lilies.size() >= 22, "Crinoid sea lilies must populate the seabed")
+	# Test giant clam proximity contraction when diver swims near
+	var sample_clam: Node3D = ocean.giant_clams[0]
+	assert(is_equal_approx(float(sample_clam.get_meta("retract_progress", 0.0)), 0.0))
+	ocean.last_diver_pos = sample_clam.position + Vector3(0.5, 0.5, 0.5)
+	assert(sample_clam.get_meta("name") == "深海发光巨砗磲")
+	assert(sample_clam.get_meta("kind") == "giant_clam")
+	var found_clam: Node3D = ocean.find_nearby_oxygen_clam(sample_clam.position + Vector3(1.0, 0.0, 1.0), 4.8)
+	assert(found_clam == sample_clam, "Giant clam must be discoverable as an underwater oxygen station")
+	assert(game.LANDMARKS.has("coral_sanctuary"), "Coral Sanctuary landmark must be registered")
+
+	# Verify Dave the Diver classic mechanics: Marinca 3-star cards, Weight, Bancho Sushi Bar, Cobra Shop & Salvage Drone
+	var dave_state := Survival.new()
+	assert(dave_state.get_max_weight() == 40.0 and dave_state.get_current_weight() == 0.0)
+	dave_state.inventory["fish_small"] = 2
+	dave_state.inventory["fish_meat"] = 6
+	dave_state.inventory["kelp"] = 2
+	dave_state.inventory["creature_tooth"] = 2
+	assert(dave_state.get_current_weight() > 8.0)
+
+	# Register 2-star then upgrade to 3-star Marinca card
+	var m1: Dictionary = dave_state.register_marinca_catch("predator", "巡弋暗礁鲨", 2)
+	assert(m1.is_new and m1.best_stars == 2 and dave_state.gold == 70)
+	var m2: Dictionary = dave_state.register_marinca_catch("predator", "巡弋暗礁鲨", 3)
+	assert(m2.upgraded and m2.best_stars == 3 and dave_state.get_three_star_count() == 1)
+
+	# Cook & serve dishes at Bancho Sushi Bar
+	var cook1: Dictionary = dave_state.cook_and_serve_sushi("goldfish_nigiri")
+	assert(cook1.ok and dave_state.inventory["fish_small"] == 1 and dave_state.max_oxygen == 100.0)
+	var cook2: Dictionary = dave_state.cook_and_serve_sushi("kelp_roll")
+	assert(cook2.ok and dave_state.max_health == 120.0 and dave_state.health == 120.0)
+	var cook3: Dictionary = dave_state.cook_and_serve_sushi("shark_sashimi")
+	assert(cook3.ok and dave_state.weapon_attack_bonus == 18.0)
+
+	# Serve all surplus fish in night shift
+	var night_res: Dictionary = dave_state.serve_all_surplus_fish()
+	assert(night_res.ok and dave_state.inventory["fish_small"] == 0 and dave_state.inventory["fish_meat"] == 0)
+
+	# Buy upgrades at Cobra Shop
+	var buy_box: Dictionary = dave_state.buy_cobra_item("cargo_box")
+	assert(buy_box.ok and dave_state.get_max_weight() == 65.0 and dave_state.max_drone_charges == 4)
+	var buy_oxy: Dictionary = dave_state.buy_cobra_item("oxygen_capsule")
+	assert(buy_oxy.ok and dave_state.max_oxygen == 125.0)
+	var buy_duff: Dictionary = dave_state.buy_cobra_item("duff_coating")
+	assert(buy_duff.ok and dave_state.weapon_attack_bonus == 43.0)
+
+	# Verify V (salvage_drone) and B (sushi_menu) key bindings and VFX
+	assert(InputMap.has_action("salvage_drone") and InputMap.has_action("sushi_menu"))
+	CombatVFX.spawn_star_rating(root, Vector3(0, -8, 0), 3, "巡弋暗礁鲨")
+	CombatVFX.spawn_salvage_balloon(root, Vector3(0, -8, 0))
+	CombatVFX.spawn_clam_bubbles(root, Vector3(0, -8, 0))
+
+	ocean.queue_free()
+
 	diver_test.queue_free()
 	diver2.queue_free()
 
 	game.free()
 
-	print("PASS: survival, crafting, laser rifle, T/Y aiming, 3-second charge with release, handheld booster H, scout/titan submarines, procedural audio, combat VFX, exploration, rebreather and biomods")
+	print("PASS: survival, crafting, laser rifle, T/Y aiming, 3-second charge with release, handheld booster H, scout/titan submarines, coral reef & benthic ecosystems, procedural audio, combat VFX, exploration, rebreather and biomods")
 	quit()

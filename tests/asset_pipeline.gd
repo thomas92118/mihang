@@ -12,7 +12,7 @@ func _run() -> void:
 	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(manifest_path))
 	assert(not manifest.is_empty())
 	if not staging:
-		assert(manifest.size() == 28)
+		assert(manifest.size() == 34)
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.near = 0.001

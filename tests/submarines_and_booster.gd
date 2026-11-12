@@ -37,7 +37,7 @@ func _run() -> void:
 	assert(not game.diver.booster_node.visible, "Booster 3D model must hide when deactivated")
 
 	# 2. Test Discovery of New Regions
-	var new_landmarks := ["crystal_basin", "shipyard", "phosphor_groves"]
+	var new_landmarks := ["crystal_basin", "shipyard", "phosphor_groves", "coral_sanctuary"]
 	for lm_id in new_landmarks:
 		assert(game.LANDMARKS.has(lm_id), "LANDMARKS must contain " + lm_id)
 		var lm_info: Dictionary = game.LANDMARKS[lm_id]
@@ -46,6 +46,18 @@ func _run() -> void:
 		assert(lm_id in game.state.landmarks_discovered, "Diver reaching " + lm_id + " must discover it")
 		var biome_name: String = game._get_current_biome(game.diver.position)
 		assert(biome_name.contains(lm_info["name"]), "Biome name must identify " + lm_info["name"])
+
+	# Verify Coral Reef & Benthic Seabed Elements in live Ocean scene
+	assert(game.ocean.brain_corals.size() >= 18, "Brain corals must populate the ocean")
+	assert(game.ocean.staghorn_corals.size() >= 25, "Staghorn corals must populate the ocean")
+	assert(game.ocean.table_corals.size() >= 18, "Tiered table corals must populate the ocean")
+	assert(game.ocean.barrel_sponges.size() >= 18, "Giant barrel sponges must populate the ocean")
+	assert(game.ocean.giant_clams.size() >= 12, "Bioluminescent giant clams must populate the ocean")
+	assert(game.ocean.sea_lilies.size() >= 22, "Crinoid sea lilies must populate the ocean")
+	var sample_clam: Node3D = game.ocean.giant_clams[0]
+	game.ocean.last_diver_pos = sample_clam.global_position + Vector3(0.5, 0.5, 0.5)
+	game.ocean._process(0.25)
+	assert(float(sample_clam.get_meta("retract_progress", 0.0)) > 0.1, "Giant clam must retract when diver swims near")
 
 	# 3. Test Submarine Vehicles in World
 	var subs: Array[Node3D] = game.ocean.get_submarines()
@@ -79,10 +91,28 @@ func _run() -> void:
 	assert(scout_sub.is_piloted and scout_sub.pilot_diver == game.diver, "Submarine must be marked as piloted")
 
 	# Fast piloting test
+	assert(game.diver.collision_layer == 0 and game.diver.collision_mask == 0 and game.diver.body_collision.disabled, "Diver collider must be disabled while piloting submarine to prevent self-collision jitter")
+	scout_sub.position = Vector3(95, -20, -30)
+	scout_sub.rotation = Vector3(0.0, PI * 0.25, 0.0)
+	game.diver.rotation.y = scout_sub.rotation.y
+	game.diver.camera.rotation.x = -0.45 # Pitched camera must not cause W to dive/climb
+	scout_sub.velocity = Vector3.ZERO
 	var start_pos: Vector3 = scout_sub.position
 	# Test pilot_direct matching player character 3D 6-DOF controls
 	scout_sub.pilot_direct(0.5, Vector2(0, -1), 0.0, false, game.diver.camera.global_basis)
 	assert(scout_sub.current_speed > 10.0, "Scout submarine must accelerate quickly")
+	assert(absf(scout_sub.position.y - start_pos.y) < 0.001 and absf(scout_sub.velocity.y) < 0.001, "Pressing W must move submarine horizontally forward in facing direction without vertical drift")
+	var expected_fwd := Vector3(-sin(scout_sub.rotation.y), 0.0, -cos(scout_sub.rotation.y))
+	var move_delta := (scout_sub.position - start_pos).normalized()
+	assert(move_delta.dot(expected_fwd) > 0.99, "Pressing W must move submarine in the exact direction it is facing")
+
+	# Test ascending like the protagonist: whole body rises vertically while hull pitch (rotation.x) stays 0.0 (no tilted rear propeller)
+	scout_sub.position = Vector3(95, -20, -30)
+	scout_sub.velocity = Vector3.ZERO
+	var y_before_ascend: float = scout_sub.position.y
+	scout_sub.pilot_direct(0.4, Vector2.ZERO, 1.0, false, game.diver.camera.global_basis)
+	assert(scout_sub.position.y > y_before_ascend and scout_sub.velocity.y > 0.0, "Submarine whole body must rise when ascending")
+	assert(absf(scout_sub.rotation.x) < 0.0001, "Submarine must stay level (rotation.x == 0) when ascending, not tilting rear propellers")
 
 	# Guided Torpedo attack & manual detonation test
 	var dummy_fish: Node3D = game.ocean.fish[0]

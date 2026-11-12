@@ -27,36 +27,42 @@ MANIFEST = {}
 CURRENT = ''
 
 # Atlas slots: skin/hull, belly/bone, accent, dark, photophores, secondary,
-# brushed metal, membrane. Textures contain surface detail, not studio lighting.
+# brushed metal, membrane. Stylized 3D cartoon cel-shaded palette.
 PALETTES = {
-    'fish_predator': ['173e4b', '78b1aa', 'b77543', '08171e', '46e8ec', '476574', '91aaa9', '27677c'],
-    'kelp': ['426d36', 'a9ba64', 'c4a04d', '283d24', '3cd5ba', 'b17d26', '698066', '245f57'],
-    'weapon_knife': ['1d3948', 'b5c8cc', 'dc713b', '10252d', '38dce5', '7b6861', '98adb7', '36505c'],
-    'fish': ['236976', 'bfc4ac', 'ba673b', '10262d', '48e0d8', '447d77', '9eacaa', '548f94'],
-    'fish_small': ['c99528', 'e1d7ab', 'b67c24', '15242a', '57e9e3', 'c49a52', 'adad91', '66b6b1'],
-    'fish_abyss': ['262e48', '7b8091', '554068', '0c1121', '57e4f0', '704356', '8c8c96', '44374d'],
-    'manta_ray': ['182b4e', 'a5b3b6', 'b27c53', '0a1424', '49d5eb', '526781', 'a5aaad', '29456b'],
-    'sea_turtle': ['406449', 'b9b99b', 'bc995e', '152b2c', '4bddc2', '768747', '91a095', '4c907b'],
-    'squid': ['682b44', 'c9998a', 'a46a66', '171525', '56e9e3', '744f6e', '948a96', 'a45972'],
-    'crab': ['a34335', 'cbb998', 'c57946', '242e38', '4ddcc6', '734447', 'a79883', 'a76852'],
-    'jellyfish': ['80b6ba', 'a6c4c5', '8a659f', '253758', '54e3d9', 'cf944b', 'a7b6c2', '8172ab'],
-    'coral': ['a65d4d', 'cab69c', 'd18a64', '344645', '56d9be', 'a4846c', '919583', 'b05f70'],
-    'tube_coral': ['785287', 'b49bb2', 'ba935f', '37273e', '4dd9d5', '83506e', '9d8f98', '94708e'],
-    'anemone': ['437e75', 'b7bba5', 'bd7373', '253d43', '67e9cf', '995c83', '8aaba3', 'a16996'],
-    'sea_fan': ['813c51', 'b1997a', 'c48151', '3a2634', '61d5c7', '845479', '9c8797', 'a45a78'],
-    'tubeworms': ['b6b4a0', 'd9c9a8', '9c4d52', '36293a', '59d8d1', '774751', '9eaca3', 'ab546d'],
-    'starfish_urchin': ['a76844', 'c6b89b', 'b08064', '334344', '62dacc', '6c4d7d', '988a94', '856096'],
-    'rock': ['455b5b', 'aba896', '6c827b', '2b393e', '5e8574', '7c8280', '8d9492', '626e6a'],
-    'crystal_spire': ['344049', '9cbdbf', '8a73a5', '25323c', '4ab6c7', '79629a', 'a1bac8', '598eab'],
-    'pod': ['c6d0c9', 'd8ddd2', 'ce7944', '17363d', '41d1c6', '637779', '9baeb6', '365f68'],
-    'ruins': ['8a9c9b', 'b9bbaa', '687d78', '374c4e', '42c4b9', '7d7d69', 'a2aaa5', '5b8c83'],
-    'shipwreck': ['2d4e59', '8e9e9d', 'b88343', '132c34', '41c9c3', '78654d', '8b9ca4', '577567'],
-    'resource_titanium': ['3e4b55', 'acb9b7', '858e94', '26333a', '637e8b', '6c7377', 'abbec9', '637a87'],
-    'resource_copper': ['424744', '99a392', 'c87b44', '263838', '719788', '567d69', 'bc844b', '6d927b'],
-    'resource_quartz': ['354953', 'a3c5ca', '739cab', '20343d', '65c9d4', '657f9b', 'b2c6ce', '78adbd'],
-    'resource_kelp': ['426d36', 'a9ba64', 'c4a04d', '283d24', '3cd5ba', 'b17d26', '698066', '245f57'],
-    'weapon_axe': ['26404e', 'a9bec3', 'ce703b', '142933', '41d9de', '81776b', '9bb1bb', '526a72'],
-    'weapon_sonic': ['254957', 'aebdc0', 'ba7a4a', '142b35', '49d9db', '756956', '93acb5', '3c6975'],
+    'fish_predator': ['126498', '9cf4ff', 'ff7a33', '102038', '36fbff', '249fde', 'bae8ff', '20c4f4'],
+    'kelp': ['28c254', 'c8ff6e', 'ffbe2e', '144528', '42ffca', 'ff9824', '7ee88a', '18e090'],
+    'weapon_knife': ['225688', 'e6f7ff', 'ff6e24', '14243b', '33f8ff', '5a7698', 'b8e2ff', '28a8e8'],
+    'fish': ['15a6e0', 'fff3c8', 'ff7c2e', '122842', '48fff2', '24d2b8', 'bceeff', '38d0ff'],
+    'fish_small': ['ff9f1c', 'fff5cc', 'ff542e', '18243c', '4afff0', 'ffd23f', 'ffe8a8', '3ae8ff'],
+    'fish_abyss': ['3c2a78', 'b8b2ff', '9b42d8', '120c2c', '42f8ff', 'd4388e', '9aa4d8', '6a38b8'],
+    'manta_ray': ['1e4898', 'd8f6ff', 'ff8c38', '0e1c42', '3cf6ff', '3b7ee0', 'bae0ff', '2a94f4'],
+    'sea_turtle': ['28a862', 'fff0b8', 'ff9e32', '12342c', '42ffd2', '76d84b', 'a8e8b8', '34d298'],
+    'squid': ['d83268', 'ffd8e4', 'ff6e54', '261238', '48fff6', '9b44b8', 'e2b8d8', 'ff4c8b'],
+    'crab': ['f23e2c', 'ffebb8', 'ff8a24', '2b182e', '42ffe0', 'b82848', 'ffd0a8', 'ff6242'],
+    'jellyfish': ['58d4ff', 'd8f8ff', 'c452ff', '1e2868', '52fff2', 'ff9e38', 'b8e8ff', 'a858ff'],
+    'coral': ['ff5848', 'ffe6c8', 'ff9638', '2c1e38', '48ffe0', 'ff689b', 'ffc8b2', 'ff487e'],
+    'tube_coral': ['9b42d8', 'f0d2ff', 'ffaa32', '281542', '42fff6', 'd83898', 'd8b8e8', 'c852ff'],
+    'anemone': ['18c89b', 'e8fff0', 'ff5c8a', '14383c', '58ffe2', 'd848a8', '98f2dc', 'ff6ec4'],
+    'sea_fan': ['d82e68', 'ffd8c2', 'ff8432', '2e1432', '48fff0', '9e38b8', 'e8b2cc', 'ff4892'],
+    'tubeworms': ['fff0d8', 'fffaf0', 'ff3248', '2c1836', '42fff2', 'b82852', 'd8e8e2', 'ff486e'],
+    'starfish_urchin': ['ff682e', 'ffe8c2', 'ff9838', '281e38', '48ffe5', '8e38c8', 'd8b8e0', 'b848f0'],
+    'rock': ['44728c', 'bce0ec', '649cb4', '1e3446', '42f2d8', '74a2b8', '98c4d8', '528aa4'],
+    'crystal_spire': ['385288', 'c8f4ff', 'a858f0', '1c2848', '42f8ff', '8842d8', 'b2e6ff', '48b8ff'],
+    'pod': ['eef8ff', 'ffffff', 'ff7626', '163248', '38f8ff', '5c849c', 'b8dce8', '2894b8'],
+    'ruins': ['6ca8a2', 'd8f4ea', '488882', '244648', '38ffe8', '88a878', 'b2dcd4', '42c4b4'],
+    'shipwreck': ['2c6882', 'b8dce2', 'e8842e', '142e3c', '38f4ea', '986e48', '98c0cc', '489688'],
+    'resource_titanium': ['426482', 'd8f0f8', '82a4be', '1e3244', '58d8ff', '6888a0', 'c2e4f4', '5294b8'],
+    'resource_copper': ['38685c', 'b8e8d2', 'f27824', '1c3634', '52ffd2', '48a882', 'ff9838', '48c498'],
+    'resource_quartz': ['2e5c78', 'c8f8ff', '58c4e8', '163042', '48ffff', '5894d8', 'dcfaff', '68dcff'],
+    'resource_kelp': ['28c254', 'c8ff6e', 'ffbe2e', '144528', '42ffca', 'ff9824', '7ee88a', '18e090'],
+    'weapon_axe': ['245678', 'daf2fc', 'ff6822', '122838', '38f6ff', '788a98', 'b4dced', '3498c8'],
+    'weapon_sonic': ['226282', 'dff6ff', 'ff7e28', '122c3c', '42faff', '6c7c8c', 'b0deef', '2ca8d8'],
+    'brain_coral': ['e88422', 'ffe8b8', 'b85412', '281838', '24ffc8', 'b82e8a', 'f4ce98', '18e8b2'],
+    'staghorn_coral': ['ff6438', 'ffe8d2', 'ff9642', '2e1838', '42f2ff', 'e838c8', 'f4ccb2', 'b248ff'],
+    'table_coral': ['eb6c36', 'ffead2', 'ffa248', '281836', '32ffe8', 'be38e8', 'e8cab0', '42f0de'],
+    'barrel_sponge': ['d81e5b', 'ffc8dc', 'ff3878', '281028', '28f6ff', 'eb18c4', 'c88aa2', 'ff2cd4'],
+    'giant_clam': ['e2ccb2', 'fff6ff', 'b29474', '241c30', '24f8ff', '7422e8', 'f0e2ff', '18f2be'],
+    'sea_lily': ['b8a428', 'f4eaac', '8c7818', '1e2c22', '38ff9c', '1ee8c8', 'c8dc98', '28f478'],
 }
 
 
@@ -64,8 +70,35 @@ def color(hex_value):
     return np.array([int(hex_value[i:i + 2], 16) / 255 for i in (0, 2, 4)])
 
 
+def _sample_reference_detail(name, h, w):
+    ref_file = SOURCE / 'references' / (name + '.png')
+    if not ref_file.is_file():
+        return np.ones((h, w, 3), dtype=np.float32), np.zeros((h, w), dtype=np.float32)
+    img = bpy.data.images.load(str(ref_file.resolve()))
+    iw, ih = img.size
+    raw = np.array(img.pixels[:], dtype=np.float32).reshape((ih, iw, 4))[:, :, :3]
+    bpy.data.images.remove(img)
+    y0, y1 = int(ih * 0.16), int(ih * 0.84)
+    x0, x1 = int(iw * 0.16), int(iw * 0.84)
+    sub = raw[max(0, y0):min(ih, y1), max(0, x0):min(iw, x1)]
+    sy = np.linspace(0, sub.shape[0] - 1, h).astype(np.int32)
+    sx = np.linspace(0, sub.shape[1] - 1, w).astype(np.int32)
+    patch = sub[np.ix_(sy, sx)]
+    wy = 0.5 - 0.5 * np.cos(np.linspace(0, TAU, h, dtype=np.float32))[:, None]
+    wx = 0.5 - 0.5 * np.cos(np.linspace(0, TAU, w, dtype=np.float32))[None, :]
+    w_mask = np.clip(wy * wx * 1.6, 0.0, 1.0)[:, :, None]
+    tiled = patch * w_mask + patch[::-1, ::-1] * (1.0 - w_mask)
+    luma = 0.299 * tiled[:, :, 0] + 0.587 * tiled[:, :, 1] + 0.114 * tiled[:, :, 2]
+    valid = luma > 0.08
+    mean_rgb = np.mean(tiled[valid], axis=0) if np.any(valid) else np.array([0.5, 0.5, 0.5], dtype=np.float32)
+    color_mod = np.clip(tiled / np.maximum(mean_rgb[None, None, :], 0.12), 0.62, 1.42)
+    blur = 0.25 * (np.roll(luma, 3, axis=0) + np.roll(luma, -3, axis=0) + np.roll(luma, 3, axis=1) + np.roll(luma, -3, axis=1))
+    highpass = np.clip((luma - blur) * 2.4, -0.35, 0.35)
+    return color_mod.astype(np.float32), highpass.astype(np.float32)
+
+
 def image_from_array(name, pixels, data=False):
-    path = SOURCE / 'textures' / (name + '.png')
+    path = (SOURCE / 'textures' / (name + '.png')).resolve()
     image = bpy.data.images.new(name, width=pixels.shape[1], height=pixels.shape[0], alpha=True)
     image.colorspace_settings.name = 'Non-Color' if data else 'sRGB'
     image.pixels.foreach_set(np.ascontiguousarray(pixels, dtype=np.float32).ravel())
@@ -82,9 +115,20 @@ def make_material(name):
     u, v = x / w, y / h
     rng = np.random.default_rng(sum(map(ord, name)))
     noise = rng.random((h, w), dtype=np.float32)
-    cloud = .5 + .2 * np.sin(u * 29 + np.sin(v * 17)) * np.cos(v * 23 - u * 11)
-    cell = (np.cos(u * TAU * 32 + np.sin(v * TAU * 24)) * np.cos(v * TAU * 24)) ** 8
-    veins = np.exp(-np.abs(np.sin(u * 36 + np.sin(v * 14))) * 22)
+    # Stylized 3D cartoon pattern generators: low-frequency bold shapes, cel-stepped ramps, and hand-painted bands
+    cloud = .5 + .35 * np.sin(u * TAU * 2.0 + 0.6 * np.sin(v * TAU * 1.5)) * np.cos(v * TAU * 2.0 - 0.5 * np.cos(u * TAU * 1.5))
+    toon_band = np.floor(np.clip(0.18 + 0.68 * v + 0.14 * np.sin(u * TAU * 2.0), 0.0, 0.999) * 3.0) / 2.0
+    toon_spots = (np.cos(u * TAU * 5.0 + 0.4 * np.sin(v * TAU * 4.0)) * np.cos(v * TAU * 4.0) > 0.52).astype(np.float32)
+    toon_stripes = (np.sin(v * TAU * 6.0 + 0.45 * np.sin(u * TAU * 3.0)) > 0.36).astype(np.float32)
+    cell = (np.cos(u * TAU * 10 + np.sin(v * TAU * 8)) * np.cos(v * TAU * 8)) ** 6
+    veins = (np.exp(-np.abs(np.sin(u * 14 + np.sin(v * 7))) * 14) > 0.42).astype(np.float32)
+    labyrinth = np.sin(u * TAU * 5 + 1.65 * np.sin(v * TAU * 4)) * np.cos(v * TAU * 4 - 1.45 * np.cos(u * TAU * 4))
+    septa = np.sin(u * TAU * 24 + labyrinth * 2.0) * np.cos(v * TAU * 18)
+    corallites = ((np.cos(u * TAU * 9 + 0.5 * np.sin(v * TAU * 7)) * np.cos(v * TAU * 9 - 0.5 * np.cos(u * TAU * 7))) ** 4 > 0.32).astype(np.float32)
+    sponge_pores = np.sin(u * TAU * 8 + 1.1 * np.cos(v * TAU * 6)) * np.cos(v * TAU * 10 - 1.1 * np.sin(u * TAU * 7))
+    shell_lamellae = np.sin(v * TAU * 12 + 0.25 * np.sin(u * TAU * 5)) * 0.7 + np.cos(u * TAU * 6) * 0.3
+    benthic_reef = name in {'brain_coral', 'staghorn_coral', 'table_coral', 'barrel_sponge', 'giant_clam', 'sea_lily', 'coral', 'tube_coral', 'anemone', 'sea_fan', 'starfish_urchin'}
+    creature = name in {'fish_predator', 'fish', 'fish_small', 'fish_abyss', 'manta_ray', 'sea_turtle', 'squid', 'crab', 'jellyfish'}
     albedo = np.ones((size, size, 4), dtype=np.float32)
     normal = np.ones_like(albedo)
     orm = np.ones_like(albedo)
@@ -95,38 +139,108 @@ def make_material(name):
     for slot, hex_value in enumerate(PALETTES[name]):
         row, col = slot // 4, slot % 4
         region = (slice(row * h, (row + 1) * h), slice(col * w, (col + 1) * w))
-        relief = cloud * .2 + noise * .045 + cell * .06
+        relief = cloud * .12 + toon_band * .06
+        if name == 'brain_coral':
+            relief = np.tanh(labyrinth * 2.5) * .22 + septa * .025
+        elif name in {'staghorn_coral', 'table_coral', 'coral', 'sea_fan'}:
+            relief = corallites * .16 + cloud * .10
+        elif name in {'barrel_sponge', 'tube_coral'}:
+            relief = np.tanh(sponge_pores * 2.2) * .20 + cell * .08
+        elif name == 'giant_clam':
+            relief = (shell_lamellae * .20) if slot in (0, 1, 2, 6) else (np.tanh(labyrinth * 2.0) * .12 + corallites * .10)
+        elif name == 'sea_lily':
+            relief = veins * .14 + corallites * .12
         if slot == 7:
-            relief = .045 * np.sin(v * TAU * 34) + veins * .05 + noise * .015
+            relief = .035 * np.sin(v * TAU * 12) + veins * .04
         if artificial or slot == 6:
-            relief = noise * .014 + .01 * np.sin(v * TAU * 120)
+            relief = .02 * np.floor(v * 6.0) / 6.0
         if mineral:
-            relief = cloud * .5 + noise * .05 + veins * .03
-        wear = np.clip(.75 + cloud * .33 + noise * .09 + cell * .12, .55, 1.3)
+            relief = np.floor((cloud * .7 + .3 * v) * 4.0) / 4.0 * .28 + veins * .04
         base = color(hex_value)
-        albedo[region][:, :, :3] = np.clip(base[None, None, :] * wear[:, :, None], 0, 1)
+        # Clean cel-shaded 3-tone value ramp with warm highlight and rich shadow
+        cel_shade = (0.86 + 0.28 * toon_band + 0.06 * (cloud - 0.5))[:, :, None]
+        slot_rgb = base[None, None, :] * cel_shade
+        # Bold stylized cartoon markings for creatures
+        if creature and slot == 0:
+            accent_col = color(PALETTES[name][2])[None, None, :]
+            sec_col = color(PALETTES[name][5])[None, None, :]
+            slot_rgb = slot_rgb * (1.0 - 0.38 * toon_stripes[:, :, None]) + sec_col * (0.38 * toon_stripes[:, :, None])
+            slot_rgb = slot_rgb * (1.0 - 0.45 * toon_spots[:, :, None]) + accent_col * (0.45 * toon_spots[:, :, None])
+        elif artificial and slot in (0, 2):
+            panel_edge = (np.abs(np.sin(v * TAU * 4.0)) > 0.92).astype(np.float32)[:, :, None]
+            slot_rgb = slot_rgb * (1.0 - 0.25 * panel_edge) + color(PALETTES[name][1])[None, None, :] * (0.25 * panel_edge)
+        elif mineral and slot in (0, 1, 2):
+            facet = (np.floor((cloud * 0.6 + v * 0.4) * 3.0) / 2.0)[:, :, None]
+            slot_rgb = base[None, None, :] * (0.82 + 0.34 * facet)
+        if benthic_reef:
+            if name == 'brain_coral' and slot in (0, 2):
+                valley_mask = (labyrinth < -0.12).astype(np.float32)[:, :, None]
+                ridge_ribs = (0.94 + 0.12 * (septa > 0.0).astype(np.float32))[:, :, None]
+                slot_rgb = slot_rgb * ridge_ribs * (1.0 - 0.88 * valley_mask) + color(PALETTES[name][4])[None, None, :] * (0.96 * valley_mask)
+            elif name == 'barrel_sponge' and slot in (0, 2):
+                magenta_rim = np.clip((v - 0.68) / 0.24, 0.0, 1.0)[:, :, None]
+                cyan_lip = (v > 0.88).astype(np.float32)[:, :, None]
+                slot_rgb = slot_rgb * (1.0 - 0.78 * magenta_rim) + color(PALETTES[name][5])[None, None, :] * (0.88 * magenta_rim)
+                slot_rgb = slot_rgb * (1.0 - 0.90 * cyan_lip) + color(PALETTES[name][4])[None, None, :] * (0.98 * cyan_lip)
+            elif name in {'staghorn_coral', 'table_coral'} and slot in (0, 2):
+                tip_grad = np.clip((v - 0.64) / 0.34, 0.0, 1.0)[:, :, None]
+                cyan_edge = (v > 0.88).astype(np.float32)[:, :, None]
+                slot_rgb = slot_rgb * (1.0 - 0.72 * tip_grad) + color(PALETTES[name][5])[None, None, :] * (0.80 * tip_grad)
+                slot_rgb = slot_rgb * (1.0 - 0.86 * cyan_edge) + color(PALETTES[name][4])[None, None, :] * (0.96 * cyan_edge)
+            elif name == 'giant_clam' and slot in (5, 7):
+                irid_band = (np.sin(v * TAU * 3.0 + 0.5 * np.sin(u * TAU * 4.0)) > 0.0).astype(np.float32)[:, :, None]
+                spot_mask = corallites[:, :, None]
+                slot_rgb = slot_rgb * (1.0 - 0.60 * irid_band) + color(PALETTES[name][7])[None, None, :] * (0.70 * irid_band)
+                slot_rgb = slot_rgb * (1.0 - 0.82 * spot_mask) + color(PALETTES[name][4])[None, None, :] * (0.98 * spot_mask)
+            elif slot in (0, 2):
+                spot_mask = corallites[:, :, None] * 0.42
+                slot_rgb = slot_rgb * (1.0 - spot_mask) + color(PALETTES[name][4])[None, None, :] * spot_mask
+        albedo[region][:, :, :3] = np.clip(slot_rgb, 0, 1)
         if name == 'jellyfish' and slot in (0, 7):
-            albedo[region][:, :, 3] = .42 if slot == 0 else .7
+            albedo[region][:, :, 3] = .52 if slot == 0 else .76
         dy, dx = np.gradient(relief)
-        nx, ny = -dx * 8, -dy * 8
+        bump_scale = 5.5 if benthic_reef else 3.2
+        nx, ny = -dx * bump_scale, -dy * bump_scale
         length = np.sqrt(nx * nx + ny * ny + 1)
         normal[region][:, :, 0] = nx / length * .5 + .5
         normal[region][:, :, 1] = ny / length * .5 + .5
         normal[region][:, :, 2] = .5 + .5 / length
-        orm[region][:, :, 0] = np.clip(.94 - veins * .1, .65, 1)
-        rough = .44 if slot in (0, 1, 2) else .3
+        cavity_ao = np.clip(-relief * 0.35, 0.0, 0.22) if benthic_reef else (veins * .06)
+        orm[region][:, :, 0] = np.clip(.98 - cavity_ao, .72, 1)
+        rough = .28 if slot in (0, 1, 2) else .22
         if slot == 3:
-            rough = .22 if not artificial else .7
+            rough = .08 if not artificial else .48
         if slot == 7:
-            rough = .6
+            rough = .36
+        if name == 'giant_clam' and slot in (1, 4, 5):
+            rough = .14
         if mineral:
-            rough = .82 if slot in (0, 3) else .34
-        orm[region][:, :, 1] = np.clip(rough + (noise - .5) * .11 + cloud * .08, .12, .95)
-        orm[region][:, :, 2] = .82 if slot == 6 or (artificial and slot in (0, 1, 2)) else 0
+            rough = .46 if slot in (0, 3) else .20
+        orm[region][:, :, 1] = np.clip(rough + (toon_band - .5) * .06, .06, .75)
+        orm[region][:, :, 2] = .75 if slot == 6 or (artificial and slot in (0, 1, 2)) else 0
         if slot == 4:
-            emission[region][:, :, :3] = base[None, None, :] * (.72 + .28 * cloud[:, :, None])
+            emission[region][:, :, :3] = base[None, None, :] * (.88 + .12 * toon_band[:, :, None])
         if slot == 7 and not artificial:
-            emission[region][:, :, :3] = color(PALETTES[name][4])[None, None, :] * veins[:, :, None] * .28
+            emission[region][:, :, :3] = color(PALETTES[name][4])[None, None, :] * np.clip(veins + corallites * 0.65, 0.0, 1.0)[:, :, None] * .58
+        if creature and slot == 0:
+            emission[region][:, :, :3] = color(PALETTES[name][4])[None, None, :] * (toon_spots[:, :, None] * 0.35)
+        if benthic_reef and slot in (0, 2, 5):
+            if name == 'brain_coral':
+                valley_glow = (labyrinth < -0.12).astype(np.float32)[:, :, None] * 0.95
+                emission[region][:, :, :3] = np.maximum(emission[region][:, :, :3], color(PALETTES[name][4])[None, None, :] * valley_glow)
+            elif name == 'barrel_sponge':
+                rim_glow = np.clip((v - 0.72) / 0.28, 0.0, 1.0)[:, :, None]
+                lip_glow = (v > 0.88).astype(np.float32)[:, :, None]
+                em_col = color(PALETTES[name][5])[None, None, :] * rim_glow * 0.75 + color(PALETTES[name][4])[None, None, :] * lip_glow * 1.0
+                emission[region][:, :, :3] = np.maximum(emission[region][:, :, :3], np.clip(em_col, 0.0, 1.0))
+            elif name == 'giant_clam' and slot == 5:
+                spot_glow = corallites[:, :, None] * 0.95
+                irid_glow = (np.sin(v * TAU * 3.0) > 0.0).astype(np.float32)[:, :, None] * 0.48
+                em_col = color(PALETTES[name][4])[None, None, :] * spot_glow + color(PALETTES[name][7])[None, None, :] * irid_glow
+                emission[region][:, :, :3] = np.maximum(emission[region][:, :, :3], np.clip(em_col, 0.0, 1.0))
+            else:
+                glow_mask = np.clip(corallites * 0.68, 0.0, 0.68)[:, :, None]
+                emission[region][:, :, :3] = np.maximum(emission[region][:, :, :3], color(PALETTES[name][4])[None, None, :] * glow_mask)
     maps = {key: image_from_array(name + '_' + key, values, key in ('normal', 'orm'))
             for key, values in [('albedo', albedo), ('normal', normal), ('orm', orm), ('emission', emission)]}
     mat = bpy.data.materials.new(name + '_PBR')
@@ -151,7 +265,7 @@ def make_material(name):
     links.new(separate.outputs['Green'], bsdf.inputs['Roughness'])
     links.new(separate.outputs['Blue'], bsdf.inputs['Metallic'])
     links.new(nodes['emission'].outputs['Color'], bsdf.inputs['Emission Color'])
-    bsdf.inputs['Emission Strength'].default_value = .9
+    bsdf.inputs['Emission Strength'].default_value = 1.25
     # The glTF exporter recognizes this group as the baked occlusion channel.
     group = bpy.data.node_groups.get('glTF Material Output')
     if group is None:
@@ -458,6 +572,7 @@ def reef_fish(small=False):
     ellipsoid('Armored forehead', (0, -.83, .17), (.25, .35, .3), 0 if small else 2, 'body', 12, 8)
     for s in (-1, 1):
         ellipsoid('Recessed eye', (s * .235, -.91, .13), (.025, .077, .071), 3, 'body', 12, 7)
+        ellipsoid('Eye shine', (s * .252, -.93, .155), (.012, .026, .024), 4, 'body', 8, 5)
         side = 'L' if s < 0 else 'R'
         b = bone('fin_' + side, (s * .23, -.3, -.02), (s * .75, .12, -.1))
         membrane('Paired fin', (s * .24, -.45, -.02), (s * .25, -.06, -.05), (s * .77, .36, -.17), 7, b, .08, 6, 4)
@@ -510,6 +625,7 @@ def create_manta_ray():
             tube('Wing vascular rib', pts, [.013] * 9, 2 if i % 2 else 4, weight, 5)
         tube('Cephalic scoop', [(s * .3, -.8, 0), (s * .34, -1.28, -.03), (s * .23, -1.48, -.08)], [.10, .08, .022], 2, 'body', 12)
         ellipsoid('Lateral eye', (s * .56, -.72, .08), (.045, .075, .047), 3, 'body', 12, 7)
+        ellipsoid('Eye shine', (s * .59, -.74, .095), (.018, .025, .018), 4, 'body', 8, 5)
     pts = [(0, 1.0 + i * .26, .02 + math.sin(i * .3) * .03) for i in range(10)]
     tube('Whip tail', pts, [.055 * (1 - i / 10) for i in range(10)], 0, lambda p: {'tail' if p[1] < 1.8 else 'tail_tip': 1}, 8)
 
@@ -538,6 +654,7 @@ def create_sea_turtle():
     ellipsoid('Tapered head', (0, -1.4, .06), (.21, .35, .18), 7, 'body', 20, 10)
     for s in (-1, 1):
         ellipsoid('Dark eye', (s * .17, -1.48, .14), (.022, .055, .035), 3, 'body', 10, 6)
+        ellipsoid('Eye shine', (s * .185, -1.50, .155), (.010, .020, .014), 4, 'body', 8, 5)
         for fore in (True, False):
             y = -.6 if fore else .63
             b = bone('flipper_' + ('F' if fore else 'B') + str(s), (s * .48, y, 0), (s * 1.55, y + .6, -.05))
@@ -569,6 +686,7 @@ def create_squid():
         b = bone('fin_' + str(s), (s * .2, -1.1, 0), (s * .9, -.8, 0))
         membrane('Mantle fin sail', (s * .2, -1.7, 0), (s * .35, -.3, 0), (s * .95, -.4, -.02), 7, b, .13, 12, 8)
         ellipsoid('Cephalopod eye', (s * .25, .26, .05), (.07, .13, .1), 3, 'body', 14, 8)
+        ellipsoid('Eye shine', (s * .30, .23, .085), (.025, .042, .035), 4, 'body', 8, 5)
     for i in range(5):
         ring('Mantle photophore ring', (0, -1.15 + i * .3, 0), .39 - abs(i - 1) * .034, .31 - abs(i - 1) * .018, .013, 4, 'body', 'XZ', 20)
     for i in range(10):
@@ -606,6 +724,7 @@ def create_crab():
             tube('Opposing pincer finger', [(s * .75 + tooth * .13, -1.13, .4), (s * .75 + tooth * .17, -1.4, .41), (s * .75 + tooth * .045, -1.53, .4)], [.10, .065, .006], 1, b, 10)
         tube('Eye stalk', [(s * .25, -.42, .43), (s * .31, -.64, .59)], [.043, .029], 2, 'body', 8)
         ellipsoid('Compound eye', (s * .31, -.65, .6), (.066, .075, .055), 3, 'body', 12, 8)
+        ellipsoid('Eye shine', (s * .33, -.69, .625), (.024, .026, .022), 4, 'body', 8, 5)
         tube('Photophore seam', [(s * .44, -.33, .49), (s * .53, 0, .49), (s * .4, .35, .47)], [.012] * 3, 4, 'body', 5)
 
 
@@ -629,23 +748,34 @@ def create_jellyfish():
 
 
 def create_coral():
-    ellipsoid('Calcified holdfast', (0, 0, 0.15), (0.65, 0.55, 0.22), 1, organic=0.2)
+    ellipsoid('Calcified holdfast', (0, 0, 0.15), (0.68, 0.58, 0.24), 1, organic=0.28, segments=24, rings=14)
+    for r_idx in range(6):
+        ra = r_idx * TAU / 6.0 + 0.3
+        ellipsoid('Encrusting reef lobe', (math.cos(ra) * 0.48, math.sin(ra) * 0.42, 0.12), (0.24, 0.20, 0.14), 3, organic=0.25, segments=14, rings=8)
     angles = [0.0, 0.85, 1.8, 2.7, 3.7, 4.6, 5.5]
     for index, angle in enumerate(angles):
         height = 1.4 + (index % 3) * 0.38
         base = Vector((0, 0, 0.18))
+        mid1 = Vector((0.20 * math.cos(angle - 0.12), 0.20 * math.sin(angle - 0.12), height * 0.28))
         elbow = Vector((0.38 * math.cos(angle), 0.38 * math.sin(angle), height * 0.52))
+        mid2 = Vector((0.62 * math.cos(angle + 0.08), 0.62 * math.sin(angle + 0.08), height * 0.78))
         top = Vector((0.82 * math.cos(angle), 0.82 * math.sin(angle), height))
-        tube('Coral stem lower', [base, elbow], [0.13, 0.098], 0, sides=8)
-        tube('Coral stem upper', [elbow, top], [0.098, 0.052], 0, sides=8)
+        tube('Coral stem curved', [base, mid1, elbow, mid2, top], [0.135, 0.115, 0.098, 0.074, 0.052], 0, sides=10)
         ellipsoid('Coral bud', top, (0.075, 0.075, 0.095), 4, segments=12, rings=8)
         for sign in [-1, 1]:
             start = elbow.lerp(top, 0.45)
+            ctrl = start + Vector((0.24 * math.cos(angle + sign * 0.52), 0.24 * math.sin(angle + sign * 0.52), 0.18))
             end = start + Vector((0.48 * math.cos(angle + sign * 0.72), 0.48 * math.sin(angle + sign * 0.72), 0.38))
-            tube('Coral fork', [start, end], [0.075, 0.03], 2, sides=6)
+            tube('Coral fork', [start, ctrl, end], [0.075, 0.052, 0.03], 2, sides=8)
             ellipsoid('Coral luminous bud', end, (0.055, 0.055, 0.08), 4, segments=10, rings=6)
             mid_calyx = start.lerp(end, 0.5)
             ellipsoid('Coral calyx', mid_calyx, (0.035, 0.035, 0.035), 5, segments=8, rings=5)
+        for c_step in range(4):
+            t_pos = elbow.lerp(top, (c_step + 1) / 5.0)
+            c_ang = angle + c_step * 1.7
+            cup_tip = t_pos + Vector((math.cos(c_ang) * 0.09, math.sin(c_ang) * 0.09, 0.06))
+            tube('Corallite cup', [t_pos, cup_tip], [0.032, 0.018], 5, sides=6)
+            ellipsoid('Corallite polyp', cup_tip, (0.022, 0.022, 0.024), 4, segments=6, rings=4)
         tube('Vascular ridge', [base, elbow, top], [0.015, 0.012, 0.008], 2, sides=4)
 
 
@@ -793,6 +923,336 @@ def create_starfish_urchin():
             p_spine_tip = u_center + spine_dir * (u_radius * 2.6)
             tube('Urchin spine', [u_center, p_spine_tip], [0.012, 0.002], 3, sides=4)
             ellipsoid('Spine tip glow', p_spine_tip, (0.012, 0.012, 0.012), 4, segments=6, rings=4)
+
+
+def _labyrinth_dome(name, center, scale, rings=40, segments=64, seed_phase=0.0, slot=0):
+    verts, uv, faces = [], [], []
+    cx, cy, cz = center
+    rx, ry, rz = scale
+    for i in range(rings + 1):
+        v = i / rings
+        theta = 0.001 + (math.pi * 0.56) * v
+        for j in range(segments + 1):
+            u = j / segments
+            phi = TAU * u
+            nx = math.sin(theta) * math.cos(phi)
+            ny = math.sin(theta) * math.sin(phi)
+            nz = math.cos(theta)
+            # Match exact labyrinth wave field in make_material('brain_coral') so 3D ridges align with texture ridges!
+            lab = math.sin(u * TAU * 7.0 + 1.85 * math.sin(v * TAU * 5.0)) * math.cos(v * TAU * 6.0 - 1.65 * math.cos(u * TAU * 5.0))
+            g = math.tanh(lab * 2.6)
+            septa_rib = 0.012 * math.sin(u * TAU * 64.0 + lab * 2.5) * max(0.0, g)
+            disp = (0.082 * g + septa_rib) if g >= 0.0 else (0.052 * g)
+            fade = math.sin(min(math.pi, v * math.pi)) ** 0.55
+            r_mod = 1.0 + disp * fade
+            px = cx + nx * rx * r_mod
+            py = cy + ny * ry * r_mod
+            pz = max(0.02, cz + nz * rz * r_mod)
+            verts.append((px, py, pz))
+            uv.append((u, v))
+    for i in range(rings):
+        for j in range(segments):
+            a = i * (segments + 1) + j
+            faces.append((a, a + 1, a + segments + 2, a + segments + 1))
+    return mesh(name, verts, faces, uv, slot=slot, smooth=True)
+
+
+def create_brain_coral():
+    ellipsoid('Reef limestone plinth', (0, 0, 0.16), (1.08, 1.04, 0.22), 3, organic=0.14, segments=28, rings=14)
+    for k in range(8):
+        ang = k * TAU / 8.0 + 0.2
+        ellipsoid('Coralline crust nodule', (math.cos(ang) * 0.84, math.sin(ang) * 0.80, 0.15), (0.26, 0.22, 0.14), 5 if k % 2 == 0 else 3, organic=0.14, segments=16, rings=10)
+    _labyrinth_dome('Primary brain coral hemisphere', (0.02, 0.02, 0.22), (0.98, 0.94, 0.94), rings=44, segments=68, seed_phase=0.4, slot=0)
+    _labyrinth_dome('Anterior satellite brain lobe', (-0.56, -0.42, 0.16), (0.48, 0.44, 0.46), rings=24, segments=36, seed_phase=2.1, slot=2)
+    _labyrinth_dome('Posterior satellite brain lobe', (0.54, -0.40, 0.15), (0.42, 0.40, 0.40), rings=22, segments=34, seed_phase=4.2, slot=0)
+
+
+def create_staghorn_coral():
+    ellipsoid('Calcified reef base', (0, 0, 0.15), (0.80, 0.76, 0.20), 3, organic=0.12, segments=24, rings=12)
+    ellipsoid('Acropora basal plate', (0, 0, 0.24), (0.56, 0.52, 0.16), 1, organic=0.12, segments=20, rings=10)
+    branch_specs = [
+        (0.0, 0.22, 1.95, 0.11), (0.52, 0.46, 1.82, 0.10), (1.08, 0.34, 1.88, 0.105),
+        (1.62, 0.50, 1.74, 0.095), (2.18, 0.36, 1.92, 0.105), (2.75, 0.48, 1.78, 0.095),
+        (3.30, 0.30, 1.90, 0.105), (3.88, 0.52, 1.72, 0.095), (4.42, 0.38, 1.86, 0.10),
+        (5.02, 0.48, 1.76, 0.095), (5.60, 0.34, 1.88, 0.10), (0.28, 0.68, 1.38, 0.085),
+        (1.35, 0.72, 1.34, 0.085), (2.45, 0.68, 1.40, 0.085), (3.58, 0.70, 1.32, 0.085),
+        (4.75, 0.66, 1.36, 0.085),
+    ]
+    for b_idx, (az, tilt, length, base_r) in enumerate(branch_specs):
+        pts = []
+        radii = []
+        steps = 6
+        for s in range(steps):
+            t = s / (steps - 1)
+            curve_az = az + 0.18 * math.sin(t * math.pi + b_idx)
+            r_horiz = math.sin(tilt) * length * (t ** 0.88)
+            z_pos = 0.24 + math.cos(tilt) * length * t + 0.12 * math.sin(t * math.pi)
+            pts.append(Vector((math.cos(curve_az) * r_horiz, math.sin(curve_az) * r_horiz, z_pos)))
+            radii.append(base_r * (1.0 - 0.66 * t))
+        tube('Staghorn main antler', pts, radii, 0 if b_idx % 2 == 0 else 2, sides=9)
+        ellipsoid('Axial polyp crown', pts[-1], (0.048, 0.048, 0.068), 4, segments=10, rings=6)
+        for sign in (-1, 1):
+            f_start = pts[2].lerp(pts[3], 0.4) if sign < 0 else pts[3].lerp(pts[4], 0.3)
+            f_az = az + sign * (0.48 + 0.08 * (b_idx % 3))
+            f_len = length * (0.42 if sign < 0 else 0.34)
+            f_mid = f_start + Vector((math.cos(f_az) * f_len * 0.48, math.sin(f_az) * f_len * 0.48, f_len * 0.46))
+            f_tip = f_start + Vector((math.cos(f_az) * f_len * 0.88, math.sin(f_az) * f_len * 0.88, f_len * 0.86))
+            tube('Staghorn secondary tine', [f_start, f_mid, f_tip], [base_r * 0.58, base_r * 0.40, 0.024], 5 if (b_idx + sign) % 2 == 0 else 0, sides=7)
+            ellipsoid('Secondary axial polyp', f_tip, (0.038, 0.038, 0.054), 4, segments=8, rings=5)
+        for c_i in range(5):
+            t_c = (c_i + 1) / 6.0
+            seg_idx = min(steps - 2, int(t_c * (steps - 1)))
+            local_t = t_c * (steps - 1) - seg_idx
+            c_base = pts[seg_idx].lerp(pts[seg_idx + 1], local_t)
+            c_ang = az + c_i * 2.2
+            c_tip = c_base + Vector((math.cos(c_ang) * 0.075, math.sin(c_ang) * 0.075, 0.055))
+            tube('Radial corallite tube', [c_base, c_tip], [0.026, 0.015], 2, sides=5)
+            ellipsoid('Radial polyp tip', c_tip, (0.019, 0.019, 0.022), 4, segments=6, rings=4)
+
+
+def _table_coral_plate(name, center, rx, ry, thickness, tier_idx):
+    cx, cy, cz = center
+    rings = 10
+    segs = 44
+    verts, uv, faces, face_slots = [], [], [], []
+    for is_bottom in (False, True):
+        for r_i in range(rings + 1):
+            u = r_i / rings
+            for s_i in range(segs + 1):
+                phi = TAU * s_i / segs
+                scallop = 1.0 + 0.065 * math.sin(phi * 9.0 + tier_idx * 1.4) + 0.035 * math.cos(phi * 17.0)
+                rad_x = rx * u * scallop
+                rad_y = ry * u * scallop
+                dish = 0.11 * (u ** 1.5) + 0.018 * math.sin(phi * 9.0) * (u ** 2)
+                rib = 0.022 * abs(math.cos(phi * 22.0)) * u if is_bottom else 0.014 * math.sin(u * TAU * 6.0)
+                z_off = (dish - thickness * (1.0 - 0.78 * u) - rib) if is_bottom else (dish + rib)
+                verts.append((cx + rad_x * math.cos(phi), cy + rad_y * math.sin(phi), cz + z_off))
+                uv.append((s_i / segs, u))
+    stride = (rings + 1) * (segs + 1)
+    for half in (0, 1):
+        base_v = half * stride
+        for r_i in range(rings):
+            for s_i in range(segs):
+                a = base_v + r_i * (segs + 1) + s_i
+                if half == 0:
+                    faces.append((a, a + 1, a + segs + 2, a + segs + 1))
+                    face_slots.append(0)
+                else:
+                    faces.append((a, a + segs + 1, a + segs + 2, a + 1))
+                    face_slots.append(1)
+    top_rim = rings * (segs + 1)
+    bot_rim = stride + rings * (segs + 1)
+    for s_i in range(segs):
+        faces.append((top_rim + s_i, bot_rim + s_i, bot_rim + s_i + 1, top_rim + s_i + 1))
+        face_slots.append(4)
+    mesh(name, verts, faces, uv, slot=0, face_slots=face_slots, smooth=True)
+    for r_ring in (0.28, 0.50, 0.72, 0.92):
+        count = max(8, int(28 * r_ring))
+        for k in range(count):
+            phi = k * TAU / count + tier_idx * 0.5
+            scallop = 1.0 + 0.065 * math.sin(phi * 9.0 + tier_idx * 1.4) + 0.035 * math.cos(phi * 17.0)
+            bx = cx + rx * r_ring * scallop * math.cos(phi)
+            by = cy + ry * r_ring * scallop * math.sin(phi)
+            bz = cz + 0.11 * (r_ring ** 1.5)
+            p0 = Vector((bx, by, bz))
+            p1 = p0 + Vector((math.cos(phi) * 0.045, math.sin(phi) * 0.045, 0.075))
+            tube('Table corallite', [p0, p1], [0.022, 0.011], 5 if r_ring > 0.68 else 2, sides=5)
+            ellipsoid('Table polyp tip', p1, (0.019, 0.019, 0.024), 4, segments=6, rings=4)
+
+
+def create_table_coral():
+    ellipsoid('Reef anchor rock', (0, 0, 0.14), (0.92, 0.88, 0.20), 3, organic=0.12, segments=24, rings=12)
+    tube('Calcified table pedestal', [(0, 0, 0.14), (0.04, -0.03, 0.55), (0.0, 0.0, 1.18)], [0.36, 0.26, 0.18], 1, sides=14)
+    for b in range(6):
+        ba = b * TAU / 6.0
+        tube('Pedestal root buttress', [(math.cos(ba) * 0.58, math.sin(ba) * 0.58, 0.12), (math.cos(ba) * 0.24, math.sin(ba) * 0.24, 0.52)], [0.09, 0.05], 1, sides=7)
+    tiers = [
+        ((0.06, -0.05, 0.46), 1.32, 1.24, 0.045, 0),
+        ((-0.08, 0.06, 0.78), 1.06, 1.00, 0.040, 1),
+        ((0.04, 0.02, 1.08), 0.80, 0.76, 0.036, 2),
+        ((0.0, 0.0, 1.36), 0.52, 0.50, 0.032, 3),
+    ]
+    for center, rx, ry, thick, idx in tiers:
+        _table_coral_plate('Acropora table tier ' + str(idx), center, rx, ry, thick, idx)
+
+
+def _fluted_sponge_barrel(name, base_xy, height, outer_r, inner_r, flutes=16, lean=(0.0, 0.0)):
+    bx, by = base_xy
+    lx, ly = lean
+    rings = 28
+    segs = 48
+    verts, uv, faces, face_slots = [], [], [], []
+    # Outer wall (0..rings) + Inner cavity wall (0..rings)
+    for wall in ('outer', 'inner'):
+        for i in range(rings + 1):
+            t = i / rings
+            profile = math.sin(t * math.pi * 0.78 + 0.22) ** 0.55
+            cx = bx + lx * (t ** 1.4) * height
+            cy = by + ly * (t ** 1.4) * height
+            for j in range(segs + 1):
+                phi = TAU * j / segs
+                if wall == 'outer':
+                    flute_wave = (0.5 + 0.5 * math.cos(phi * flutes + math.sin(t * 6.0) * 0.35)) ** 2.2
+                    crag = 0.045 * math.sin(t * TAU * 7.0 + phi * 3.0)
+                    r = outer_r * profile * (0.84 + 0.22 * flute_wave + crag)
+                    z = 0.14 + t * (height - 0.14) + 0.045 * math.sin(phi * 7.0) * (t ** 2)
+                else:
+                    r = inner_r * (0.45 + 0.55 * t) * (1.0 + 0.04 * math.cos(phi * flutes))
+                    z = (0.32 * height) + (1.0 - t) * (height * 0.68 - 0.14) + 0.045 * math.sin(phi * 7.0) * ((1.0 - t) ** 2)
+                verts.append((cx + r * math.cos(phi), cy + r * math.sin(phi), z))
+                uv.append((j / segs, t if wall == 'outer' else (1.0 - t * 0.75)))
+    stride = (rings + 1) * (segs + 1)
+    for i in range(rings):
+        for j in range(segs):
+            a = i * (segs + 1) + j
+            faces.append((a, a + 1, a + segs + 2, a + segs + 1))
+            face_slots.append(0)
+            b = stride + i * (segs + 1) + j
+            faces.append((b, b + segs + 1, b + segs + 2, b + 1))
+            face_slots.append(5)
+    top_outer = rings * (segs + 1)
+    top_inner = stride
+    for j in range(segs):
+        faces.append((top_outer + j, top_outer + j + 1, top_inner + j + 1, top_inner + j))
+        face_slots.append(4)
+    return mesh(name, verts, faces, uv, slot=0, face_slots=face_slots, smooth=True)
+
+
+def create_barrel_sponge():
+    ellipsoid('Sponge reef substrate', (0, 0, 0.15), (0.94, 0.90, 0.20), 3, organic=0.12, segments=24, rings=12)
+    _fluted_sponge_barrel('Giant barrel sponge', (0.04, -0.02), 2.38, 0.88, 0.52, flutes=18, lean=(0.03, 0.02))
+    _fluted_sponge_barrel('Side barrel sponge L', (-0.64, 0.34), 1.32, 0.42, 0.24, flutes=12, lean=(-0.12, 0.08))
+    _fluted_sponge_barrel('Side barrel sponge R', (0.62, -0.36), 1.08, 0.36, 0.20, flutes=11, lean=(0.14, -0.08))
+
+
+def _clam_valve(name, side_sign):
+    u_steps = 32
+    v_steps = 18
+    verts, uv, faces, face_slots = [], [], [], []
+    for layer in ('outer', 'inner'):
+        for iv in range(v_steps + 1):
+            v = iv / v_steps
+            for iu in range(u_steps + 1):
+                u = iu / u_steps
+                theta = (u - 0.5) * math.pi * 0.88
+                rib_wave = math.cos(u * math.pi * 7.0)
+                flute = (0.095 * rib_wave if layer == 'outer' else 0.038 * rib_wave) * (v ** 1.15)
+                thick = 0.0 if layer == 'outer' else -0.065 * (1.0 - 0.35 * v)
+                px = math.sin(theta) * (1.08 * (v ** 0.72))
+                bowl_out = 0.10 + 0.64 * math.sin(v * math.pi * 0.72) + flute + thick
+                py = side_sign * max(0.04, bowl_out)
+                pz = 0.18 + 0.92 * (v ** 0.86) * math.cos(theta * 0.55) + 0.075 * rib_wave * (v ** 1.8)
+                verts.append((px, py, max(0.05, pz)))
+                uv.append((u, v))
+    stride = (v_steps + 1) * (u_steps + 1)
+    for iv in range(v_steps):
+        for iu in range(u_steps):
+            a = iv * (u_steps + 1) + iu
+            b = stride + iv * (u_steps + 1) + iu
+            if side_sign > 0:
+                faces.append((a, a + 1, a + u_steps + 2, a + u_steps + 1))
+                faces.append((b, b + u_steps + 1, b + u_steps + 2, b + 1))
+            else:
+                faces.append((a, a + u_steps + 1, a + u_steps + 2, a + 1))
+                faces.append((b, b + 1, b + u_steps + 2, b + u_steps + 1))
+            face_slots.append(0)
+            face_slots.append(6)
+    rim_o = v_steps * (u_steps + 1)
+    rim_i = stride + v_steps * (u_steps + 1)
+    for iu in range(u_steps):
+        faces.append((rim_o + iu, rim_i + iu, rim_i + iu + 1, rim_o + iu + 1))
+        face_slots.append(1)
+    mesh(name, verts, faces, uv, slot=1, face_slots=face_slots, smooth=True)
+    # Raised calcified scute scales along the major ribs
+    for rib_idx in range(0, 8, 2):
+        u = (rib_idx + 0.5) / 7.0
+        if u < 0.08 or u > 0.92:
+            continue
+        theta = (u - 0.5) * math.pi * 0.88
+        for v_sc in (0.42, 0.66, 0.86):
+            px = math.sin(theta) * (1.08 * (v_sc ** 0.72))
+            py = side_sign * (0.16 + 0.68 * math.sin(v_sc * math.pi * 0.72))
+            pz = 0.18 + 0.92 * (v_sc ** 0.86) * math.cos(theta * 0.55) + 0.075 * v_sc
+            ellipsoid('Shell scute scale', (px, py, pz), (0.10, 0.065, 0.032), 1, segments=10, rings=6)
+
+
+def create_giant_clam():
+    ellipsoid('Reef limestone cradle', (0, 0, 0.14), (1.02, 0.78, 0.18), 3, organic=0.12, segments=24, rings=12)
+    _clam_valve('Left Tridacna valve', -1)
+    _clam_valve('Right Tridacna valve', 1)
+    # Fleshy undulating iridescent mantle lobes
+    for side in (-1, 1):
+        pts = []
+        radii = []
+        for k in range(21):
+            t = k / 20.0
+            theta = (t - 0.5) * math.pi * 0.82
+            rib_wave = math.cos(t * math.pi * 7.0)
+            x_m = math.sin(theta) * 0.94
+            y_m = side * (0.46 + 0.12 * rib_wave)
+            z_m = 0.86 * math.cos(theta * 0.52) + 0.065 * rib_wave
+            pts.append(Vector((x_m, y_m, z_m)))
+            radii.append(0.155 * (0.65 + 0.45 * math.sin(t * math.pi)))
+        tube('Iridescent mantle lip', pts, radii, 5, sides=14)
+        for k in range(1, 20, 2):
+            spot_p = pts[k] + Vector((0, -side * 0.04, 0.11))
+            ellipsoid('Mantle glowing ocellus', spot_p, (0.045, 0.038, 0.028), 4, segments=8, rings=5)
+    ellipsoid('Inner mantle bed', (0, 0, 0.48), (0.72, 0.38, 0.22), 5, organic=0.10, segments=24, rings=12)
+    ellipsoid('Abyssal lustrous pearl', (0, 0, 0.72), (0.24, 0.24, 0.23), 1, segments=28, rings=18)
+    ring('Pearl bioluminescent aura', (0, 0, 0.62), 0.28, 0.28, 0.026, 4, plane='XY', segments=28)
+
+
+def _crinoid_crown(prefix, base_pos, top_pos, arm_count, arm_len):
+    p0 = Vector(base_pos)
+    p2 = Vector(top_pos)
+    p1 = p0.lerp(p2, 0.52) + Vector((0.08, -0.05, 0.0))
+    stalk_pts = [p0.lerp(p1, t / 8.0).lerp(p1.lerp(p2, t / 8.0), t / 8.0) for t in range(9)]
+    tube(prefix + ' stalk', stalk_pts, [0.052 * (1.0 - 0.28 * (i / 8.0)) for i in range(9)], 1, sides=8)
+    for i in range(1, 8, 2):
+        ring(prefix + ' ossicle', stalk_pts[i], 0.058, 0.058, 0.012, 2, plane='XY', segments=10)
+    for c_i in range(6):
+        ca = c_i * TAU / 6.0
+        c_end = p0 + Vector((math.cos(ca) * 0.24, math.sin(ca) * 0.24, -0.06))
+        tube(prefix + ' cirrus', [p0 + Vector((0, 0, 0.08)), c_end], [0.022, 0.006], 2, sides=5)
+    ellipsoid(prefix + ' calyx cup', p2, (0.095, 0.095, 0.075), 4, segments=12, rings=8)
+    for a_i in range(arm_count):
+        az = a_i * TAU / arm_count
+        elev = 0.55 if a_i % 2 == 0 else 0.32
+        a_pts = []
+        for s in range(11):
+            t = s / 10.0
+            reach = arm_len * (t ** 0.85)
+            arch_z = math.sin(t * math.pi * 0.82) * arm_len * elev - (t ** 2.2) * arm_len * 0.22
+            sway = 0.06 * math.sin(t * math.pi + a_i)
+            a_pts.append(p2 + Vector((math.cos(az + sway) * reach, math.sin(az + sway) * reach, arch_z)))
+        tube(prefix + ' arm', a_pts, [0.026 * (1.0 - 0.68 * (s / 10.0)) for s in range(11)], 4 if a_i % 2 == 0 else 7, sides=6)
+        for p_idx in range(1, 10):
+            origin = a_pts[p_idx]
+            tang = (a_pts[min(10, p_idx + 1)] - a_pts[max(0, p_idx - 1)]).normalized()
+            side_vec = Vector((-tang.y, tang.x, 0.0)).normalized()
+            pin_len = arm_len * 0.25 * math.sin((p_idx / 10.0) * math.pi * 0.9 + 0.1)
+            for sign in (-1, 1):
+                mid_p = origin + side_vec * (sign * pin_len * 0.55) + Vector((0, 0, 0.035))
+                tip = origin + side_vec * (sign * pin_len) + Vector((0, 0, 0.015))
+                tube(prefix + ' pinnule', [origin, mid_p, tip], [0.010, 0.007, 0.002], 4, sides=4)
+
+
+def create_sea_lily():
+    ellipsoid('Abyssal reef rock', (0, 0, 0.16), (0.84, 0.80, 0.20), 3, organic=0.12, segments=24, rings=12)
+    # Glowing Bubble Coral (Plerogyra) cluster around the base
+    rng_b = random.Random(2409)
+    for b_idx in range(24):
+        ang = b_idx * 2.39996
+        rad = 0.16 + 0.56 * math.sqrt(b_idx / 24.0)
+        bx = math.cos(ang) * rad + 0.12
+        by = math.sin(ang) * rad - 0.08
+        bz = 0.28 + 0.22 * (1.0 - rad / 0.78) + rng_b.uniform(-0.03, 0.05)
+        rx = rng_b.uniform(0.085, 0.145)
+        ry = rx * rng_b.uniform(0.85, 1.18)
+        rz = rx * rng_b.uniform(0.78, 1.08)
+        ellipsoid('Bubble coral vesicle', (bx, by, bz), (rx, ry, rz), 4 if b_idx % 2 == 0 else 7, segments=12, rings=8)
+    _crinoid_crown('Primary sea lily', (-0.08, 0.06, 0.28), (0.04, 0.02, 1.88), arm_count=12, arm_len=0.88)
+    _crinoid_crown('Secondary sea lily', (-0.42, -0.28, 0.24), (-0.48, -0.32, 1.18), arm_count=8, arm_len=0.56)
 
 
 def create_rock():
@@ -1116,6 +1576,10 @@ def finish_asset(name):
                               export_animations=bool(rig), export_animation_mode='NLA_TRACKS',
                               export_skins=True, export_def_bones=True, export_cameras=False,
                               export_lights=False, export_morph=False)
+    import shutil
+    models_dir = ROOT / 'assets/models'
+    models_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, models_dir / (name + '.glb'))
     MANIFEST[name] = {
         'file': 'assets/models/' + name + '.glb',
         'dimensions_blender_xyz': CONTRACT[name]['dimensions_blender_xyz'],
@@ -1143,13 +1607,13 @@ def render_previews():
     scene.world = bpy.data.worlds.new('Neutral reference studio')
     scene.world.use_nodes = True
     bg = scene.world.node_tree.nodes.get('Background')
-    bg.inputs[0].default_value, bg.inputs[1].default_value = (.075, .095, .11, 1), .8
+    bg.inputs[0].default_value, bg.inputs[1].default_value = (.055, .18, .28, 1), 1.15
     camera = bpy.data.objects.new('Preview Camera', bpy.data.cameras.new('Preview Camera'))
     scene.collection.objects.link(camera)
     scene.camera = camera
     camera.data.type = 'ORTHO'
     lamps = []
-    for i, (energy, rgb) in enumerate([(1700, (.82, .93, 1)), (1400, (.4, .8, 1)), (1000, (1, .73, .51))]):
+    for i, (energy, rgb) in enumerate([(2200, (1.0, .96, .88)), (1800, (.28, .92, 1.0)), (1500, (1.0, .55, .82))]):
         data = bpy.data.lights.new('Studio_' + str(i), 'AREA')
         data.energy, data.color, data.shape, data.size = energy, rgb, 'DISK', 5
         obj = bpy.data.objects.new(data.name, data)
@@ -1174,7 +1638,7 @@ def render_previews():
             lamp.location = center + Vector(direction) * span
             lamp.rotation_euler = (center - lamp.location).to_track_quat('-Z', 'Y').to_euler()
             lamp.data.size = span * 1.5
-            lamp.data.energy = 65 * span * span
+            lamp.data.energy = 88 * span * span
         scene.render.filepath = str(SOURCE / 'previews' / (name + '.png'))
         bpy.ops.render.render(write_still=True)
         root.hide_render = True
@@ -1188,12 +1652,58 @@ def render_previews():
         bpy.data.objects.remove(obj, do_unlink=True)
 
 
+def render_reference_sheets_and_kit():
+    import shutil
+    ref_dir = SOURCE / 'references'
+    ref_dir.mkdir(parents=True, exist_ok=True)
+    for name, _ in ASSETS:
+        preview_file = SOURCE / 'previews' / (name + '.png')
+        if preview_file.is_file():
+            shutil.copy2(preview_file, ref_dir / (name + '.png'))
+
+    def save_composite(names, cols, rows, out_path, cell_w=384, cell_h=288):
+        canvas = np.zeros((rows * cell_h, cols * cell_w, 4), dtype=np.float32)
+        canvas[:, :, 0] = 0.055
+        canvas[:, :, 1] = 0.16
+        canvas[:, :, 2] = 0.25
+        canvas[:, :, 3] = 1.0
+        for idx, asset_name in enumerate(names[:cols * rows]):
+            p = SOURCE / 'previews' / (asset_name + '.png')
+            if not p.is_file():
+                continue
+            img = bpy.data.images.load(str(p.resolve()))
+            iw, ih = img.size
+            raw = np.array(img.pixels[:], dtype=np.float32).reshape((ih, iw, 4))
+            bpy.data.images.remove(img)
+            sy = np.linspace(0, ih - 1, cell_h).astype(np.int32)
+            sx = np.linspace(0, iw - 1, cell_w).astype(np.int32)
+            tile = raw[np.ix_(sy, sx)]
+            r = rows - 1 - (idx // cols)
+            c = idx % cols
+            canvas[r * cell_h:(r + 1) * cell_h, c * cell_w:(c + 1) * cell_w, :] = tile
+        out = bpy.data.images.new('CompositeSheet', width=cols * cell_w, height=rows * cell_h, alpha=True)
+        out.colorspace_settings.name = 'sRGB'
+        out.pixels.foreach_set(np.ascontiguousarray(canvas, dtype=np.float32).ravel())
+        out.filepath_raw = str(out_path.resolve())
+        out.file_format = 'PNG'
+        out.save()
+        bpy.data.images.remove(out)
+
+    benthic_names = ['brain_coral', 'staghorn_coral', 'table_coral', 'barrel_sponge', 'giant_clam', 'sea_lily']
+    coral_names = ['coral', 'tube_coral', 'anemone', 'sea_fan', 'tubeworms', 'starfish_urchin']
+    all_names = [name for name, _ in ASSETS]
+    if len(ASSETS) >= 6:
+        save_composite(benthic_names, 3, 2, ROOT / 'assets/source/benthic_reef_reference_sheet.png', 512, 512)
+        save_composite(coral_names, 3, 2, ROOT / 'assets/source/coral_reef_reference_sheet.png', 512, 512)
+        save_composite(all_names, 6, 6, ROOT / 'assets/source/asset-kit.png', 320, 240)
+
+
 def main():
     global CURRENT
     parser = argparse.ArgumentParser()
     parser.add_argument('--assets', nargs='+', default=list(CONTRACT))
     args = parser.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else [])
-    for folder in (SOURCE / 'textures', SOURCE / 'previews', STAGING / 'models'):
+    for folder in (SOURCE / 'textures', SOURCE / 'previews', SOURCE / 'references', STAGING / 'models'):
         folder.mkdir(parents=True, exist_ok=True)
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete(use_global=False)
@@ -1201,12 +1711,12 @@ def main():
     bpy.context.scene.render.fps = 30
     bpy.context.scene.unit_settings.system = 'METRIC'
     for name in args.assets:
-        assert (SOURCE / 'references' / (name + '.png')).is_file(), 'Generate reference first: ' + name
         CURRENT = name
         random.seed(913 + sum(map(ord, name)))
         globals()['create_' + name]()
         finish_asset(name)
     render_previews()
+    render_reference_sheets_and_kit()
     # Each asset occupies its own collection; the reference is a viewport-only Empty.
     for index, (name, root) in enumerate(ASSETS):
         collection = bpy.data.collections.new(name)
@@ -1226,8 +1736,13 @@ def main():
         ref.location = root.location + Vector((0, 4, 3))
         ref.rotation_euler.x = math.pi / 2
     (STAGING / 'asset-manifest.json').write_text(json.dumps(MANIFEST, indent=2) + '\n')
+    prod_manifest_path = ROOT / 'assets/source/asset-manifest.json'
+    prod_manifest = json.loads(prod_manifest_path.read_text(encoding='utf-8')) if prod_manifest_path.is_file() else {}
+    prod_manifest.update(MANIFEST)
+    prod_manifest_path.write_text(json.dumps(prod_manifest, indent=2) + '\n', encoding='utf-8')
     bpy.ops.file.pack_all()
     bpy.ops.wm.save_as_mainfile(filepath=str(SOURCE / 'alien-ocean.blend'))
+    bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / 'assets/source/mihang-underwater-kit.blend'))
     print('BUILD_COMPLETE ' + str(len(MANIFEST)), flush=True)
 
 

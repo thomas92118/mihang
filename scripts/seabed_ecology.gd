@@ -1,0 +1,823 @@
+extends Node3D
+
+# Decorative benthos is streamed independently of the gameplay RNG and colliders.
+# A chunk holds a few detailed colonies plus inexpensive instanced ground cover.
+const CHUNK_SIZE := 48.0
+const CHUNK_RADIUS := 2
+const MAX_CHUNKS := 25
+const WORLD_HALF_EXTENT := 900.0
+const WORLD_SEED := 381193
+const MAX_INSTANCES_PER_CHUNK := 128
+const MAX_FISH_PER_CHUNK := 8
+const OceanDepths := preload("res://scripts/ocean_depths.gd")
+const PLANT_SHADER := preload("res://shaders/plant_sway.gdshader")
+const FISH_SHADER := preload("res://shaders/ecosystem_fish.gdshader")
+
+var _ocean: Node3D
+var _chunks: Dictionary = {}
+var _pending: Array[Vector2i] = []
+var _asset_parts: Dictionary = {}
+var _asset_bounds: Dictionary = {}
+var _rock_support_points: Dictionary = {}
+var _observer := Vector3(0, -9, 17)
+var _center := Vector2i(100000, 100000)
+var _exclusion_zones: Array[Vector3] = []
+var _patch_noise := FastNoiseLite.new()
+var _ambient_creature_meshes: Dictionary = {}
+var _pending_ambient: Array[Vector2i] = []
+var _observer_depth_band := 0
+var _observer_water_zone := "sunlit_reef"
+
+func configure(ocean: Node3D) -> void:
+	_ocean = ocean
+	name = "SeabedEcology"
+	_patch_noise.seed = WORLD_SEED
+	_patch_noise.frequency = 0.024
+	_patch_noise.fractal_octaves = 2
+	_collect_exclusion_zones()
+	_request_neighborhood(_observer)
+	# Fill the starting view before the first rendered frame. The outer ring is
+	# finished incrementally while the player is swimming.
+	for index in range(mini(9, _pending.size())):
+		_build_chunk(_pending.pop_front())
+
+func update_observer(world_position: Vector3, _delta: float) -> void:
+	if not is_instance_valid(_ocean):
+		return
+	_observer = world_position
+	var cell := Vector2i(floori(world_position.x / CHUNK_SIZE), floori(world_position.z / CHUNK_SIZE))
+	if cell != _center:
+		_request_neighborhood(world_position)
+	var depth_band := floori(maxf(-world_position.y, 0.0) / 25.0)
+	var water_zone: String = OceanDepths.zone_id(maxf(-world_position.y, 0.0))
+	if depth_band != _observer_depth_band or water_zone != _observer_water_zone:
+		_observer_depth_band = depth_band
+		_observer_water_zone = water_zone
+		_pending_ambient.assign(_chunks.keys())
+		_pending_ambient.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			return (a - _center).length_squared() < (b - _center).length_squared()
+		)
+	if not _pending.is_empty():
+		_build_chunk(_pending.pop_front())
+	if not _pending_ambient.is_empty():
+		var refresh_cell: Vector2i = _pending_ambient.pop_front()
+		if _chunks.has(refresh_cell):
+			_build_ambient_shoal(_chunks[refresh_cell], refresh_cell)
+
+func _request_neighborhood(at: Vector3) -> void:
+	_center = Vector2i(floori(at.x / CHUNK_SIZE), floori(at.z / CHUNK_SIZE))
+	var wanted: Dictionary = {}
+	_pending.clear()
+	for dx in range(-CHUNK_RADIUS, CHUNK_RADIUS + 1):
+		for dz in range(-CHUNK_RADIUS, CHUNK_RADIUS + 1):
+			var cell := _center + Vector2i(dx, dz)
+			var origin := Vector2(cell.x, cell.y) * CHUNK_SIZE
+			if origin.x >= WORLD_HALF_EXTENT or origin.x + CHUNK_SIZE <= -WORLD_HALF_EXTENT:
+				continue
+			if origin.y >= WORLD_HALF_EXTENT or origin.y + CHUNK_SIZE <= -WORLD_HALF_EXTENT:
+				continue
+			wanted[cell] = true
+			if not _chunks.has(cell):
+				_pending.append(cell)
+	for cell: Vector2i in _chunks.keys():
+		if not wanted.has(cell):
+			var old: Node3D = _chunks[cell]
+			remove_child(old)
+			old.queue_free()
+			_chunks.erase(cell)
+	_pending.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return (Vector2(a) + Vector2.ONE * 0.5 - Vector2(_center)).length_squared() < (Vector2(b) + Vector2.ONE * 0.5 - Vector2(_center)).length_squared()
+	)
+
+func _collect_exclusion_zones() -> void:
+	_exclusion_zones.append(Vector3(0, 8, 7.0))
+	for property_name: String in ["outposts", "explorer_relics"]:
+		var nodes: Array = _ocean.get(property_name)
+		for item: Node3D in nodes:
+			var radius := 8.0 if property_name == "outposts" else 3.0
+			_exclusion_zones.append(Vector3(item.position.x, item.position.z, radius))
+	var tree: Node3D = _ocean.get("mother_tree")
+	if is_instance_valid(tree):
+		_exclusion_zones.append(Vector3(tree.position.x, tree.position.z, 14.0))
+
+func _is_reserved(x: float, z: float, clearance: float = 0.0) -> bool:
+	for zone in _exclusion_zones:
+		if Vector2(x - zone.x, z - zone.y).length_squared() < pow(zone.z + clearance, 2.0):
+			return true
+	return false
+
+# Sample the actual rendered triangle, including the coarser outer seabed.
+# Merely sampling the analytic floor leaves small decorations floating above it.
+func sample_floor_height(x: float, z: float) -> float:
+	var step := 6.0
+	var origin := Vector2(-288.0, -384.0)
+	if z >= 144.0:
+		step = 16.0
+		origin = Vector2(-960.0, 144.0)
+	elif z < -384.0:
+		step = 16.0
+		origin = Vector2(-960.0, -960.0)
+	elif x < -288.0:
+		step = 16.0
+		origin = Vector2(-960.0, -384.0)
+	elif x >= 288.0:
+		step = 16.0
+		origin = Vector2(288.0, -384.0)
+	var x0 := floorf((x - origin.x) / step) * step + origin.x
+	var z0 := floorf((z - origin.y) / step) * step + origin.y
+	var tx := (x - x0) / step
+	var tz := (z - z0) / step
+	var a: float = _ocean.call("floor_height", x0, z0)
+	var b: float = _ocean.call("floor_height", x0 + step, z0)
+	var c: float = _ocean.call("floor_height", x0, z0 + step)
+	if tx + tz <= 1.0:
+		return a + (b - a) * tx + (c - a) * tz
+	var d: float = _ocean.call("floor_height", x0 + step, z0 + step)
+	return d + (c - d) * (1.0 - tx) + (b - d) * (1.0 - tz)
+
+func _floor_normal(x: float, z: float) -> Vector3:
+	var left := sample_floor_height(x - 0.4, z)
+	var right := sample_floor_height(x + 0.4, z)
+	var back := sample_floor_height(x, z - 0.4)
+	var front := sample_floor_height(x, z + 0.4)
+	return Vector3(left - right, 0.8, back - front).normalized()
+
+func sample_habitat(x: float, z: float) -> Dictionary:
+	var depth := maxf(0.0, -sample_floor_height(x, z))
+	var slope := 1.0 - _floor_normal(x, z).y
+	var depth_zone := OceanDepths.zone_id(depth)
+	var biome: String = depth_zone
+	var patch := _patch_noise.get_noise_2d(x, z)
+	var caldera_distance := Vector2(x + 440.0, z + 420.0).length()
+	var kelp_distance := Vector2(x + 260.0, z - 280.0).length()
+	if caldera_distance < 180.0 and depth > 90.0:
+		biome = "vent_field"
+	elif depth <= 55.0 and (kelp_distance < 190.0 or patch > 0.34):
+		biome = "kelp_forest"
+	return {"biome": biome, "depth_zone": depth_zone, "depth": depth, "slope": slope}
+
+func build_chunk_plan(cell: Vector2i) -> Array[Dictionary]:
+	var plan: Array[Dictionary] = []
+	var local_rng := RandomNumberGenerator.new()
+	local_rng.seed = WORLD_SEED + cell.x * 73856093 + cell.y * 19349663
+	var origin := Vector2(cell) * CHUNK_SIZE
+	# Real volumes make reef ridges readable at swimming height; most imported
+	# rocks are thin plates, so reserve those for a little rubble between boulders.
+	for index in range(4):
+		var p := origin + Vector2(local_rng.randf_range(5, 43), local_rng.randf_range(5, 43))
+		var habitat := sample_habitat(p.x, p.y)
+		var kind := "limestone_boulder"
+		var size := local_rng.randf_range(1.35, 2.65)
+		var formation_scale := Vector3(size * 1.2, size * local_rng.randf_range(0.72, 1.2), size)
+		match str(habitat["depth_zone"]):
+			"shelf_garden":
+				kind = "shelf_ledge_boulder"
+				formation_scale = Vector3(size * 2.0, size * 0.55, size * 1.35)
+			"twilight_slope":
+				kind = "escarpment_boulder"
+				formation_scale = Vector3(size, size * 3.1, size * 0.9)
+			"bathyal_basin":
+				kind = "silt_boulder"
+				formation_scale = Vector3(size * 1.75, size * 1.2, size * 1.4)
+			"hadal_trench":
+				kind = "trench_spire_boulder"
+				formation_scale = Vector3(size * 0.8, size * 4.1, size * 0.85)
+		if str(habitat["biome"]) == "vent_field":
+			kind = "vent_chimney" if index % 2 == 0 else "basalt_boulder"
+			formation_scale = Vector3(size * 0.7, size * 1.1, size * 0.7) if kind == "vent_chimney" else Vector3(size * 1.3, size * 1.6, size)
+		_add_to_plan(plan, kind, p, formation_scale, local_rng.randf() * TAU)
+		var satellite := p + Vector2(local_rng.randf_range(-3, 3), local_rng.randf_range(-3, 3))
+		var rubble := "basalt_boulder" if str(habitat["biome"]) == "vent_field" else "silt_boulder"
+		if float(habitat["depth"]) < 90.0:
+			rubble = "limestone_boulder"
+		_add_to_plan(plan, rubble, satellite, Vector3(size * 0.64, size * 0.5, size * 0.8), local_rng.randf() * TAU)
+	for index in range(2):
+		var p := origin + Vector2(local_rng.randf_range(3, 45), local_rng.randf_range(3, 45))
+		var size := local_rng.randf_range(0.65, 1.1)
+		_add_to_plan(plan, "rock", p, Vector3(size, size * 0.65, size), local_rng.randf() * TAU)
+	# Separate colonies and bare sediment corridors instead of a uniform carpet.
+	for cluster in range(3):
+		var center := origin + Vector2(local_rng.randf_range(8, 40), local_rng.randf_range(8, 40))
+		var center_habitat := sample_habitat(center.x, center.y)
+		var colony_count := 6 if float(center_habitat["depth"]) >= 35.0 and float(center_habitat["depth"]) < 200.0 else 4
+		if float(center_habitat["depth"]) >= 360.0:
+			colony_count = 2
+		for index in range(colony_count):
+			var angle := local_rng.randf() * TAU
+			var offset := Vector2(cos(angle), sin(angle)) * sqrt(local_rng.randf()) * 6.5
+			var p := center + offset
+			var habitat := sample_habitat(p.x, p.y)
+			var asset := _choose_colony(str(habitat["biome"]), local_rng)
+			var max_slope := 0.78 if asset == "cold_water_coral" else 0.50
+			if float(habitat["slope"]) > max_slope:
+				continue
+			var size := local_rng.randf_range(0.55, 1.15)
+			var shape := Vector3.ONE * size
+			if asset == "cold_water_coral":
+				shape *= local_rng.randf_range(1.15, 1.65)
+			elif asset == "glass_sponge":
+				shape *= local_rng.randf_range(1.2, 1.8)
+			elif asset == "sea_pen":
+				shape *= local_rng.randf_range(0.85, 1.6)
+			if asset == "kelp":
+				shape = Vector3(size * 0.75, size * local_rng.randf_range(1.1, 1.8), size * 0.75)
+				# Kelp never pierces the water surface.
+				shape.y = minf(shape.y, (float(habitat["depth"]) - 1.5) / 5.2)
+			_add_to_plan(plan, asset, p, shape, local_rng.randf() * TAU)
+		# Low-cost blades form the understory only where photosynthesis is possible.
+		for index in range(20):
+			var p := center + Vector2(local_rng.randf_range(-10, 10), local_rng.randf_range(-10, 10))
+			var habitat := sample_habitat(p.x, p.y)
+			if float(habitat["depth"]) > 35.0 or float(habitat["slope"]) > 0.32:
+				continue
+			var size := local_rng.randf_range(0.8, 1.45)
+			_add_to_plan(plan, "seagrass", p, Vector3(size, size * local_rng.randf_range(0.85, 1.3), size), local_rng.randf() * TAU)
+	# Pebble drifts and shell hash remain visible across all depth bands, including
+	# map edges. Drift noise leaves rippled sand exposed between the patches.
+	for index in range(36):
+		var p := origin + Vector2(local_rng.randf_range(1.0, 47.0), local_rng.randf_range(1.0, 47.0))
+		var drift := _patch_noise.get_noise_2d(p.x * 2.1, p.y * 2.1)
+		if drift < -0.22 and index > 23:
+			continue
+		var size := local_rng.randf_range(0.45, 1.8)
+		var asset := "shell" if index % 5 == 0 else "pebble"
+		_add_to_plan(plan, asset, p, Vector3(size * local_rng.randf_range(0.8, 1.8), size * 0.7, size), local_rng.randf() * TAU)
+	return plan
+
+func _choose_colony(biome: String, local_rng: RandomNumberGenerator) -> String:
+	var options: Array
+	match biome:
+		"sunlit_reef":
+			options = ["brain_coral", "staghorn_coral", "table_coral", "barrel_sponge", "coral", "starfish_urchin"]
+		"kelp_forest":
+			options = ["kelp", "kelp", "kelp", "barrel_sponge", "starfish_urchin"]
+		"shelf_garden":
+			options = ["sea_fan", "barrel_sponge", "sea_fan", "sea_lily", "starfish_urchin"]
+		"twilight_slope":
+			options = ["cold_water_coral", "cold_water_coral", "sea_fan", "glass_sponge", "sea_lily"]
+		"bathyal_basin":
+			options = ["glass_sponge", "glass_sponge", "sea_pen", "sea_lily", "silt_boulder"]
+		"hadal_trench":
+			options = ["sea_cucumber", "sea_pen", "silt_boulder", "silt_boulder", "sea_cucumber"]
+		"vent_field":
+			options = ["tubeworms", "tubeworms", "basalt_boulder", "barrel_sponge", "basalt_boulder"]
+		_:
+			options = ["glass_sponge", "sea_pen", "silt_boulder", "sea_lily"]
+	return str(options[local_rng.randi_range(0, options.size() - 1)])
+
+func _add_to_plan(plan: Array[Dictionary], asset: String, xz: Vector2, size: Vector3, yaw: float) -> void:
+	if plan.size() >= MAX_INSTANCES_PER_CHUNK or absf(xz.x) > WORLD_HALF_EXTENT or absf(xz.y) > WORLD_HALF_EXTENT:
+		return
+	var clearance := maxf(size.x, size.z) * 1.15 if asset.ends_with("_boulder") or asset == "vent_chimney" else 0.0
+	if _is_reserved(xz.x, xz.y, clearance):
+		return
+	var habitat := sample_habitat(xz.x, xz.y)
+	plan.append({
+		"asset": asset, "position": Vector3(xz.x, sample_floor_height(xz.x, xz.y), xz.y),
+		"scale": size, "yaw": yaw, "normal": _floor_normal(xz.x, xz.y), "biome": str(habitat["biome"]), "depth_zone": str(habitat["depth_zone"])
+	})
+
+func _build_chunk(cell: Vector2i) -> void:
+	if _chunks.has(cell):
+		return
+	var plan := build_chunk_plan(cell)
+	var chunk := Node3D.new()
+	chunk.name = "Benthos_%d_%d" % [cell.x, cell.y]
+	chunk.position = Vector3(float(cell.x) * CHUNK_SIZE, 0, float(cell.y) * CHUNK_SIZE)
+	add_child(chunk)
+	_chunks[cell] = chunk
+	chunk.set_meta("instance_count", plan.size())
+	var by_asset: Dictionary = {}
+	var biomes: Dictionary = {}
+	var zones: Dictionary = {}
+	for entry in plan:
+		var asset: String = entry["asset"]
+		if not by_asset.has(asset):
+			by_asset[asset] = []
+		by_asset[asset].append(entry)
+		biomes[entry["biome"]] = int(biomes.get(entry["biome"], 0)) + 1
+		zones[entry["depth_zone"]] = int(zones.get(entry["depth_zone"], 0)) + 1
+	chunk.set_meta("biomes", biomes)
+	chunk.set_meta("depth_zones", zones)
+	for asset: String in by_asset:
+		_load_asset(asset)
+		var records: Array = by_asset[asset]
+		for part: Dictionary in _asset_parts.get(asset, []):
+			var batch := MultiMeshInstance3D.new()
+			batch.name = asset
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = part["mesh"]
+			mm.instance_count = records.size()
+			var bounds: AABB = _asset_bounds[asset]
+			for index in range(records.size()):
+				var record: Dictionary = records[index]
+				var normal: Vector3 = record["normal"]
+				var alignment := 0.85 if asset in ["rock", "pebble", "shell", "seagrass"] or asset.ends_with("_boulder") else 0.35
+				if asset in ["escarpment_boulder", "trench_spire_boulder", "vent_chimney"]:
+					alignment = 0.18
+				elif asset == "cold_water_coral":
+					alignment = 0.58
+				var up := Vector3.UP.slerp(normal, alignment).normalized()
+				var yaw: float = record["yaw"]
+				var right := up.cross(Vector3(sin(yaw), 0, cos(yaw))).normalized()
+				var forward := right.cross(up).normalized()
+				var size: Vector3 = record["scale"]
+				var basis := Basis(right * size.x, up * size.y, forward * size.z)
+				var position: Vector3 = record["position"] - chunk.position
+				# The exported meshes have different origins; place their actual
+				# lower bound into the ground, rather than their scene origin.
+				position -= up * bounds.position.y * size.y
+				position -= up * (0.16 if asset == "rock" or asset.ends_with("_boulder") else 0.025)
+				if _rock_support_points.has(asset):
+					# A near-vertical pillar on sloping ground needs its whole base
+					# buried, not just its center. Test the actual lowest vertex ring
+					# after rotation/scaling so the downhill edge cannot float.
+					var exposed_base := 0.0
+					for support: Vector3 in _rock_support_points[asset]:
+						var world_support := basis * support + position + chunk.position
+						exposed_base = maxf(exposed_base, world_support.y - sample_floor_height(world_support.x, world_support.z))
+					if exposed_base > 0.0:
+						position.y -= exposed_base + 0.06
+				mm.set_instance_transform(index, Transform3D(basis, position) * part["transform"])
+			batch.multimesh = mm
+			batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			batch.visibility_range_end = 130.0 if asset == "rock" or asset.ends_with("_boulder") or asset == "vent_chimney" else (64.0 if asset in ["seagrass", "shell", "pebble"] else 88.0)
+			batch.visibility_range_end_margin = 6.0
+			chunk.add_child(batch)
+	_build_ambient_shoal(chunk, cell)
+
+func _load_asset(asset: String) -> void:
+	if _asset_parts.has(asset):
+		return
+	if asset in ["pebble", "shell", "seagrass", "cold_water_coral", "glass_sponge", "sea_pen", "sea_cucumber", "vent_chimney"] or asset.ends_with("_boulder"):
+		_create_groundcover_asset(asset)
+		return
+	var scene: PackedScene = load("res://assets/models/" + asset + ".glb")
+	if scene == null:
+		_asset_parts[asset] = []
+		return
+	var instance: Node3D = scene.instantiate()
+	var parts: Array[Dictionary] = []
+	var bounds := AABB()
+	var has_bounds := false
+	var meshes := instance.find_children("*", "MeshInstance3D", true, false)
+	if instance is MeshInstance3D:
+		meshes.append(instance)
+	for child: MeshInstance3D in meshes:
+		if child.mesh == null:
+			continue
+		var local_transform := child.transform
+		var parent := child.get_parent()
+		while parent != null and parent != instance.get_parent():
+			if parent is Node3D:
+				local_transform = parent.transform * local_transform
+			parent = parent.get_parent()
+		var mesh: Mesh = child.mesh.duplicate()
+		for surface in range(mesh.get_surface_count()):
+			var source := child.get_active_material(surface)
+			mesh.surface_set_material(surface, _natural_material(source, asset))
+		parts.append({"mesh": mesh, "transform": local_transform})
+		var part_bounds: AABB = local_transform * mesh.get_aabb()
+		bounds = bounds.merge(part_bounds) if has_bounds else part_bounds
+		has_bounds = true
+	_asset_parts[asset] = parts
+	_asset_bounds[asset] = bounds
+	_cache_rock_support_points(asset)
+	instance.free()
+
+func _cache_rock_support_points(asset: String) -> void:
+	if asset != "rock" and asset != "vent_chimney" and not asset.ends_with("_boulder"):
+		return
+	var bounds: AABB = _asset_bounds[asset]
+	var bottom_band := bounds.position.y + maxf(0.015, bounds.size.y * 0.005)
+	var unique: Dictionary = {}
+	for part: Dictionary in _asset_parts[asset]:
+		var mesh: Mesh = part["mesh"]
+		var local_transform: Transform3D = part["transform"]
+		for surface in range(mesh.get_surface_count()):
+			var arrays := mesh.surface_get_arrays(surface)
+			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			for vertex in vertices:
+				var support := local_transform * vertex
+				if support.y <= bottom_band:
+					unique[support] = true
+	_rock_support_points[asset] = unique.keys()
+
+func _natural_material(source: Material, asset: String) -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	material.shader = PLANT_SHADER
+	material.set_shader_parameter("sway_strength", 0.22 if asset in ["kelp", "sea_fan", "sea_lily", "seagrass", "sea_pen"] else 0.0)
+	material.set_shader_parameter("sway_frequency", 0.72)
+	material.set_shader_parameter("emission_energy", 0.0)
+	if source is BaseMaterial3D:
+		var base: BaseMaterial3D = source
+		material.set_shader_parameter("albedo", base.albedo_color)
+		material.set_shader_parameter("roughness", maxf(0.72, base.roughness))
+		material.set_shader_parameter("metallic", 0.0)
+		material.set_shader_parameter("albedo_texture", base.albedo_texture)
+		material.set_shader_parameter("normal_texture", base.normal_texture)
+		material.set_shader_parameter("normal_scale", base.normal_scale)
+		material.set_shader_parameter("orm_texture", base.roughness_texture)
+		material.set_shader_parameter("uv_scale", base.uv1_scale)
+		material.set_shader_parameter("uv_offset", base.uv1_offset)
+		if _ocean.has_method("configure_natural_palette"):
+			_ocean.call("configure_natural_palette", material, asset)
+	return material
+
+func _create_groundcover_asset(asset: String) -> void:
+	var mesh: Mesh
+	var color := Color(0.34, 0.33, 0.29)
+	if asset == "seagrass":
+		var surface := SurfaceTool.new()
+		surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+		# Each instance is a small meadow, not a barely visible tuft of needles.
+		# Only three segments per blade keeps this below 250 triangles per patch.
+		for blade in range(40):
+			var angle := float(blade) * 2.39996
+			var spread := sqrt((float(blade) + 0.5) / 40.0) * 1.35
+			var offset := Vector3(cos(angle) * spread, 0, sin(angle) * spread)
+			var sideways := Vector3(cos(angle), 0, sin(angle)) * 0.045
+			var height := 0.58 + float(blade % 5) * 0.12
+			for segment in range(3):
+				var t0 := float(segment) / 3.0
+				var t1 := float(segment + 1) / 3.0
+				var a := offset + Vector3(0.12 * t0 * t0, height * t0, 0.06 * t0 * t0)
+				var b := offset + Vector3(0.12 * t1 * t1, height * t1, 0.06 * t1 * t1)
+				var points := [a - sideways * (1.0 - t0 * 0.7), a + sideways * (1.0 - t0 * 0.7), b - sideways * (1.0 - t1 * 0.7), b + sideways * (1.0 - t1 * 0.7)]
+				for index in [0, 1, 2, 1, 3, 2]:
+					surface.add_vertex(points[index])
+		surface.generate_normals()
+		mesh = surface.commit()
+		color = Color(0.30, 0.34, 0.16)
+	elif asset == "cold_water_coral":
+		mesh = _create_cold_water_coral_mesh()
+		color = Color(0.65, 0.59, 0.48)
+	elif asset == "glass_sponge":
+		mesh = _create_glass_sponge_mesh()
+		color = Color(0.58, 0.60, 0.54)
+	elif asset == "sea_pen":
+		mesh = _create_sea_pen_mesh()
+		color = Color(0.54, 0.46, 0.36)
+	elif asset == "sea_cucumber":
+		mesh = _create_ellipsoid_mesh(Vector3(0.18, 0.12, 0.75))
+		color = Color(0.28, 0.22, 0.17)
+	elif asset == "vent_chimney":
+		var surface := SurfaceTool.new()
+		surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+		_append_tube(surface, Vector3.ZERO, Vector3(0.12, 4.0, 0.04), 0.72, 0.45, 8)
+		_append_tube(surface, Vector3(0.48, 0, 0.15), Vector3(0.66, 2.7, 0.16), 0.34, 0.22, 7)
+		surface.generate_normals()
+		mesh = surface.commit()
+	elif asset.ends_with("_boulder"):
+		mesh = _create_boulder_mesh()
+		match asset:
+			"limestone_boulder": color = Color(0.57, 0.55, 0.46)
+			"silt_boulder": color = Color(0.34, 0.35, 0.32)
+			_: color = Color(0.20, 0.21, 0.20)
+	else:
+		var stone := SphereMesh.new()
+		stone.radial_segments = 8
+		stone.rings = 3
+		stone.radius = 0.24 if asset == "pebble" else 0.17
+		stone.height = 0.26 if asset == "pebble" else 0.07
+		mesh = stone
+		if asset == "shell":
+			color = Color(0.59, 0.57, 0.46)
+	var material: Material
+	if asset.ends_with("_boulder") or asset == "vent_chimney":
+		# Reuse world-space sediment, strata and bump detail so reef boulders
+		# weather into the same geology as the seabed rather than smooth plaster.
+		var seabed: MeshInstance3D = _ocean.get_node("Seabed")
+		material = seabed.material_override
+	else:
+		var cover_material := _natural_material(null, asset)
+		cover_material.set_shader_parameter("albedo", color)
+		cover_material.set_shader_parameter("roughness", 0.94)
+		material = cover_material
+	if mesh is ArrayMesh:
+		mesh.surface_set_material(0, material)
+	elif mesh is PrimitiveMesh:
+		mesh.material = material
+	_asset_parts[asset] = [{"mesh": mesh, "transform": Transform3D.IDENTITY}]
+	_asset_bounds[asset] = mesh.get_aabb()
+	_cache_rock_support_points(asset)
+
+func _append_tube(surface: SurfaceTool, start: Vector3, end: Vector3, bottom_radius: float, top_radius: float, sides: int = 6) -> void:
+	var direction := (end - start).normalized()
+	var tangent := direction.cross(Vector3.FORWARD if absf(direction.z) < 0.85 else Vector3.UP).normalized()
+	var bitangent := tangent.cross(direction).normalized()
+	var tube := CylinderMesh.new()
+	tube.height = start.distance_to(end)
+	tube.bottom_radius = bottom_radius
+	tube.top_radius = top_radius
+	tube.radial_segments = sides
+	tube.rings = 1
+	tube.cap_top = false
+	tube.cap_bottom = false
+	var arrays := tube.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var basis := Basis(tangent, direction, bitangent)
+	var midpoint := (start + end) * 0.5
+	for index in indices:
+		surface.add_vertex(basis * vertices[index] + midpoint)
+
+func _create_cold_water_coral_mesh() -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for stem in range(3):
+		var angle := float(stem) * 2.4
+		var sideways := Vector3(cos(angle), 0, sin(angle))
+		var base := sideways * 0.16
+		var tip := base + Vector3(0.08 * sin(angle), 1.35 + float(stem) * 0.18, 0)
+		_append_tube(surface, base, tip, 0.038, 0.012)
+		for level in range(4):
+			var anchor := base.lerp(tip, 0.30 + float(level) * 0.17)
+			for side: float in [-1.0, 1.0]:
+				var endpoint := anchor + sideways * side * (0.50 - float(level) * 0.07) + Vector3.UP * 0.22
+				_append_tube(surface, anchor, endpoint, 0.023, 0.009)
+				for twig in range(2):
+					var twig_start := anchor.lerp(endpoint, 0.48 + float(twig) * 0.32)
+					var twig_end := twig_start + sideways * side * 0.16 + Vector3.UP * (0.18 + float(twig) * 0.06)
+					_append_tube(surface, twig_start, twig_end, 0.012, 0.004, 5)
+	surface.generate_normals()
+	return surface.commit()
+
+func _create_glass_sponge_mesh() -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for index in range(5):
+		var angle := float(index) * 2.39996
+		var base := Vector3(cos(angle) * 0.38, 0, sin(angle) * 0.38)
+		var height := 1.2 + float(index % 3) * 0.32
+		_append_tube(surface, base, base + Vector3(0.10 * cos(angle), height, 0.10 * sin(angle)), 0.095, 0.21, 8)
+	surface.generate_normals()
+	return surface.commit()
+
+func _create_sea_pen_mesh() -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	_append_tube(surface, Vector3.ZERO, Vector3(0.08, 1.85, 0), 0.035, 0.012)
+	for index in range(9):
+		var height := 0.42 + float(index) * 0.155
+		var width := 0.44 * (1.0 - pow((height - 0.9) / 1.25, 2.0))
+		for side: float in [-1.0, 1.0]:
+			_append_tube(surface, Vector3(0.04, height, 0), Vector3(side * width, height + 0.16, 0.035 * sin(float(index))), 0.016, 0.008, 5)
+	surface.generate_normals()
+	return surface.commit()
+
+func _create_ellipsoid_mesh(shape: Vector3) -> ArrayMesh:
+	var sphere := SphereMesh.new()
+	sphere.radius = 1.0
+	sphere.height = 2.0
+	sphere.radial_segments = 10
+	sphere.rings = 5
+	var arrays := sphere.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for index in indices:
+		var v := vertices[index]
+		v *= 1.0 + sin(v.x * 9.0 + v.z * 7.0) * 0.045
+		surface.add_vertex(v * shape)
+	surface.generate_normals()
+	return surface.commit()
+
+func _create_boulder_mesh() -> ArrayMesh:
+	var sphere := SphereMesh.new()
+	sphere.radius = 1.0
+	sphere.height = 2.0
+	sphere.radial_segments = 12
+	sphere.rings = 6
+	var arrays := sphere.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for index in indices:
+		var v := vertices[index]
+		# Smooth coordinate noise is continuous across the sphere's UV seam.
+		var n := sin(v.x * 4.7 + v.z * 3.1) * 0.095 + cos(v.y * 5.3 - v.x * 2.8) * 0.075
+		v *= 1.0 + n
+		v.y = maxf(-0.70, v.y * 0.90)
+		surface.set_uv(uvs[index])
+		surface.add_vertex(v)
+	surface.generate_normals()
+	return surface.commit()
+
+func _build_ambient_shoal(chunk: Node3D, cell: Vector2i) -> void:
+	var old: Node3D = chunk.get_node_or_null("AmbientWaterColumn")
+	if old != null:
+		chunk.remove_child(old)
+		old.queue_free()
+	var column := Node3D.new()
+	column.name = "AmbientWaterColumn"
+	chunk.add_child(column)
+	var community := sample_ambient_community(cell)
+	var by_species: Dictionary = {}
+	var species_counts: Dictionary = {}
+	for creature in community:
+		var species: String = creature["species"]
+		if not by_species.has(species):
+			by_species[species] = []
+		by_species[species].append(creature)
+		species_counts[species] = int(species_counts.get(species, 0)) + 1
+	for species: String in by_species:
+		if not _ambient_creature_meshes.has(species):
+			_ambient_creature_meshes[species] = _create_ambient_creature_mesh(species)
+		var records: Array = by_species[species]
+		var batch := MultiMeshInstance3D.new()
+		batch.name = "Ambient_" + species
+		batch.set_meta("species", species)
+		batch.set_meta("depth_zone", str(records[0]["depth_zone"]))
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		mm.mesh = _ambient_creature_meshes[species]
+		mm.instance_count = records.size()
+		var bounds := AABB()
+		for index in range(records.size()):
+			var record: Dictionary = records[index]
+			var size: float = record["size"]
+			var at: Vector3 = record["position"] - chunk.position
+			var basis := Basis(Vector3.UP, float(record["yaw"])).scaled(Vector3.ONE * size)
+			mm.set_instance_transform(index, Transform3D(basis, at))
+			mm.set_instance_custom_data(index, Color(float(record["phase"]), 0.43, float(index) * 0.17, 1.0))
+			var envelope := AABB(at - Vector3(8, 5, 8), Vector3(16, 10, 16))
+			bounds = bounds.merge(envelope) if index > 0 else envelope
+		mm.custom_aabb = bounds
+		batch.multimesh = mm
+		batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		batch.visibility_range_end = 100.0
+		column.add_child(batch)
+	chunk.set_meta("ambient_fish_count", community.size())
+	chunk.set_meta("ambient_species", species_counts)
+	chunk.set_meta("ambient_depth_band", _observer_depth_band)
+
+# Pelagic life follows the water layer the player actually visits. Seabed
+# species stay attached to their habitat while these schools occupy the whole
+# 600m water column, with a small fixed budget and deterministic depth bands.
+func sample_ambient_community(cell: Vector2i, observer_depth: float = -1.0) -> Array[Dictionary]:
+	var community: Array[Dictionary] = []
+	var observed_depth := maxf(-_observer.y, 0.0) if observer_depth < 0.0 else maxf(observer_depth, 0.0)
+	var band := floori(observed_depth / 25.0)
+	var fish_rng := RandomNumberGenerator.new()
+	fish_rng.seed = WORLD_SEED + 97531 + cell.x * 16127 + cell.y * 31337 + band * 17011
+	var origin := Vector2(cell) * CHUNK_SIZE
+	var center := origin + Vector2(fish_rng.randf_range(16, 32), fish_rng.randf_range(16, 32))
+	var highest_floor := sample_floor_height(center.x, center.y)
+	for index in range(8):
+		var angle := float(index) * TAU / 8.0
+		highest_floor = maxf(highest_floor, sample_floor_height(center.x + cos(angle) * 7.5, center.y + sin(angle) * 7.5))
+	var available_depth := -highest_floor
+	if available_depth <= 6.0:
+		return community
+	var water_depth := clampf(observed_depth, 2.2, available_depth - 4.0)
+	if absf(water_depth - observed_depth) > 65.0:
+		return community
+	var zone: String = OceanDepths.zone_id(water_depth)
+	var species_list: Array[String]
+	match zone:
+		"sunlit_reef":
+			species_list = ["silverside", "silverside", "silverside", "silverside", "silverside", "silverside", "silverside", "silverside"]
+		"shelf_garden":
+			species_list = ["silverside", "silverside", "silverside", "silverside", "silverside", "silverside", "jellyfish", "jellyfish"]
+		"twilight_slope":
+			species_list = ["lanternfish", "lanternfish", "lanternfish", "lanternfish", "squid", "squid", "jellyfish", "jellyfish"]
+		"bathyal_basin":
+			species_list = ["lanternfish", "lanternfish", "squid", "squid", "squid", "jellyfish", "jellyfish"]
+		_:
+			species_list = ["lanternfish", "squid", "squid", "abyss_jelly", "abyss_jelly", "abyss_jelly"]
+	var heading := fish_rng.randf() * TAU
+	var phase := fish_rng.randf()
+	for index in range(mini(MAX_FISH_PER_CHUNK, species_list.size())):
+		var species := species_list[index]
+		var offset := Vector2(fish_rng.randf_range(-3.5, 3.5), fish_rng.randf_range(-3.5, 3.5))
+		var xz := center + offset
+		if absf(xz.x) > WORLD_HALF_EXTENT - 6.0 or absf(xz.y) > WORLD_HALF_EXTENT - 6.0:
+			continue
+		var size := fish_rng.randf_range(0.65, 1.05)
+		if species == "squid":
+			size = fish_rng.randf_range(1.0, 1.45) if water_depth < 200.0 else fish_rng.randf_range(1.4, 2.0)
+		elif species == "jellyfish":
+			size = fish_rng.randf_range(0.7, 1.3)
+		elif species == "abyss_jelly":
+			size = fish_rng.randf_range(1.2, 1.75)
+		var position := Vector3(xz.x, -water_depth, xz.y)
+		community.append({"species": species, "position": position, "size": size,
+			"yaw": heading, "phase": phase + float(index) * 0.018, "depth_zone": zone})
+	return community
+
+func _create_ambient_creature_mesh(species: String) -> ArrayMesh:
+	var mesh: ArrayMesh
+	if species in ["silverside", "lanternfish"]:
+		mesh = _create_ambient_fish_mesh(species == "lanternfish")
+	elif species == "squid":
+		mesh = _create_ambient_squid_mesh()
+	else:
+		mesh = _create_ambient_jelly_mesh(species == "abyss_jelly")
+	var material := ShaderMaterial.new()
+	material.shader = FISH_SHADER
+	var kinds := {"silverside": 0, "lanternfish": 1, "squid": 2, "jellyfish": 3, "abyss_jelly": 4}
+	material.set_shader_parameter("creature_kind", int(kinds[species]))
+	mesh.surface_set_material(0, material)
+	return mesh
+
+func _create_ambient_fish_mesh(lantern: bool = false) -> ArrayMesh:
+	var body := SphereMesh.new()
+	body.radius = 1.0
+	body.height = 2.0
+	body.radial_segments = 8
+	body.rings = 3
+	var arrays := body.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for index in indices:
+		var v := vertices[index]
+		surface.add_vertex(v * (Vector3(0.17, 0.20, 0.42) if lantern else Vector3(0.11, 0.15, 0.39)))
+	# Forked tail and dorsal fin are real geometry, rather than glowing sprites.
+	for v: Vector3 in [
+		Vector3(0, 0, -0.28), Vector3(0, 0.22, -0.63), Vector3(0, 0, -0.52),
+		Vector3(0, 0, -0.28), Vector3(0, 0, -0.52), Vector3(0, -0.22, -0.63),
+		Vector3(0, 0.11, 0.16), Vector3(0, 0.25, -0.10), Vector3(0, 0.11, -0.23)
+	]:
+		surface.add_vertex(v)
+	surface.generate_normals()
+	return surface.commit()
+
+func _create_ambient_squid_mesh() -> ArrayMesh:
+	var mantle := _create_ellipsoid_mesh(Vector3(0.20, 0.22, 0.62))
+	var arrays := mantle.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for vertex in vertices:
+		surface.add_vertex(vertex)
+	for side: float in [-1.0, 1.0]:
+		for vertex: Vector3 in [Vector3(side * 0.12, 0, 0.44), Vector3(side * 0.48, 0, 0.10), Vector3(side * 0.12, 0, -0.18)]:
+			surface.add_vertex(vertex)
+	for arm in range(8):
+		var angle := float(arm) * TAU / 8.0
+		var root := Vector3(cos(angle) * 0.10, sin(angle) * 0.10, -0.48)
+		var middle := root + Vector3(cos(angle) * 0.10, sin(angle) * 0.10, -0.43)
+		var tip := middle + Vector3(cos(angle) * 0.07, sin(angle) * 0.07, -0.34 - float(arm % 3) * 0.12)
+		_append_tube(surface, root, middle, 0.024, 0.015, 5)
+		_append_tube(surface, middle, tip, 0.015, 0.004, 5)
+	surface.generate_normals()
+	return surface.commit()
+
+func _create_ambient_jelly_mesh(abyss: bool = false) -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var radius := 0.58 if abyss else 0.45
+	for ring in range(5):
+		var phi0 := float(ring) * PI * 0.53 / 5.0
+		var phi1 := float(ring + 1) * PI * 0.53 / 5.0
+		for segment in range(12):
+			var a0 := float(segment) * TAU / 12.0
+			var a1 := float(segment + 1) * TAU / 12.0
+			var points := [Vector3(cos(a0) * sin(phi0) * radius, cos(phi0) * radius * 0.7, sin(a0) * sin(phi0) * radius),
+				Vector3(cos(a1) * sin(phi0) * radius, cos(phi0) * radius * 0.7, sin(a1) * sin(phi0) * radius),
+				Vector3(cos(a0) * sin(phi1) * radius, cos(phi1) * radius * 0.7, sin(a0) * sin(phi1) * radius),
+				Vector3(cos(a1) * sin(phi1) * radius, cos(phi1) * radius * 0.7, sin(a1) * sin(phi1) * radius)]
+			for index in [0, 1, 2, 1, 3, 2]:
+				surface.add_vertex(points[index])
+	for arm in range(6):
+		var angle := float(arm) * TAU / 6.0
+		var start := Vector3(cos(angle) * radius * 0.65, -0.04, sin(angle) * radius * 0.65)
+		var middle := start + Vector3(0.08 * sin(angle), -0.55, 0.08 * cos(angle))
+		var tip := middle + Vector3(0.12 * sin(angle), -0.78 if abyss else -0.42, 0.12 * cos(angle))
+		_append_tube(surface, start, middle, 0.020, 0.013, 5)
+		_append_tube(surface, middle, tip, 0.013, 0.004, 5)
+	surface.generate_normals()
+	return surface.commit()
+
+func get_ecology_snapshot() -> Dictionary:
+	var count := 0
+	var fish_count := 0
+	var biomes: Dictionary = {}
+	var zones: Dictionary = {}
+	var ambient_species: Dictionary = {}
+	for chunk: Node3D in _chunks.values():
+		count += int(chunk.get_meta("instance_count", 0))
+		fish_count += int(chunk.get_meta("ambient_fish_count", 0))
+		var species: Dictionary = chunk.get_meta("ambient_species", {})
+		for key: String in species:
+			ambient_species[key] = int(ambient_species.get(key, 0)) + int(species[key])
+		var chunk_zones: Dictionary = chunk.get_meta("depth_zones", {})
+		for key: String in chunk_zones:
+			zones[key] = int(zones.get(key, 0)) + int(chunk_zones[key])
+		var chunk_biomes: Dictionary = chunk.get_meta("biomes", {})
+		for key: String in chunk_biomes:
+			biomes[key] = int(biomes.get(key, 0)) + int(chunk_biomes[key])
+	return {"active_chunks": _chunks.size(), "pending_chunks": _pending.size(), "instance_count": count,
+		"ambient_fish_count": fish_count, "max_ambient_fish": MAX_CHUNKS * MAX_FISH_PER_CHUNK,
+		"ambient_species": ambient_species, "observer_depth_band": _observer_depth_band, "observer_depth_zone": _observer_water_zone,
+		"pending_ambient_chunks": _pending_ambient.size(), "depth_zones": zones,
+		"max_chunks": MAX_CHUNKS, "max_instances_per_chunk": MAX_INSTANCES_PER_CHUNK,
+		"chunk_size": CHUNK_SIZE, "observer": _observer, "biomes": biomes}

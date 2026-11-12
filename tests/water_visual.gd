@@ -41,12 +41,13 @@ func _run() -> void:
 		["deep", Vector3(15, -65, -130), Vector3(15, -48, -170)],
 		["sand-close", Vector3(-13, ocean.floor_height(-13, 12) + 1.4, 12), Vector3(-11, ocean.floor_height(-11, 8), 8)],
 		["reef-floor", Vector3(-10, ocean.floor_height(-10, 20) + 4.0, 20), Vector3(0, ocean.floor_height(0, 0), 0)],
+		["coral-sanctuary", Vector3(13.5, ocean.floor_height(13.5, 21.0) + 2.3, 21.0), Vector3(14.0, ocean.floor_height(14.0, 12.0) + 0.8, 12.0)],
 		["slope-floor", Vector3(26, ocean.floor_height(26, -45) + 2.4, -45), Vector3(30, ocean.floor_height(30, -55), -55)],
 		["abyss-floor", Vector3(-30, ocean.floor_height(-30, -140) + 2.0, -140), Vector3(-28, ocean.floor_height(-28, -146), -146)],
 	]:
 		camera.position = shot[1]
 		camera.look_at(shot[2])
-		lamp.visible = shot[0] in ["slope-floor", "abyss-floor"]
+		lamp.visible = shot[0] in ["coral-sanctuary", "slope-floor", "abyss-floor"]
 		ocean.set_depth(maxf(0.0, -camera.position.y))
 		await process_frame
 		await RenderingServer.frame_post_draw

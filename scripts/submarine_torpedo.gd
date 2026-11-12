@@ -40,9 +40,13 @@ func _build_mesh() -> void:
 	body.mesh = cyl
 	body.rotation.x = PI * 0.5
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.12, 0.18, 0.24) if not has_shockwave else Color(0.16, 0.09, 0.05)
-	mat.metallic = 0.8
-	mat.roughness = 0.3
+	mat.albedo_color = Color(0.16, 0.56, 0.92) if not has_shockwave else Color(0.95, 0.42, 0.14)
+	mat.metallic = 0.35
+	mat.roughness = 0.22
+	mat.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
+	mat.specular_mode = BaseMaterial3D.SPECULAR_TOON
+	mat.rim_enabled = true
+	mat.rim = 0.52
 	body.material_override = mat
 	add_child(body)
 

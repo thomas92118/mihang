@@ -59,6 +59,12 @@ static func get_stream(sound_name: String) -> AudioStreamWAV:
 			stream = _generate_shield_block()
 		"pet_recall":
 			stream = _generate_pet_recall()
+		"drone_salvage":
+			stream = _generate_drone_salvage()
+		"sushi_serve":
+			stream = _generate_sushi_serve()
+		"clam_bubble":
+			stream = _generate_clam_bubble()
 	if stream:
 		_cache[sound_name] = stream
 	return stream
@@ -405,6 +411,57 @@ static func _generate_tame_success() -> AudioStreamWAV:
 		p1 += f1 * TAU / float(mix_rate)
 		p2 += f2 * TAU / float(mix_rate)
 		samples[i] = (sin(p1) * 0.5 + sin(p2) * 0.35) * env
+	return _create_wav(samples, mix_rate)
+
+static func _generate_drone_salvage() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.52
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var ratio := t / duration
+		var env := sin(ratio * PI) * 0.82
+		var freq: float = lerpf(320.0, 1240.0, ratio * ratio)
+		phase += freq * TAU / float(mix_rate)
+		var harmonic := sin(phase * 1.5) * 0.32
+		samples[i] = (sin(phase) * 0.65 + harmonic) * env
+	return _create_wav(samples, mix_rate)
+
+static func _generate_sushi_serve() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.38
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var p1 := 0.0
+	var p2 := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := exp(-t * 7.5)
+		var f1: float = 1046.5 if t < 0.14 else 1567.98
+		var f2: float = 1318.5 if t < 0.14 else 2093.0
+		p1 += f1 * TAU / float(mix_rate)
+		p2 += f2 * TAU / float(mix_rate)
+		samples[i] = (sin(p1) * 0.55 + sin(p2) * 0.35) * env
+	return _create_wav(samples, mix_rate)
+
+static func _generate_clam_bubble() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.44
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	for i in range(total_samples):
+		var t := float(i) / float(mix_rate)
+		var env := sin((t / duration) * PI) * 0.78
+		var bubble_mod := sin(t * 42.0) * 140.0
+		var freq: float = lerpf(420.0, 860.0, t / duration) + bubble_mod
+		phase += freq * TAU / float(mix_rate)
+		samples[i] = sin(phase) * env
 	return _create_wav(samples, mix_rate)
 
 static func _generate_mount_ride() -> AudioStreamWAV:

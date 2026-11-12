@@ -118,14 +118,48 @@ func _run() -> void:
 			# Follower is behind the player (dot product with forward vector <= 0.1)
 			assert(to_f.dot(fwd_heading) <= 0.5, "Followers must stay behind the player")
 
-	# 5. Verify 10-meter Proximity Living Creature Auto-Detection
+	# 5. Verify ARK-style Neutral Defense (生物未先攻击则坐骑不出击；生物先攻击则坐骑立即反击)
 	var nearby_wild: Node3D = game.ocean.predators[15]
 	nearby_wild.position = m_node.position + fwd_heading * 8.0 # 8 meters in front
 	nearby_wild.set_meta("health", 5000.0)
+	nearby_wild.set_meta("has_attacked_player", false)
 	game.companion_attack_target = null
 	game._tick_companion_followers(0.1)
-	assert(game.companion_attack_target == nearby_wild, "Living creature within 10m must trigger auto-attack")
+	assert(game.companion_attack_target == null, "Unprovoked creature that has not attacked first must NOT trigger mount attack")
+	# Now simulate the wild creature attacking first -> mounts must immediately counter-attack
+	game.register_creature_attack(nearby_wild)
+	assert(game.companion_attack_target == nearby_wild, "Creature that attacks first must immediately trigger mount counter-attack")
 	game.companion_attack_target = null
+	nearby_wild.set_meta("has_attacked_player", false)
+
+	# 5.5 Verify O-Key Store & Mount Support Board (按一下O键收入里面 -> 再按一下O键弹出应援板 -> 单点召唤 & 全选出战)
+	assert(game._get_deployed_beast_count() == 20, "All 20 tamed beasts should start deployed")
+	game._handle_mount_board_key() # First O press: store all mounts inside
+	assert(game._get_deployed_beast_count() == 0, "First O press must store all mounts inside")
+	assert(game.active_mount_idx == -1, "Storing mounts must dismount active mount")
+	assert(not game.tamed_beasts[0]["node"].visible, "Stored mount 3D node must be hidden")
+	assert(game.screen == "play", "First O press stays in play screen after storing")
+
+	game._handle_mount_board_key() # Second O press: open Mount Support Board page
+	assert(game.screen == "mount_board", "Second O press must pop up the mount_board Support Board screen")
+	game._process(0.0)
+	assert(not game.hud.mount_board_slot_buttons[0].disabled, "Tamed creatures must be clickable on the Support Board")
+
+	# Click one creature on the Support Board -> it comes out
+	game._on_mount_board_select(2)
+	assert(bool(game.tamed_beasts[2]["deployed"]) == true, "Clicking creature #3 on Support Board must summon it out")
+	assert(game.tamed_beasts[2]["node"].visible, "Summoned creature 3D node must become visible")
+	assert(game._get_deployed_beast_count() == 1, "Exactly 1 creature should be deployed after single click")
+
+	# Click Select All (全选出战) on the Support Board -> all 20 tamed creatures come out
+	game._on_mount_board_select_all()
+	assert(game._get_deployed_beast_count() == 20, "Select All on Support Board must summon all 20 tamed creatures")
+	for b_entry in game.tamed_beasts:
+		assert(b_entry["node"].visible, "Every tamed creature must be visible after Select All")
+
+	# Close Support Board with O key
+	game._handle_mount_board_key()
+	assert(game.screen == "play", "Pressing O while Support Board is open must return to play")
 
 	# 6. Verify Marker Gun (光标枪): 0 damage, red laser line, persistent red dot, commanded attack
 	game._dismount_beast()

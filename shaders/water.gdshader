@@ -42,6 +42,7 @@ void fragment() {
 	ROUGHNESS = mix(0.16, 0.3, 1.0 - detail_fade);
 	METALLIC = 0.0;
 	SPECULAR = 0.25;
+	float surface_opacity = 1.0;
 
 	if (FRONT_FACING) {
 		float water_depth = max(scene_depth(SCREEN_UV, INV_PROJECTION_MATRIX) + VERTEX.z, 0.0);
@@ -52,21 +53,29 @@ void fragment() {
 		if (scene_depth(refraction_uv, INV_PROJECTION_MATRIX) < -VERTEX.z) {
 			refraction_uv = SCREEN_UV;
 		}
-		vec3 transmission = exp(-vec3(0.12, 0.045, 0.025) * water_depth);
-		ALBEDO = vec3(0.015, 0.16, 0.19) * (1.0 - transmission);
-		EMISSION = textureLod(screen_texture, refraction_uv, 0.0).rgb * transmission * (1.0 - fresnel);
+		float crest_foam = smoothstep(0.24, 0.36, length(slope)) * detail_fade;
+		vec3 transmission = exp(-vec3(0.09, 0.028, 0.014) * water_depth);
+		ALBEDO = mix(vec3(0.025, 0.19, 0.23) * (1.0 - transmission), vec3(0.86, 0.91, 0.90), crest_foam * 0.34);
+		EMISSION = textureLod(screen_texture, refraction_uv, 0.0).rgb * transmission * (1.0 - fresnel) + vec3(0.69, 0.79, 0.78) * crest_foam * 0.12;
 	} else {
 		// Snell's window closes into total internal reflection at grazing angles.
 		float window = smoothstep(0.64, 0.72, facing);
 		vec3 sky_ray = refract(-to_camera, facing_normal, 1.333);
-		float sun_glow = pow(max(dot(sky_ray, sun_direction), 0.0), 96.0);
-		vec3 skylight = mix(vec3(0.3, 0.64, 0.72), vec3(0.57, 0.81, 0.87), max(sky_ray.y, 0.0));
+		float sun_glow = smoothstep(0.96, 0.992, max(dot(sky_ray, sun_direction), 0.0));
+		vec3 skylight = mix(vec3(0.29, 0.47, 0.54), vec3(0.73, 0.82, 0.81), max(sky_ray.y, 0.0));
 		vec3 transmission = exp(-vec3(0.045, 0.018, 0.009) * distance_to_camera);
 		vec3 reflection_ray = reflect(-to_camera, facing_normal);
 		// ponytail: off-screen reflections use a water-color gradient; add planar reflections for local objects.
-		vec3 reflected_water = mix(vec3(0.02, 0.11, 0.15), vec3(0.1, 0.3, 0.34), pow(1.0 - abs(reflection_ray.y), 3.0));
-		ALBEDO = vec3(0.025, 0.13, 0.16);
-		EMISSION = mix(reflected_water, skylight + vec3(1.0, 0.94, 0.76) * sun_glow * 1.8, window * (1.0 - fresnel)) * transmission;
+		vec3 reflected_water = mix(vec3(0.025, 0.10, 0.16), vec3(0.10, 0.28, 0.32), pow(1.0 - abs(reflection_ray.y), 2.5));
+		float camera_depth = max(-CAMERA_POSITION_WORLD.y, 0.0);
+		// A surface window can illuminate the shelf, but it cannot remain a
+		// luminous blue ceiling above a 600 m trench. Extinguish scattered light
+		// first, then fade the distant transparent surface into the water column.
+		float skylight_visibility = 1.0 - smoothstep(95.0, 240.0, camera_depth);
+		ALBEDO = vec3(0.035, 0.13, 0.18) * skylight_visibility;
+		EMISSION = mix(reflected_water, skylight + vec3(1.0, 0.95, 0.82) * sun_glow * 1.4,
+			window * (1.0 - fresnel)) * transmission * skylight_visibility;
+		surface_opacity = 1.0 - smoothstep(180.0, 300.0, camera_depth);
 	}
-	ALPHA = 1.0;
+	ALPHA = surface_opacity;
 }

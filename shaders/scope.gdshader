@@ -12,5 +12,6 @@ void fragment() {
 	float ticks_y = (1.0 - step(0.001, abs(mod(p.y + 0.025, 0.05) - 0.025))) * (1.0 - step(0.009, abs(p.x))) * (1.0 - step(0.29, abs(p.y)));
 	float center_dot = 1.0 - smoothstep(0.001, 0.0025, distance_to_center);
 	float reticle = clamp(horizontal + vertical + ticks_x + ticks_y + center_dot + rim, 0.0, 1.0);
-	COLOR = vec4(mix(vec3(0.002, 0.008, 0.018), vec3(0.12, 0.58, 1.0), reticle), max(mask * 0.94, reticle * 0.8));
+	vec3 reticle_col = mix(vec3(0.22, 0.92, 1.0), vec3(1.0, 0.82, 0.28), center_dot);
+	COLOR = vec4(mix(vec3(0.015, 0.045, 0.095), reticle_col, reticle), max(mask * 0.92, reticle * 0.88));
 }

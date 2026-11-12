@@ -1,6 +1,8 @@
 extends CharacterBody3D
 class_name Submarine
 
+const OceanDepths = preload("res://scripts/ocean_depths.gd")
+
 signal fired_torpedo(data: Dictionary)
 
 var sub_type: String = "scout"
@@ -31,7 +33,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	collision_layer = 1 | 4
-	collision_mask = 1 | 2
+	collision_mask = 1
 	set_meta("kind", "submarine")
 	set_meta("sub_ref", self)
 
@@ -70,8 +72,8 @@ func _build_scout() -> void:
 	add_child(col)
 
 	var mat_hull := _mat(Color(0.92, 0.95, 0.98), 0.35, 0.25)
-	var mat_accent := _mat(Color(0.08, 0.58, 0.95), 0.5, 0.2)
-	var mat_dark := _mat(Color(0.08, 0.12, 0.16), 0.75, 0.35)
+	var mat_accent := _mat(Color(0.12, 0.68, 1.0), 0.35, 0.2)
+	var mat_dark := _mat(Color(0.12, 0.20, 0.32), 0.55, 0.28)
 	var mat_glass := _mat(Color(0.18, 0.88, 1.0, 0.42), 0.1, 0.08)
 	mat_glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 
@@ -152,9 +154,9 @@ func _build_titan() -> void:
 	col.rotation.x = PI * 0.5
 	add_child(col)
 
-	var mat_armor := _mat(Color(0.12, 0.16, 0.22), 0.75, 0.35)
-	var mat_stripe := _mat(Color(0.95, 0.58, 0.12), 0.5, 0.35)
-	var mat_dark := _mat(Color(0.04, 0.06, 0.08), 0.8, 0.45)
+	var mat_armor := _mat(Color(0.18, 0.28, 0.44), 0.55, 0.28)
+	var mat_stripe := _mat(Color(1.0, 0.64, 0.14), 0.35, 0.24)
+	var mat_dark := _mat(Color(0.08, 0.14, 0.24), 0.65, 0.32)
 	var mat_glass := _mat(Color(0.15, 0.95, 0.85, 0.55), 0.1, 0.1)
 	mat_glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 
@@ -390,18 +392,33 @@ func _setup_wake_particles(at: Vector3, radius: float) -> void:
 func board(diver: Node3D) -> void:
 	is_piloted = true
 	pilot_diver = diver
+	rotation.x = 0.0
+	rotation.z = 0.0
+	if is_instance_valid(diver):
+		if diver is PhysicsBody3D:
+			add_collision_exception_with(diver)
+		diver.rotation.y = rotation.y
 
 func disembark() -> Vector3:
+	if is_instance_valid(pilot_diver) and pilot_diver is PhysicsBody3D:
+		remove_collision_exception_with(pilot_diver)
 	is_piloted = false
 	pilot_diver = null
 	current_speed = 0.0
 	velocity = Vector3.ZERO
+	rotation.x = 0.0
+	rotation.z = 0.0
 	if is_instance_valid(wake_particles):
 		wake_particles.emitting = false
 	var side_offset := 3.2 if sub_type == "scout" else 7.5
 	var b: Basis = global_basis if is_inside_tree() else basis
 	var p: Vector3 = global_position if is_inside_tree() else position
 	return p + b * Vector3(side_offset, 0.6, 0.0)
+
+func get_camera_anchor_position() -> Vector3:
+	var p: Vector3 = global_position if is_inside_tree() else position
+	var y_off: float = 2.2 if sub_type == "titan" else (0.55 if sub_type == "scout" else 0.35)
+	return p + Vector3(0.0, y_off, 0.0)
 
 func fire_weapon() -> Dictionary:
 	if attack_cooldown > 0.0:
@@ -454,51 +471,70 @@ func repair(amount: float) -> void:
 func get_hull_ratio() -> float:
 	return hull / maxf(max_hull, 1.0)
 
-# 潜水艇行动方式与人物完全一致：以摄像机3D视角为基准的即时敏捷 6-DOF 游动操作
-func pilot_direct(delta: float, input_vec: Vector2, ascend_descend: float, is_boost: bool, camera_basis: Basis) -> void:
+# 潜水艇行动方式完全参照主角 (Diver)：
+# 1. 上升/下降时整个身体像人一样保持水平整体升降（rotation.x 恒为 0，绝不翘起尾部螺旋桨/引擎）
+# 2. W/S 严格沿着潜艇当前面朝方向水平整体前进/后退（面对着哪边就往哪边行驶，绝不因俯仰视角导致引擎翘起或斜向钻底）
+func pilot_direct(delta: float, input_vec: Vector2, ascend_descend: float, is_boost: bool, _camera_basis: Basis) -> void:
 	if not is_piloted:
 		velocity = velocity.lerp(Vector3.ZERO, delta * 3.0)
+		rotation.x = 0.0
+		rotation.z = lerpf(rotation.z, 0.0, 1.0 - exp(-delta * 8.0))
 		move_and_slide()
 		return
 
-	# 1. 转向机动舵效 (A 左拐, D 右拐)：偏航 Yaw 旋转并伴随真实水动力倾侧 Roll
+	# 1. A 左拐 (Turn left), D 右拐 (Turn right) 及鼠标视角同步转向 —— 完全参照主角 (Diver._physics_process)
+	if is_instance_valid(pilot_diver):
+		rotation.y = pilot_diver.rotation.y
 	var turn_yaw: float = -input_vec.x
-	var turn_rate: float = 2.4 if sub_type == "scout" else (1.6 if sub_type == "titan" else 2.8)
-	if absf(turn_yaw) > 0.05:
-		rotation.y += turn_yaw * turn_rate * delta
+	var turn_rate: float = 2.4
+	if absf(turn_yaw) > 0.001:
+		rotate_y(turn_yaw * turn_rate * delta)
+		if is_instance_valid(pilot_diver):
+			pilot_diver.rotation.y = rotation.y
 
-	var roll_target: float = clampf(-turn_yaw * (0.26 if sub_type == "scout" else 0.15), -0.32, 0.32)
-	rotation.z = lerp_angle(rotation.z, roll_target, delta * 7.5)
+	var roll_target: float = clampf(-turn_yaw * 0.18, -0.22, 0.22)
+	rotation.z = lerpf(rotation.z, roll_target, 1.0 - exp(-delta * 8.0))
 
-	# 2. 升降压载与俯仰 (空格 上升, C 下降)
-	var pitch_target: float = clampf(-ascend_descend * 0.30, -0.38, 0.38)
-	rotation.x = lerp_angle(rotation.x, pitch_target, delta * 6.5)
+	# 2. 上升/下降时整个身体像主角一样整体升降，保持水平姿态，绝不翘起后面的螺旋桨
+	rotation.x = 0.0
 
-	# 3. 螺旋桨推进与倒车 (W 前进, S 后退)
-	var fwd_thrust: float = -input_vec.y
-	var sub_heading: Vector3 = -global_basis.z
-	var thrust_dir: Vector3 = sub_heading * (fwd_thrust if fwd_thrust >= 0.0 else fwd_thrust * 0.55)
-	thrust_dir.y += ascend_descend * 0.95
+	# 3. W/S 严格沿潜艇面朝方向 (rotation.y) 水平整体前进/后退，空格/C 垂直整体升降
+	var fwd_val: float = -input_vec.y
+	if fwd_val < 0.0:
+		fwd_val *= 0.65
+
+	var forward_dir := Vector3(-sin(rotation.y), 0.0, -cos(rotation.y))
+	var right_dir := Vector3(cos(rotation.y), 0.0, -sin(rotation.y))
+	var horiz_dir: Vector3 = (forward_dir * fwd_val + right_dir * (-turn_yaw * 0.25)).limit_length()
 
 	var max_spd: float = boost_speed if is_boost else cruise_speed
-	velocity = velocity.lerp(thrust_dir.limit_length() * max_spd, 1.0 - exp(-delta * 4.8))
+	var target_vel := Vector3(horiz_dir.x * max_spd, ascend_descend * max_spd, horiz_dir.z * max_spd)
+	velocity = velocity.lerp(target_vel, 1.0 - exp(-delta * 6.0))
 	move_and_slide()
 
 	current_speed = velocity.length()
 
-	# 3. 边界限制
-	position.x = clampf(position.x, -440.0, 440.0)
-	position.z = clampf(position.z, -470.0, 210.0)
-	position.y = clampf(position.y, -160.0, 0.5)
+	# 4. 开放海域边界限制（1800m x 1800m 无缝海域）
+	position.x = clampf(position.x, -900.0, 900.0)
+	position.z = clampf(position.z, -900.0, 900.0)
+	position.y = clampf(position.y, -OceanDepths.MAX_DIVE_DEPTH, 1.2)
 
-	# 4. 驱动螺旋桨旋转与尾流气泡喷射
-	prop_spin_speed = (current_speed / max_spd) * (42.0 if is_boost else 26.0) + 4.0
+	# 5. 驱动螺旋桨旋转与尾流气泡喷射（依据水平推进速度，纯垂直上升时不翘尾喷射）
+	var horiz_speed: float = Vector2(velocity.x, velocity.z).length()
+	prop_spin_speed = (horiz_speed / maxf(max_spd, 1.0)) * (42.0 if is_boost else 26.0) + (4.0 if horiz_speed > 0.2 else 1.5)
 	for prop in propellers:
 		if is_instance_valid(prop):
 			prop.rotate_z(delta * prop_spin_speed)
 
 	if is_instance_valid(wake_particles):
-		wake_particles.emitting = current_speed > 1.5
+		wake_particles.emitting = horiz_speed > 1.2
+
+	# 6. 即时同步驾驶员与第三人称相机锚点，消除物理帧与渲染帧差导致的屏幕抖动
+	if is_instance_valid(pilot_diver) and bool(pilot_diver.get("in_submarine_mode")):
+		pilot_diver.global_position = get_camera_anchor_position()
+		pilot_diver.velocity = velocity
+		if pilot_diver.has_method("_update_third_person_camera"):
+			pilot_diver._update_third_person_camera(delta)
 
 func pilot_physics(delta: float, move_vec: Vector3, is_boost: bool, look_rotation: Vector3) -> void:
 	# Backward compatibility wrapper
@@ -512,8 +548,13 @@ func _process(delta: float) -> void:
 func _mat(color: Color, metallic: float = 0.0, roughness: float = 0.5) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
-	m.metallic = metallic
-	m.roughness = roughness
+	m.metallic = metallic * 0.65
+	m.roughness = minf(roughness, 0.34)
+	m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
+	m.specular_mode = BaseMaterial3D.SPECULAR_TOON
+	m.rim_enabled = true
+	m.rim = 0.52
+	m.rim_tint = 0.35
 	return m
 
 func _ellipsoid(p_name: String, at: Vector3, size: Vector3, material: Material, parent: Node3D = null) -> MeshInstance3D:
