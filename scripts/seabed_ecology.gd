@@ -118,31 +118,7 @@ func _is_reserved(x: float, z: float, clearance: float = 0.0) -> bool:
 # Sample the actual rendered triangle, including the coarser outer seabed.
 # Merely sampling the analytic floor leaves small decorations floating above it.
 func sample_floor_height(x: float, z: float) -> float:
-	var step := 6.0
-	var origin := Vector2(-288.0, -384.0)
-	if z >= 144.0:
-		step = 16.0
-		origin = Vector2(-960.0, 144.0)
-	elif z < -384.0:
-		step = 16.0
-		origin = Vector2(-960.0, -960.0)
-	elif x < -288.0:
-		step = 16.0
-		origin = Vector2(-960.0, -384.0)
-	elif x >= 288.0:
-		step = 16.0
-		origin = Vector2(288.0, -384.0)
-	var x0 := floorf((x - origin.x) / step) * step + origin.x
-	var z0 := floorf((z - origin.y) / step) * step + origin.y
-	var tx := (x - x0) / step
-	var tz := (z - z0) / step
-	var a: float = _ocean.call("floor_height", x0, z0)
-	var b: float = _ocean.call("floor_height", x0 + step, z0)
-	var c: float = _ocean.call("floor_height", x0, z0 + step)
-	if tx + tz <= 1.0:
-		return a + (b - a) * tx + (c - a) * tz
-	var d: float = _ocean.call("floor_height", x0 + step, z0 + step)
-	return d + (c - d) * (1.0 - tx) + (b - d) * (1.0 - tz)
+	return float(_ocean.call("terrain_height", x, z))
 
 func _floor_normal(x: float, z: float) -> Vector3:
 	var left := sample_floor_height(x - 0.4, z)

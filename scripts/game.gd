@@ -610,7 +610,7 @@ func _physics_process(delta: float) -> void:
 			if m_node.has_method("animate"):
 				m_node.animate(delta * (1.8 if is_boost else 1.0))
 
-			var floor_y := Ocean.floor_height(m_node.position.x, m_node.position.z) + 1.2
+			var floor_y := Ocean.terrain_height(m_node.position.x, m_node.position.z) + 1.2
 			m_node.position.y = clampf(m_node.position.y, floor_y, 0.5)
 			m_node.position.x = clampf(m_node.position.x, -900.0, 900.0)
 			m_node.position.z = clampf(m_node.position.z, -900.0, 900.0)
@@ -744,7 +744,7 @@ func _process(delta: float) -> void:
 		if state.tick(delta, safe, diver.sprinting, depth):
 			state.recover()
 			var revive_pos: Vector3 = diver.position + Vector3(0, 3.5, 0)
-			var floor_y: float = Ocean.floor_height(revive_pos.x, revive_pos.z) + 1.8
+			var floor_y: float = Ocean.terrain_height(revive_pos.x, revive_pos.z) + 1.8
 			revive_pos.y = maxf(revive_pos.y, floor_y)
 			diver.position = revive_pos
 			diver.velocity = Vector3.ZERO
@@ -791,7 +791,7 @@ func _process(delta: float) -> void:
 					ocean.reset_boss_encounter()
 					state.recover()
 					var revive_pos: Vector3 = diver.position + Vector3(0, 3.5, 0)
-					var floor_y: float = Ocean.floor_height(revive_pos.x, revive_pos.z) + 1.8
+					var floor_y: float = Ocean.terrain_height(revive_pos.x, revive_pos.z) + 1.8
 					revive_pos.y = maxf(revive_pos.y, floor_y)
 					diver.position = revive_pos
 					diver.velocity = Vector3.ZERO
@@ -1252,6 +1252,9 @@ func _disembark_submarine() -> void:
 	if not is_instance_valid(active_submarine):
 		return
 	var exit_pos := active_submarine.disembark()
+	exit_pos.x = clampf(exit_pos.x, -900.0, 900.0)
+	exit_pos.z = clampf(exit_pos.z, -900.0, 900.0)
+	exit_pos.y = clampf(maxf(exit_pos.y, Ocean.terrain_height(exit_pos.x, exit_pos.z) + 1.0), -OceanDepths.MAX_DIVE_DEPTH + 1.0, 1.2)
 	diver.global_position = exit_pos
 	diver.velocity = Vector3.ZERO
 	diver.set_submarine_mode(false)

@@ -3,6 +3,7 @@ extends CharacterBody3D
 const ModelFinish = preload("res://scripts/presentation/model_finish.gd")
 
 const OceanDepths = preload("res://scripts/ocean_depths.gd")
+const Ocean = preload("res://scripts/ocean.gd")
 
 const AIM_FOV := 48.0
 const SCOPE_FOV := 11.56
@@ -1111,7 +1112,13 @@ func _physics_process(delta: float) -> void:
 	# Seamless 1800m x 1800m Open-World Ocean boundaries
 	position.x = clampf(position.x, -900.0, 900.0)
 	position.z = clampf(position.z, -900.0, 900.0)
-	position.y = clampf(position.y, -OceanDepths.MAX_DIVE_DEPTH, 1.2)
+	var min_seabed_y: float = maxf(-OceanDepths.MAX_DIVE_DEPTH, Ocean.terrain_height(position.x, position.z) + 0.65)
+	if position.y < min_seabed_y:
+		position.y = min_seabed_y
+		if velocity.y < 0.0:
+			velocity.y = 0.0
+	elif position.y > 1.2:
+		position.y = 1.2
 
 	var target_fov: float = SCOPE_FOV if scoped else (AIM_FOV if aiming else (84.0 if sprinting else 78.0))
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 9.0))

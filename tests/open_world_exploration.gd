@@ -59,6 +59,54 @@ func _run() -> void:
 		var expected_y := Ocean.floor_height(sample_xz.x, sample_xz.y)
 		assert(absf(float(hit["position"].y) - expected_y) < 6.0, "Outer seabed collision height must match floor_height at " + str(sample_xz))
 
+	# Verify watertight seam stitching across all 4 inner/outer chunk boundaries & outer seams
+	for xi in range(-600, 601, 3):
+		var sx := float(xi) + 0.5
+		assert(absf(Ocean.terrain_height(sx, 143.999) - Ocean.terrain_height(sx, 144.001)) < 0.01, "North seam must be continuous at x=" + str(sx))
+		assert(absf(Ocean.terrain_height(sx, -383.999) - Ocean.terrain_height(sx, -384.001)) < 0.01, "South seam must be continuous at x=" + str(sx))
+	for zi in range(-384, 144, 3):
+		var sz := float(zi) + 0.5
+		assert(absf(Ocean.terrain_height(-287.999, sz) - Ocean.terrain_height(-288.001, sz)) < 0.01, "West seam must be continuous at z=" + str(sz))
+		assert(absf(Ocean.terrain_height(287.999, sz) - Ocean.terrain_height(288.001, sz)) < 0.01, "East seam must be continuous at z=" + str(sz))
+
+	# Verify stitched transition triangles match physics raycast height and upward normals
+	var stitched_samples: Array[Vector2] = [
+		Vector2(-178.0, 146.0), Vector2(-174.0, 151.0), Vector2(-170.0, 146.0),
+		Vector2(-178.0, -386.0), Vector2(-174.0, -391.0), Vector2(-170.0, -386.0),
+		Vector2(-290.0, -178.0), Vector2(-295.0, -174.0), Vector2(-290.0, -170.0),
+		Vector2(290.0, -178.0), Vector2(295.0, -174.0), Vector2(290.0, -170.0)
+	]
+	for st_xz: Vector2 in stitched_samples:
+		var sq := PhysicsRayQueryParameters3D.create(
+			Vector3(st_xz.x, 5.0, st_xz.y),
+			Vector3(st_xz.x, -OceanDepths.MAX_DIVE_DEPTH, st_xz.y),
+			1
+		)
+		sq.exclude = [game.diver.get_rid()]
+		var shit := space.intersect_ray(sq)
+		assert(not shit.is_empty(), "Stitched transition band must have solid collision at " + str(st_xz))
+		assert(Vector3(shit["normal"]).y > 0.2, "Stitched triangle normal must point upward at " + str(st_xz))
+		var st_expected := Ocean.terrain_height(st_xz.x, st_xz.y)
+		assert(absf(float(shit["position"].y) - st_expected) < 0.02, "Stitched raycast height must match terrain_height at " + str(st_xz))
+
+	# Regression check: Diver must swim across the z=-384 South seam (~458m from Lifepod) without wedging or clipping
+	var seam_start := Vector3(-174.5, Ocean.terrain_height(-174.5, -383.4) + 0.7, -383.4)
+	game.diver.global_position = seam_start
+	game.diver.velocity = Vector3.ZERO
+	game.diver.rotation = Vector3(0.0, 0.45, 0.0)
+	game.diver.camera.rotation = Vector3(-0.18, 0.0, 0.0)
+	Input.action_press("forward")
+	for _step in range(30):
+		game.diver._physics_process(0.05)
+		await physics_frame
+	Input.action_release("forward")
+	assert(game.diver.global_position.z < -384.5, "Diver must smoothly cross z=-384 seam without getting wedged")
+	assert(game.diver.global_position.distance_to(seam_start) > 4.0, "Diver must maintain forward traversal across seabed seam")
+	assert(game.diver.global_position.y >= Ocean.terrain_height(game.diver.global_position.x, game.diver.global_position.z) + 0.64, "Diver must remain above triangulated seabed")
+	game.diver.velocity = Vector3.ZERO
+	game.diver.rotation = Vector3.ZERO
+	game.diver.camera.rotation = Vector3.ZERO
+
 	# 3. Verify outer landmark discovery & biome identification
 	for outer_id: String in ["sunlit_atoll", "sunken_observatory", "obsidian_caldera", "hadal_starlight_sanctum"]:
 		var lm: Dictionary = game.LANDMARKS[outer_id]

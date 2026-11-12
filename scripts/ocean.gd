@@ -36,6 +36,12 @@ const FRAGMENT_NAMES := {
 }
 
 const WORLD_HALF_EXTENT := 900.0
+const SEABED_INNER_X0 := -288
+const SEABED_INNER_X1 := 288
+const SEABED_INNER_Z0 := -384
+const SEABED_INNER_Z1 := 144
+const SEABED_INNER_STEP := 6
+const SEABED_OUTER_STEP := 12
 
 const OUTPOST_SPECS := [
 	{"id": "outpost_atoll", "name": "北境环礁科考站", "region": "北境晴空珊瑚环礁", "xz": Vector2(40, 340)},
@@ -247,22 +253,60 @@ static func floor_height(x: float, z: float) -> float:
 static func terrain_height(x: float, z: float) -> float:
 	# Contact height on the actual rendered/collidable triangle. Analytic
 	# heights alone leave objects floating above steep outer escarpments.
-	var step := 6.0
-	var origin := Vector2(-288.0, -384.0)
-	if z >= 144.0:
-		step = 16.0
-		origin = Vector2(-960.0, 144.0)
-	elif z < -384.0:
-		step = 16.0
+	var ix0 := float(SEABED_INNER_X0)
+	var ix1 := float(SEABED_INNER_X1)
+	var iz0 := float(SEABED_INNER_Z0)
+	var iz1 := float(SEABED_INNER_Z1)
+	var step := float(SEABED_INNER_STEP)
+	var half := float(SEABED_OUTER_STEP) * 0.5
+	var origin := Vector2(ix0, iz0)
+	var region := 0
+	if z >= iz1:
+		step = float(SEABED_OUTER_STEP)
+		origin = Vector2(-960.0, iz1)
+		region = 1
+	elif z < iz0:
+		step = float(SEABED_OUTER_STEP)
 		origin = Vector2(-960.0, -960.0)
-	elif x < -288.0:
-		step = 16.0
-		origin = Vector2(-960.0, -384.0)
-	elif x >= 288.0:
-		step = 16.0
-		origin = Vector2(288.0, -384.0)
-	var x0 := floorf((x - origin.x) / step) * step + origin.x
-	var z0 := floorf((z - origin.y) / step) * step + origin.y
+		region = 2
+	elif x < ix0:
+		step = float(SEABED_OUTER_STEP)
+		origin = Vector2(-960.0, iz0)
+		region = 3
+	elif x >= ix1:
+		step = float(SEABED_OUTER_STEP)
+		origin = Vector2(ix1, iz0)
+		region = 4
+	var x0: float = floor((x - origin.x) / step) * step + origin.x
+	var z0: float = floor((z - origin.y) / step) * step + origin.y
+	if region == 2 and z0 > iz0 - step:
+		z0 = iz0 - step
+	elif region == 3 and x0 > ix0 - step:
+		x0 = ix0 - step
+	if region == 1 and is_equal_approx(z0, iz1) and x0 >= ix0 and x0 < ix1:
+		return _bary_stitched(
+			(x - x0) / step, (z - iz1) / step,
+			floor_height(x0, iz1), floor_height(x0 + half, iz1), floor_height(x0 + step, iz1),
+			floor_height(x0, iz1 + step), floor_height(x0 + step, iz1 + step)
+		)
+	if region == 2 and is_equal_approx(z0, iz0 - step) and x0 >= ix0 and x0 < ix1:
+		return _bary_stitched(
+			(x - x0) / step, (iz0 - z) / step,
+			floor_height(x0, iz0), floor_height(x0 + half, iz0), floor_height(x0 + step, iz0),
+			floor_height(x0, z0), floor_height(x0 + step, z0)
+		)
+	if region == 3 and is_equal_approx(x0, ix0 - step) and z0 >= iz0 and z0 < iz1:
+		return _bary_stitched(
+			(z - z0) / step, (ix0 - x) / step,
+			floor_height(ix0, z0), floor_height(ix0, z0 + half), floor_height(ix0, z0 + step),
+			floor_height(x0, z0), floor_height(x0, z0 + step)
+		)
+	if region == 4 and is_equal_approx(x0, ix1) and z0 >= iz0 and z0 < iz1:
+		return _bary_stitched(
+			(z - z0) / step, (x - ix1) / step,
+			floor_height(ix1, z0), floor_height(ix1, z0 + half), floor_height(ix1, z0 + step),
+			floor_height(ix1 + step, z0), floor_height(ix1 + step, z0 + step)
+		)
 	var tx := (x - x0) / step
 	var tz := (z - z0) / step
 	var a := floor_height(x0, z0)
@@ -273,6 +317,13 @@ static func terrain_height(x: float, z: float) -> float:
 	var d := floor_height(x0 + step, z0 + step)
 	return d + (c - d) * (1.0 - tx) + (b - d) * (1.0 - tz)
 
+static func _bary_stitched(u: float, v: float, h_b0: float, h_bm: float, h_b1: float, h_t0: float, h_t1: float) -> float:
+	if 2.0 * u + v <= 1.0:
+		return h_b0 + (h_bm - h_b0) * (2.0 * u) + (h_t0 - h_b0) * v
+	if 2.0 * (1.0 - u) + v <= 1.0:
+		return h_b1 + (h_bm - h_b1) * (2.0 * (1.0 - u)) + (h_t1 - h_b1) * v
+	return h_bm * (1.0 - v) + h_t0 * (0.5 * (1.0 + v) - u) + h_t1 * (u - 0.5 * (1.0 - v))
+
 static func _floor_normal_fast(x: float, z: float, h_center: float = NAN) -> Vector3:
 	const EPS := 1.5
 	var h0: float = floor_height(x, z) if is_nan(h_center) else h_center
@@ -280,18 +331,24 @@ static func _floor_normal_fast(x: float, z: float, h_center: float = NAN) -> Vec
 	var hz: float = floor_height(x, z + EPS)
 	return Vector3(h0 - hx, EPS, h0 - hz).normalized()
 
-static func _build_seabed_grid_mesh(x0: int, x1: int, z0: int, z1: int, step: int) -> ArrayMesh:
+static func _build_seabed_grid_mesh(x0: int, x1: int, z0: int, z1: int, step: int, stitch_side: String = "") -> ArrayMesh:
 	var nx: int = (x1 - x0) / step
 	var nz: int = (z1 - z0) / step
 	var vx_count: int = nx + 1
 	var vz_count: int = nz + 1
 	var vert_count: int = vx_count * vz_count
+	var half: float = float(step) * 0.5
+	var stitch_count: int = 0
+	if stitch_side == "min_z" or stitch_side == "max_z":
+		stitch_count = (SEABED_INNER_X1 - SEABED_INNER_X0) / step
+	elif stitch_side == "min_x" or stitch_side == "max_x":
+		stitch_count = (SEABED_INNER_Z1 - SEABED_INNER_Z0) / step
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
-	vertices.resize(vert_count)
-	normals.resize(vert_count)
-	uvs.resize(vert_count)
+	vertices.resize(vert_count + stitch_count)
+	normals.resize(vert_count + stitch_count)
+	uvs.resize(vert_count + stitch_count)
 	var inv_step: float = 1.0 / float(step)
 	var v_idx: int = 0
 	for ix in range(vx_count):
@@ -306,16 +363,74 @@ static func _build_seabed_grid_mesh(x0: int, x1: int, z0: int, z1: int, step: in
 			v_idx += 1
 
 	var indices := PackedInt32Array()
-	indices.resize(nx * nz * 6)
+	indices.resize(nx * nz * 6 + stitch_count * 3)
 	var i_idx: int = 0
 	for ix in range(nx):
+		var cell_x: int = x0 + ix * step
 		var row0: int = ix * vz_count
 		var row1: int = (ix + 1) * vz_count
 		for iz in range(nz):
+			var cell_z: int = z0 + iz * step
 			var i0: int = row0 + iz
 			var i1: int = row1 + iz
 			var i2: int = row0 + iz + 1
 			var i3: int = row1 + iz + 1
+			if stitch_side == "min_z" and iz == 0 and cell_x >= SEABED_INNER_X0 and cell_x < SEABED_INNER_X1:
+				var mx: float = float(cell_x) + half
+				var mz: float = float(z0)
+				var mh: float = floor_height(mx, mz)
+				var im: int = v_idx
+				vertices[im] = Vector3(mx, mh, mz)
+				normals[im] = _floor_normal_fast(mx, mz, mh)
+				uvs[im] = Vector2(mx * inv_step, mz * inv_step)
+				v_idx += 1
+				indices[i_idx] = i0; indices[i_idx + 1] = im; indices[i_idx + 2] = i2
+				indices[i_idx + 3] = im; indices[i_idx + 4] = i3; indices[i_idx + 5] = i2
+				indices[i_idx + 6] = im; indices[i_idx + 7] = i1; indices[i_idx + 8] = i3
+				i_idx += 9
+				continue
+			if stitch_side == "max_z" and iz == nz - 1 and cell_x >= SEABED_INNER_X0 and cell_x < SEABED_INNER_X1:
+				var mx: float = float(cell_x) + half
+				var mz: float = float(z1)
+				var mh: float = floor_height(mx, mz)
+				var im: int = v_idx
+				vertices[im] = Vector3(mx, mh, mz)
+				normals[im] = _floor_normal_fast(mx, mz, mh)
+				uvs[im] = Vector2(mx * inv_step, mz * inv_step)
+				v_idx += 1
+				indices[i_idx] = i0; indices[i_idx + 1] = im; indices[i_idx + 2] = i2
+				indices[i_idx + 3] = i0; indices[i_idx + 4] = i1; indices[i_idx + 5] = im
+				indices[i_idx + 6] = i1; indices[i_idx + 7] = i3; indices[i_idx + 8] = im
+				i_idx += 9
+				continue
+			if stitch_side == "max_x" and ix == nx - 1 and cell_z >= SEABED_INNER_Z0 and cell_z < SEABED_INNER_Z1:
+				var mx: float = float(x1)
+				var mz: float = float(cell_z) + half
+				var mh: float = floor_height(mx, mz)
+				var im: int = v_idx
+				vertices[im] = Vector3(mx, mh, mz)
+				normals[im] = _floor_normal_fast(mx, mz, mh)
+				uvs[im] = Vector2(mx * inv_step, mz * inv_step)
+				v_idx += 1
+				indices[i_idx] = i0; indices[i_idx + 1] = i1; indices[i_idx + 2] = im
+				indices[i_idx + 3] = i0; indices[i_idx + 4] = im; indices[i_idx + 5] = i2
+				indices[i_idx + 6] = im; indices[i_idx + 7] = i3; indices[i_idx + 8] = i2
+				i_idx += 9
+				continue
+			if stitch_side == "min_x" and ix == 0 and cell_z >= SEABED_INNER_Z0 and cell_z < SEABED_INNER_Z1:
+				var mx: float = float(x0)
+				var mz: float = float(cell_z) + half
+				var mh: float = floor_height(mx, mz)
+				var im: int = v_idx
+				vertices[im] = Vector3(mx, mh, mz)
+				normals[im] = _floor_normal_fast(mx, mz, mh)
+				uvs[im] = Vector2(mx * inv_step, mz * inv_step)
+				v_idx += 1
+				indices[i_idx] = i0; indices[i_idx + 1] = i1; indices[i_idx + 2] = im
+				indices[i_idx + 3] = im; indices[i_idx + 4] = i1; indices[i_idx + 5] = i3
+				indices[i_idx + 6] = im; indices[i_idx + 7] = i3; indices[i_idx + 8] = i2
+				i_idx += 9
+				continue
 			indices[i_idx] = i0
 			indices[i_idx + 1] = i1
 			indices[i_idx + 2] = i2
@@ -453,13 +568,13 @@ func _create_environment() -> void:
 		add_child(beam)
 
 func _create_terrain() -> void:
-	var ix0 := -288
-	var ix1 := 288
-	var iz0 := -384
-	var iz1 := 144
+	var ix0 := SEABED_INNER_X0
+	var ix1 := SEABED_INNER_X1
+	var iz0 := SEABED_INNER_Z0
+	var iz1 := SEABED_INNER_Z1
 	var terrain := MeshInstance3D.new()
 	terrain.name = "Seabed"
-	terrain.mesh = _build_seabed_grid_mesh(ix0, ix1, iz0, iz1, 6)
+	terrain.mesh = _build_seabed_grid_mesh(ix0, ix1, iz0, iz1, SEABED_INNER_STEP)
 	var material := ShaderMaterial.new()
 	material.shader = load("res://shaders/sand.gdshader")
 	var noise := FastNoiseLite.new()
@@ -479,12 +594,12 @@ func _create_terrain() -> void:
 	add_child(terrain)
 	terrain.create_trimesh_collision()
 
-	# Seamless Outer Open-World Seabed Chunks (covering [-960, 960] x [-960, 960] at 16m resolution)
+	# Conforming Outer Open-World Seabed Chunks (12m grid with 6m midpoint seam stitching)
 	var chunk_defs := [
-		{"name": "OuterSeabed_North", "x0": -960, "x1": 960, "z0": iz1, "z1": 960},
-		{"name": "OuterSeabed_South", "x0": -960, "x1": 960, "z0": -960, "z1": iz0},
-		{"name": "OuterSeabed_West", "x0": -960, "x1": ix0, "z0": iz0, "z1": iz1},
-		{"name": "OuterSeabed_East", "x0": ix1, "x1": 960, "z0": iz0, "z1": iz1}
+		{"name": "OuterSeabed_North", "x0": -960, "x1": 960, "z0": iz1, "z1": 960, "stitch": "min_z"},
+		{"name": "OuterSeabed_South", "x0": -960, "x1": 960, "z0": -960, "z1": iz0, "stitch": "max_z"},
+		{"name": "OuterSeabed_West", "x0": -960, "x1": ix0, "z0": iz0, "z1": iz1, "stitch": "max_x"},
+		{"name": "OuterSeabed_East", "x0": ix1, "x1": 960, "z0": iz0, "z1": iz1, "stitch": "min_x"}
 	]
 	for cdef in chunk_defs:
 		var cx0: int = int(cdef["x0"])
@@ -493,7 +608,7 @@ func _create_terrain() -> void:
 		var cz1: int = int(cdef["z1"])
 		var chunk := MeshInstance3D.new()
 		chunk.name = str(cdef["name"])
-		chunk.mesh = _build_seabed_grid_mesh(cx0, cx1, cz0, cz1, 16)
+		chunk.mesh = _build_seabed_grid_mesh(cx0, cx1, cz0, cz1, SEABED_OUTER_STEP, str(cdef["stitch"]))
 		chunk.material_override = material
 		chunk.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(chunk)
