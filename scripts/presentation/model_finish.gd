@@ -57,8 +57,8 @@ static func _finish_material(material: StandardMaterial3D, label: String, catego
 	if category == "environment":
 		# Keep regional pigments and the distinction between hot vents and cool beacons.
 		color = original
-		color.s = minf(color.s, 0.52 if warm else 0.42)
-		color = color.lerp(Color("c8c6af"), 0.06)
+		color.s = minf(color.s * 1.08, 0.82)
+		color = color.lerp(ArtDirection.CYAN, 0.025)
 		material.roughness = maxf(material.roughness, 0.63)
 	elif is_glass:
 		color = Color("527d8c")
@@ -72,28 +72,28 @@ static func _finish_material(material: StandardMaterial3D, label: String, catego
 		material.roughness = 0.73
 	elif skin_kind == "diver":
 		if warm:
-			color = Color("b6884a")
+			color = Color("edc969")
 			material.roughness = 0.52
 			material.metallic = 0.14
 		elif original.get_luminance() < 0.35:
-			color = Color("1d3545")
+			color = Color("103951")
 			material.roughness = 0.72
 			material.metallic = 0.06
 		elif original.get_luminance() < 0.58:
-			color = Color("84887f")
+			color = Color("629eaa")
 			material.roughness = 0.46
 			material.metallic = 0.24
 		else:
-			color = Color("969990")
+			color = Color("7ca8b1")
 			material.roughness = 0.56
 			material.metallic = 0.12
 	elif skin_kind in ["submarine", "weapon", "diver"]:
 		if warm:
 			color = ArtDirection.AMBER.darkened(0.08)
 		elif original.get_luminance() < 0.4:
-			color = Color("496879")
+			color = Color("24617f")
 		else:
-			color = Color("9da198")
+			color = Color("bfd8d4")
 		material.roughness = float(profile.roughness)
 		material.metallic = minf(material.metallic, 0.52)
 	else:

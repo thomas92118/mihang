@@ -98,6 +98,13 @@ func _collect_exclusion_zones() -> void:
 		for item: Node3D in nodes:
 			var radius := 8.0 if property_name == "outposts" else 3.0
 			_exclusion_zones.append(Vector3(item.position.x, item.position.z, radius))
+	var composition := _ocean.get_node_or_null("OceanComposition")
+	if composition != null:
+		for node: Node in composition.get_children():
+			if node is StaticBody3D:
+				var pos: Vector3 = node.position
+				var radius := maxf(node.scale.x, node.scale.z) * 1.05
+				_exclusion_zones.append(Vector3(pos.x, pos.z, radius))
 	var tree: Node3D = _ocean.get("mother_tree")
 	if is_instance_valid(tree):
 		_exclusion_zones.append(Vector3(tree.position.x, tree.position.z, 14.0))
@@ -162,7 +169,7 @@ func sample_habitat(x: float, z: float) -> Dictionary:
 # seams. It is scenery only: neither terrain nor gameplay collision is changed.
 func _is_sand_channel(xz: Vector2) -> bool:
 	var flow := xz.x * 0.021 + xz.y * 0.012 + sin(xz.y * 0.008) * 1.2
-	return absf(sin(flow)) < 0.16
+	return absf(sin(flow)) < 0.28
 
 func build_chunk_plan(cell: Vector2i) -> Array[Dictionary]:
 	var plan: Array[Dictionary] = []
@@ -172,7 +179,7 @@ func build_chunk_plan(cell: Vector2i) -> Array[Dictionary]:
 	# Each patch is a little composition: one strong geological form, a lower
 	# satellite and colonies attached to their shoulders. Hierarchy replaces the
 	# previous evenly scattered rocks and same-sized plants without more draws.
-	for cluster in range(3):
+	for cluster in range(2):
 		var center := origin + Vector2(12.0 + float(cluster % 2) * 21.0, 12.0 + floorf(float(cluster) * 0.5) * 22.0)
 		center += Vector2(local_rng.randf_range(-4, 4), local_rng.randf_range(-4, 4))
 		if _is_sand_channel(center):
@@ -205,9 +212,9 @@ func build_chunk_plan(cell: Vector2i) -> Array[Dictionary]:
 		var satellite := center + direction * size * 1.6
 		if not _is_sand_channel(satellite):
 			_add_to_plan(plan, "limestone_boulder" if depth < 90.0 else "silt_boulder", satellite, rock_scale * Vector3(0.42, 0.45, 0.65), yaw + 0.35)
-		var colony_count := 7 if depth < 200.0 else (4 if depth < 360.0 else 2)
+		var colony_count := 5 if depth < 200.0 else (3 if depth < 360.0 else 2)
 		if str(center_habitat["biome"]) == "kelp_forest":
-			colony_count = 11
+			colony_count = 8
 		var dominant := _choose_colony(str(center_habitat["biome"]), local_rng)
 		if str(center_habitat["biome"]) == "kelp_forest":
 			dominant = "kelp"
@@ -236,7 +243,7 @@ func build_chunk_plan(cell: Vector2i) -> Array[Dictionary]:
 				shape.y = minf(shape.y, (float(habitat["depth"]) - 1.5) / 5.2)
 			_add_to_plan(plan, asset, p, shape, yaw + local_rng.randf_range(-0.5, 0.5))
 		# Low-cost blades form the understory only where photosynthesis is possible.
-		for index in range(14):
+		for index in range(9):
 			var p := center + Vector2(local_rng.randf_range(-10, 10), local_rng.randf_range(-10, 10))
 			var habitat := sample_habitat(p.x, p.y)
 			if float(habitat["depth"]) > 35.0 or float(habitat["slope"]) > 0.32 or _is_sand_channel(p):
@@ -446,7 +453,7 @@ func _natural_material(source: Material, asset: String) -> ShaderMaterial:
 		material.set_shader_parameter("metallic", 0.0)
 		material.set_shader_parameter("albedo_texture", base.albedo_texture)
 		material.set_shader_parameter("normal_texture", base.normal_texture)
-		material.set_shader_parameter("normal_scale", base.normal_scale)
+		material.set_shader_parameter("normal_scale", base.normal_scale * 0.32)
 		material.set_shader_parameter("orm_texture", base.roughness_texture)
 		material.set_shader_parameter("uv_scale", base.uv1_scale)
 		material.set_shader_parameter("uv_offset", base.uv1_offset)

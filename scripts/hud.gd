@@ -30,6 +30,10 @@ const AMBER_GOLD := Art.AMBER
 const PANEL := Art.PANEL
 const WARM_PANEL := Color(0.075, 0.10, 0.12, 0.97)
 
+var _detail_time := 5.0
+var _previous_weapon := ""
+var _previous_inventory: Dictionary = {}
+var _cargo: Panel
 var root: Control
 var instruments: Control
 var menus: Dictionary = {}
@@ -136,13 +140,14 @@ func _ready() -> void:
 	_build_mount_board()
 	_build_map()
 	_build_win()
-	toast_label = _label(root, "", Rect2(-290, 130, 580, 44), 15, CYAN, Vector2(0.5, 0))
+	toast_label = _label(root, "", Rect2(-390, 130, 780, 44), 15, CYAN, Vector2(0.5, 0))
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast_label.add_theme_stylebox_override("normal", _style(PANEL, Color(0.46, 0.88, 0.83, 0.35)))
 	toast_label.hide()
 	set_screen("main")
 
 func _process(delta: float) -> void:
+	_detail_time = maxf(0.0, _detail_time - delta)
 	if toast_time > 0.0:
 		toast_time = maxf(0.0, toast_time - delta)
 		if is_instance_valid(boss_panel):
@@ -189,28 +194,28 @@ func _build_instruments() -> void:
 	visor_material.shader = shader
 	visor_rect.material = visor_material
 	_line(instruments, Rect2(28, 27, 3, 22), AMBER_GOLD)
-	_label(instruments, "深蓝回声 / 潜航日志", Rect2(42, 26, 282, 20), 12, MUTED)
+	_label(instruments, "深 蓝 回 声   /   潜 航 日 志", Rect2(42, 26, 282, 20), 12, MUTED)
 	mission_title = _label(instruments, "探索未知海域", Rect2(28, 60, 300, 24), 14, INK)
 	mission_detail = _label(instruments, "M 勘测海图  /  N 声呐", Rect2(28, 90, 300, 38), 11, MUTED)
 	mission_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	compass_strip = WorldMap.CompassStrip.new()
-	_place(compass_strip, instruments, Rect2(-180, 17, 360, 28), Vector2(0.5, 0))
+	_place(compass_strip, instruments, Rect2(-160, 18, 320, 34), Vector2(0.5, 0))
 	compass_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	depth_value = _label(instruments, "012 m", Rect2(-120, 49, 240, 36), 26, INK, Vector2(0.5, 0))
+	depth_value = _label(instruments, "012 m", Rect2(-120, 55, 240, 36), 28, INK, Vector2(0.5, 0))
 	depth_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	status_value = _label(instruments, "阳光浅礁带", Rect2(-210, 88, 420, 20), 11, MUTED, Vector2(0.5, 0))
+	status_value = _label(instruments, "阳光浅礁带", Rect2(-250, 96, 500, 24), 11, MUTED, Vector2(0.5, 0))
 	status_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	minimap_radar = WorldMap.MinimapRadar.new()
 	minimap_radar.set_bathymetry(bathy_texture)
-	_place(minimap_radar, instruments, Rect2(-188, 22, 160, 176), Vector2(1, 0))
+	_place(minimap_radar, instruments, Rect2(-172, 24, 144, 160), Vector2(1, 0))
 	minimap_radar.name = "RadarInstrument"
-	home_value = _label(instruments, "母港 18 m", Rect2(-230, 207, 202, 20), 12, INK, Vector2(1, 0))
+	home_value = _label(instruments, "母港 18 m", Rect2(-230, 192, 202, 24), 12, INK, Vector2(1, 0))
 	home_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	explore_summary_label = _label(instruments, "勘测 0%", Rect2(-230, 233, 202, 38), 11, MUTED, Vector2(1, 0))
+	explore_summary_label = _label(instruments, "勘测 0%", Rect2(-230, 222, 202, 42), 11, MUTED, Vector2(1, 0))
 	explore_summary_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	pinned_panel = _panel(instruments, Rect2(-280, 285, 252, 62), Vector2(1, 0))
-	pinned_title = _label(pinned_panel, "配方追踪", Rect2(14, 9, 224, 20), 11, AMBER_GOLD)
-	pinned_progress = _label(pinned_panel, "", Rect2(14, 32, 224, 20), 11, INK)
+	pinned_panel = _panel(instruments, Rect2(-320, 282, 292, 76), Vector2(1, 0))
+	pinned_title = _label(pinned_panel, "配方追踪", Rect2(14, 10, 264, 24), 11, AMBER_GOLD)
+	pinned_progress = _label(pinned_panel, "", Rect2(14, 40, 264, 24), 11, INK)
 	pinned_panel.hide()
 	reticle = _label(instruments, "+", Rect2(-12, -16, 24, 32), 20, Color(CYAN, 0.75), Vector2(0.5, 0.5))
 	reticle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -254,8 +259,9 @@ func _build_instruments() -> void:
 	var life := _panel(instruments, Rect2(28, -148, 246, 100), Vector2(0, 1))
 	life.name = "LifeSupportInstrument"
 	_label(life, "O₂", Rect2(15, 12, 48, 30), 23, CYAN)
-	oxygen_value = _label(life, "90", Rect2(68, 8, 86, 38), 30, INK)
-	oxygen_unit = _label(life, "秒 / 氧气", Rect2(153, 22, 78, 20), 10, MUTED)
+	oxygen_value = _label(life, "90", Rect2(64, 8, 66, 38), 30, INK)
+	oxygen_unit = _label(life, "秒 / 氧气", Rect2(131, 22, 100, 20), 14, MUTED)
+	oxygen_unit.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	oxygen_bar = ProgressBar.new()
 	_place(oxygen_bar, life, Rect2(15, 52, 216, 3))
 	oxygen_bar.show_percentage = false
@@ -264,11 +270,12 @@ func _build_instruments() -> void:
 	oxygen_bar.add_theme_stylebox_override("fill", _style(CYAN, Color.TRANSPARENT, 1))
 	health_value = _label(life, "生命 100", Rect2(15, 69, 138, 18), 11, INK)
 	_label(life, "生命支持", Rect2(161, 69, 70, 18), 10, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	var supplies := _panel(instruments, Rect2(-280, -148, 252, 100), Vector2(1, 1))
+	var supplies := _panel(instruments, Rect2(-280, -162, 252, 114), Vector2(1, 1))
 	supplies.name = "CargoInstrument"
-	_label(supplies, "采集与补给", Rect2(15, 12, 160, 20), 11, MUTED)
-	_label(supplies, "B / 料理与图鉴", Rect2(15, 72, 222, 18), 10, MUTED)
-	dave_status_label = _label(supplies, "", Rect2(15, 38, 222, 34), 11, INK)
+	_cargo = supplies
+	_label(supplies, "采集与补给", Rect2(15, 10, 160, 20), 11, MUTED)
+	dave_status_label = _label(supplies, "", Rect2(15, 34, 222, 46), 11, INK)
+	_label(supplies, "B / 料理与图鉴", Rect2(15, 86, 222, 20), 10, MUTED)
 	var resource_store := _full(supplies)
 	resource_store.hide()
 	for kind: String in ["titanium", "copper", "quartz", "kelp", "fish_small", "shark_fragment", "abyss_fragment"]:
@@ -320,25 +327,23 @@ func _build_main() -> void:
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var shader := Shader.new()
-	shader.code = "shader_type canvas_item; void fragment(){ COLOR=vec4(0.018,0.052,0.07,mix(0.97,0.10,smoothstep(0.28,0.92,UV.x))); }"
+	shader.code = "shader_type canvas_item; void fragment(){ float veil=1.0-smoothstep(0.08,0.70,UV.x); COLOR=vec4(0.015,0.07,0.12,veil*0.83); }"
 	var material := ShaderMaterial.new()
 	material.shader = shader
 	shade.material = material
-	var plate := OceanUiTheme.ExpeditionPlate.new()
-	_place(plate, menu, Rect2(-570, -300, 540, 600), Vector2(1, 0.5))
-	_line(menu, Rect2(72, 58, 32, 2), AMBER_GOLD)
-	_label(menu, "一场始于浅礁的远行", Rect2(117, 48, 380, 24), 13, MUTED)
-	_label(menu, "深蓝回声", Rect2(66, 198, 610, 94), 68, INK)
-	_label(menu, "A B Y S S A L   E C H O", Rect2(74, 304, 560, 30), 18, CYAN)
-	_line(menu, Rect2(74, 368, 56, 2), AMBER_GOLD)
-	_label(menu, "循着微光，游向未知。", Rect2(74, 393, 540, 38), 23, INK)
-	_label(menu, "穿过珊瑚浅礁与巨藻森林，\n探访沉没古都，倾听深渊的回声。", Rect2(76, 446, 520, 60), 15, MUTED)
-	_button(menu, "自由探险", Rect2(74, 550, 230, 52), func() -> void: start_requested.emit("explore"), true)
-	_button(menu, "生存航程", Rect2(320, 550, 230, 52), func() -> void: start_requested.emit("survival"))
-	_label(menu, "无限氧气 · 自由漫游", Rect2(76, 617, 228, 20), 11, MUTED)
-	_label(menu, "管理氧气 · 采集与制造", Rect2(322, 617, 244, 20), 11, MUTED)
-	_label(menu, "九片海域 / 一段属于你的潜航记录", Rect2(74, -58, 500, 22), 11, MUTED, Vector2(0, 1))
-	_label(menu, "海洋勘测档案\n00 — 600 m", Rect2(-294, -90, 220, 48), 12, CYAN, Vector2(1, 1)).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_line(menu, Rect2(74, 72, 38, 2), AMBER_GOLD)
+	_label(menu, "一 场 始 于 浅 礁 的 远 行", Rect2(126, 60, 430, 28), 14, Art.PAPER)
+	_label(menu, "深蓝回声", Rect2(68, 184, 510, 100), 76, INK)
+	_label(menu, "A B Y S S A L   E C H O", Rect2(78, 295, 490, 32), 18, CYAN)
+	_line(menu, Rect2(78, 365, 50, 1), AMBER_GOLD)
+	_label(menu, "循着微光，游向未知。", Rect2(76, 389, 470, 40), 25, INK)
+	_label(menu, "穿过摇曳的海底森林，
+在沉睡的古城，听见大海的回声。", Rect2(78, 450, 470, 68), 16, MUTED)
+	_button(menu, "自由探险  /  EXPLORE", Rect2(78, 558, 390, 56), func() -> void: start_requested.emit("explore"), true)
+	_button(menu, "生存航程  /  SURVIVE", Rect2(78, 628, 390, 48), func() -> void: start_requested.emit("survival"))
+	_label(menu, "九片海域  ·  一段属于你的潜航记录", Rect2(78, -66, 540, 28), 14, MUTED, Vector2(0, 1))
+	_label(menu, "THE LIVING OCEAN
+00 — 600 m", Rect2(-300, -94, 240, 58), 14, Art.PAPER, Vector2(1, 1)).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
 func _build_pause() -> void:
 	var menu := _menu("pause")
@@ -391,12 +396,14 @@ func _build_sushi() -> void:
 	_cobra_row(card, "cargo_box", "扩容生态箱 / 120 金币", "负重上限 +25kg · 无人机配额 +1，并补满", 512)
 	_cobra_row(card, "oxygen_capsule", "浓缩氧气胶囊 / 80 金币", "氧气上限 +25 秒，立即补满氧气与生命", 560)
 	_cobra_row(card, "duff_coating", "达夫超导涂层 / 180 金币", "全武器攻击力永久 +25", 608)
-	var marinca_box := _panel(card, Rect2(592, 166, 380, 480))
-	_label(marinca_box, "玛琳卡 / 海洋生物图鉴", Rect2(18, 16, 344, 22), 14, INK)
-	marinca_summary_label = _label(marinca_box, "", Rect2(18, 48, 344, 42), 11, AMBER_GOLD)
-	_line(marinca_box, Rect2(18, 100, 344, 1), Color(CYAN, 0.15))
-	marinca_grid_label = _label(marinca_box, "", Rect2(18, 112, 344, 300), 11, INK)
-	_label(marinca_box, "静滞活捕或无人机打捞可获得三星品质。\n每张三星图鉴使料理售价增加 12%。", Rect2(18, 427, 344, 36), 10, MUTED)
+	var marinca_box := _panel(card, Rect2(592, 160, 380, 514))
+	_label(marinca_box, "玛琳卡 / 海洋生物图鉴", Rect2(18, 14, 344, 22), 14, INK)
+	marinca_summary_label = _label(marinca_box, "", Rect2(18, 42, 344, 42), 11, AMBER_GOLD)
+	_line(marinca_box, Rect2(18, 90, 344, 1), Color(CYAN, 0.15))
+	marinca_grid_label = _label(marinca_box, "", Rect2(18, 98, 344, 344), 14, INK)
+	marinca_grid_label.add_theme_constant_override("line_spacing", -1)
+	_line(marinca_box, Rect2(18, 448, 344, 1), Color(CYAN, 0.12))
+	_label(marinca_box, "静滞活捕或无人机打捞可获得三星品质。\n每张三星图鉴使料理售价增加 12%。", Rect2(18, 456, 344, 48), 14, MUTED)
 	_button(card, "返回潜航 / B", Rect2(28, 665, 156, 34), func() -> void: resume_requested.emit())
 	_label(card, "V 无人机打捞 / E 采集与交互", Rect2(204, 673, 768, 18), 10, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
@@ -552,6 +559,7 @@ func update_hud(data: Dictionary) -> void:
 		oxygen_bar.modulate = ORANGE if oxygen < maximum * 0.25 else Color.WHITE
 
 	health_value.text = "＋  生命 %d" % ceili(float(data.get("health", 100.0)))
+	_set_font_color(health_value, Art.DANGER if float(data.get("health", 100.0)) < 30.0 else INK)
 	var depth := maxf(float(data.get("depth", 0.0)), 0.0)
 	depth_value.text = "%03d m" % roundi(depth)
 
@@ -562,7 +570,7 @@ func update_hud(data: Dictionary) -> void:
 		status_value.text = "氧气不足  /  请上浮、靠近巨砗磲或前往科考前哨站"
 		_set_font_color(status_value, ORANGE)
 	else:
-		status_value.text = "%s   [X:%+d Z:%+d]" % [biome, roundi(p_pos.x), roundi(p_pos.z)]
+		status_value.text = biome
 		_set_font_color(status_value, CYAN)
 
 	home_value.text = "母港 %d m" % roundi(float(data.get("distance_home", 0.0)))
@@ -910,6 +918,17 @@ func update_hud(data: Dictionary) -> void:
 		else:
 			mission_detail.text = "地标 %d/%d · 前哨 %d/%d · 遗珍 %d/%d · 按 M 海图自由跃迁" % [lm_cnt, lm_tot, out_cnt, out_tot, rel_cnt, rel_tot]
 
+	if cur_w != _previous_weapon or inventory != _previous_inventory:
+		_detail_time = 3.5
+		_previous_weapon = cur_w
+		_previous_inventory = inventory.duplicate()
+	var details := _detail_time > 0.0 or aiming or charging or fighting or not target.is_empty()
+	weapon_bar_label.get_parent().visible = details and not in_sub and not booster_on
+	equipment_value.visible = details and not in_sub and not scoped
+	_cargo.visible = details or overweight
+	shield_label.visible = is_shield or details
+	mission_detail.visible = has_wp or fighting or details
+	explore_summary_label.visible = details
 	var seconds := int(data.get("elapsed", 0.0))
 	if bool(data.get("escape_crafted", false)):
 		win_title.text = "深渊跃迁逃生成功"
@@ -984,11 +1003,13 @@ func _label(parent: Node, text: String, rect: Rect2, font_size: int, color: Colo
 	var label := Label.new()
 	_place(label, parent, rect, anchor)
 	label.text = text
-	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_font_size_override("font_size", maxi(font_size, 14))
+	label.clip_text = true
+	label.tooltip_text = text
 	label.add_theme_color_override("font_color", color)
 	if parent == instruments:
 		label.add_theme_color_override("font_outline_color", Color(0.012, 0.036, 0.055, 0.88))
-		label.add_theme_constant_override("outline_size", 3)
+		label.add_theme_constant_override("outline_size", 2)
 		label.add_theme_color_override("font_shadow_color", Color(0.008, 0.024, 0.038, 0.62))
 		label.add_theme_constant_override("shadow_offset_x", 0)
 		label.add_theme_constant_override("shadow_offset_y", 1)
@@ -1002,7 +1023,7 @@ func _panel(parent: Node, rect: Rect2, anchor := Vector2.ZERO) -> Panel:
 	var panel := Panel.new()
 	_place(panel, parent, rect, anchor)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_theme_stylebox_override("panel", _style(PANEL, Color(CYAN, 0.20)))
+	panel.add_theme_stylebox_override("panel", _style(Color(Art.INK, 0.28) if parent == instruments else PANEL, Color(CYAN, 0.09) if parent == instruments else Color(CYAN, 0.18)))
 	return panel
 
 func _line(parent: Node, rect: Rect2, color: Color) -> void:

@@ -52,9 +52,12 @@ var companion_attack_pos: Vector3 = Vector3.ZERO
 var has_target_pos: bool = false
 var hud: CanvasLayer
 var state = Survival.new()
+var title_camera: Camera3D
+var _title_clock := 0.0
 var screen: String = "main"
 var target: Node3D
 var low_oxygen_warned: bool = false
+var ambience: AudioStreamPlayer
 var effect: AudioStreamPlayer
 var home_arrow: Label
 var waypoint_arrow: Label
@@ -92,6 +95,11 @@ func _ready() -> void:
 	diver = Diver.new()
 	add_child(diver)
 	_reset_position()
+	title_camera = Camera3D.new()
+	title_camera.fov = 62.0
+	title_camera.far = 280.0
+	add_child(title_camera)
+	_update_title_camera(0.0)
 	hud = HUD.new()
 	add_child(hud)
 	hud.start_requested.connect(_start)
@@ -202,6 +210,13 @@ func _restart() -> void:
 
 func _set_screen(value: String) -> void:
 	screen = value
+	if is_instance_valid(ocean):
+		ocean.set_world_labels_visible(screen != "main")
+	if is_instance_valid(title_camera):
+		if screen == "main":
+			title_camera.make_current()
+		else:
+			diver.camera.make_current()
 	diver.active = screen == "play"
 	if screen != "play":
 		diver.cancel_gun_charge()
@@ -690,6 +705,8 @@ func _notification(what: int) -> void:
 		_set_screen("pause")
 
 func _process(delta: float) -> void:
+	if screen == "main":
+		_update_title_camera(delta)
 	if not is_instance_valid(hud):
 		return
 	if screen == "play" and is_instance_valid(active_submarine):
@@ -1286,16 +1303,28 @@ func _craft(recipe: String) -> void:
 				hud.toast("【武器精工】深海锯齿骨刃已研磨！全武器伤害额外 +25！")
 
 func _setup_audio() -> void:
-	var ambience := AudioStreamPlayer.new()
-	ambience.stream = load("res://assets/audio/ocean.wav")
+	var headless := DisplayServer.get_name() == "headless"
+	ambience = AudioStreamPlayer.new()
 	ambience.volume_db = -17
 	add_child(ambience)
-	ambience.finished.connect(ambience.play)
-	ambience.play()
+	if not headless:
+		ambience.stream = load("res://assets/audio/ocean.wav")
+		ambience.finished.connect(ambience.play)
+		ambience.play()
 	effect = AudioStreamPlayer.new()
-	effect.stream = load("res://assets/audio/collect.wav")
+	if not headless:
+		effect.stream = load("res://assets/audio/collect.wav")
 	effect.volume_db = -13
 	add_child(effect)
+
+func _exit_tree() -> void:
+	if is_instance_valid(ambience):
+		ambience.stop()
+		ambience.stream = null
+	if is_instance_valid(effect):
+		effect.stop()
+		effect.stream = null
+	UnderwaterAudio.shutdown()
 
 func _setup_overlay() -> void:
 	var overlay := CanvasLayer.new()
@@ -1547,13 +1576,21 @@ func _world_check() -> void:
 	assert(ocean.fish.size() >= 134, "Should have at least 134 total fish across all tiers")
 	assert(initial_sfish_count >= 54, "Should have at least 54 small edible fish")
 	assert(ocean.predators.size() >= 32, "Should have at least 32 aggressive predators")
-	assert(ocean.rays.size() == 4, "Should have 4 manta rays")
-	assert(ocean.turtles.size() == 6, "Should have 6 sea turtles")
-	assert(ocean.squids.size() == 12, "Should have 12 deep sea squids")
-	assert(ocean.crabs.size() == 18, "Should have 18 benthic crabs")
+	assert(ocean.rays.size() >= 4, "Should have at least 4 manta rays")
+	assert(ocean.turtles.size() >= 6, "Should have at least 6 sea turtles")
+	assert(ocean.squids.size() >= 12, "Should have at least 12 deep sea squids")
+	assert(ocean.crabs.size() >= 18, "Should have at least 18 benthic crabs")
 	assert(ocean.tubeworm_colonies.size() == 14, "Should have 14 tubeworm colonies")
-	assert(ocean.sea_fans.size() == 22, "Should have 22 sea fans")
-	assert(ocean.starfish.size() == 24, "Should have 24 starfish urchin colonies")
+	var comp := ocean.get_node_or_null("OceanComposition")
+	assert(comp != null, "OceanComposition must author batched reef and benthic colonies")
+	var has_fan_batch := false
+	var has_starfish_batch := false
+	for child in comp.find_children("*", "MultiMeshInstance3D", true, false):
+		if String(child.name).contains("sea_fan"):
+			has_fan_batch = true
+		if String(child.name).contains("starfish_urchin"):
+			has_starfish_batch = true
+	assert(has_fan_batch and has_starfish_batch, "Should batch sea fans and starfish urchin colonies")
 
 	_start("survival")
 
@@ -2195,3 +2232,8 @@ func _interact_escape_console() -> void:
 		_set_screen("win")
 	else:
 		hud.toast("【逃生控制台】需放入深海母树核心3大遗物：母树精华(%d/1) 星核源石(%d/1) 启迪之种(%d/1)" % [has_ess, has_cor, has_sed])
+
+func _update_title_camera(delta: float) -> void:
+	_title_clock += delta
+	title_camera.position = Vector3(-11.2 + sin(_title_clock * 0.045) * 1.8, -5.7 + sin(_title_clock * 0.09) * 0.26, 13.8)
+	title_camera.look_at(Vector3(5.5, -8.8, -30.0))

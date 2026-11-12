@@ -71,6 +71,8 @@ static func get_stream(sound_name: String) -> AudioStreamWAV:
 	return stream
 
 static func play_sound(tree: SceneTree, sound_name: String, volume_db: float = -6.0, pitch_scale: float = 1.0) -> AudioStreamPlayer:
+	if DisplayServer.get_name() == "headless":
+		return null
 	var stream := get_stream(sound_name)
 	if not stream or not tree or not is_instance_valid(tree.root):
 		return null
@@ -94,6 +96,13 @@ static func play_sound(tree: SceneTree, sound_name: String, volume_db: float = -
 	if playback:
 		playback.play_stream(stream, 0.0, volume_db, pitch_scale)
 	return _poly_player
+
+static func shutdown() -> void:
+	if is_instance_valid(_poly_player):
+		_poly_player.stop()
+		_poly_player.stream = null
+	_poly_player = null
+	_cache.clear()
 
 static func _create_wav(samples: PackedFloat32Array, mix_rate: int = 22050) -> AudioStreamWAV:
 	var wav := AudioStreamWAV.new()

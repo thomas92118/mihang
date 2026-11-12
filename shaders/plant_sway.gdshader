@@ -31,15 +31,16 @@ void vertex() {
 	float h = max(0.0, VERTEX.y);
 	vec3 world_p = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_world_depth = max(-world_p.y, 0.0);
-	// Procedural phase from world position enables sharing a single material instance across all plants
-	float auto_phase = dot(MODEL_MATRIX[3].xz, vec2(1.73, 2.41));
-	float t = TIME * sway_frequency + phase_offset + auto_phase;
-	float wave1 = sin(t + world_p.x * 0.18 + world_p.z * 0.14);
-	float wave2 = cos(t * 0.72 + world_p.z * 0.16);
-
-	float sway = h * h * 0.045 * sway_strength;
-	VERTEX.x += (wave1 * 0.75 + wave2 * 0.25) * sway;
-	VERTEX.z += (wave2 * 0.75 + wave1 * 0.25) * sway;
+	if (sway_strength > 0.001) {
+		// Procedural phase from world position enables sharing a single material instance across all plants
+		float auto_phase = dot(MODEL_MATRIX[3].xz, vec2(1.73, 2.41));
+		float t = TIME * sway_frequency + phase_offset + auto_phase;
+		float wave1 = sin(t + world_p.x * 0.18 + world_p.z * 0.14);
+		float wave2 = cos(t * 0.72 + world_p.z * 0.16);
+		float sway = h * h * 0.045 * sway_strength;
+		VERTEX.x += (wave1 * 0.75 + wave2 * 0.25) * sway;
+		VERTEX.z += (wave2 * 0.75 + wave1 * 0.25) * sway;
+	}
 
 	if (retract_progress > 0.0 && h > 0.4) {
 		VERTEX.y -= (h - 0.4) * retract_progress * 0.70;
@@ -52,7 +53,7 @@ void fragment() {
 	float luma = dot(raw_albedo, vec3(0.299, 0.587, 0.114));
 	// Preserve the imported pigments without the old saturation boost. Absorption
 	// belongs to incident sunlight, not albedo: a nearby lamp restores warm hues.
-	ALBEDO = clamp(raw_albedo, vec3(0.0), vec3(1.0));
+	ALBEDO = clamp(raw_albedo * 0.76, vec3(0.0), vec3(1.0));
 	if (natural_palette) {
 		// Texture samples are linear. Lift their dark range smoothly rather than
 		// flattening it into bands or preserving the source's artificial colours.
@@ -60,12 +61,19 @@ void fragment() {
 		vec3 pigment = mix(palette_dark, palette_light, pigment_value);
 		ALBEDO = mix(ALBEDO, pigment, palette_strength);
 	}
-	vec3 orm = texture(orm_texture, material_uv).rgb;
-	AO = orm.r;
-	ROUGHNESS = clamp(roughness * mix(0.72, 1.0, orm.g), 0.18, 1.0);
-	METALLIC = metallic * orm.b;
-	NORMAL_MAP = texture(normal_texture, material_uv).rgb;
-	NORMAL_MAP_DEPTH = normal_scale * 0.55;
+	if (dot(VERTEX, VERTEX) < 900.0) {
+		vec3 orm = texture(orm_texture, material_uv).rgb;
+		AO = orm.r;
+		ROUGHNESS = clamp(roughness * mix(0.72, 1.0, orm.g), 0.18, 1.0);
+		METALLIC = metallic * orm.b;
+		NORMAL_MAP = texture(normal_texture, material_uv).rgb;
+		NORMAL_MAP_DEPTH = normal_scale * 0.55;
+	} else {
+		ROUGHNESS = clamp(roughness, 0.18, 1.0);
+		METALLIC = metallic;
+		NORMAL_MAP = vec3(0.5, 0.5, 1.0);
+		NORMAL_MAP_DEPTH = 0.0;
+	}
 	if (emission_energy > 0.0) {
 		float auto_phase = dot(MODEL_MATRIX[3].xz, vec2(1.73, 2.41));
 		float pulse = 0.92 + sin(TIME * 0.8 + phase_offset + auto_phase) * 0.08;

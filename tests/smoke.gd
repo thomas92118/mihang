@@ -365,17 +365,18 @@ func _initialize() -> void:
 	scout.queue_free()
 	titan.queue_free()
 
-	# Verify Photorealistic Coral Reef & Benthic Seabed Elements in Ocean
+	# Interactive showcase species stay available; bulk scenery is now instanced
+	# by OceanComposition and streamed ecology (covered in art_composition.gd).
 	var OceanCls = load("res://scripts/ocean.gd")
 	var ocean = OceanCls.new()
 	root.add_child(ocean)
 	ocean._spawn_coral_reef_colonies()
-	assert(ocean.brain_corals.size() >= 18, "Brain corals must populate the seabed")
-	assert(ocean.staghorn_corals.size() >= 25, "Staghorn corals must populate the seabed")
-	assert(ocean.table_corals.size() >= 18, "Tiered table corals must populate the seabed")
-	assert(ocean.barrel_sponges.size() >= 18, "Giant fluted barrel sponges must populate the seabed")
+	assert(ocean.brain_corals.size() > 0, "Brain coral showcase must remain available")
+	assert(ocean.staghorn_corals.size() > 0, "Staghorn coral showcase must remain available")
+	assert(ocean.table_corals.size() > 0, "Table coral showcase must remain available")
+	assert(ocean.barrel_sponges.size() > 0, "Barrel sponge showcase must remain available")
 	assert(ocean.giant_clams.size() >= 12, "Bioluminescent giant clams must populate the seabed")
-	assert(ocean.sea_lilies.size() >= 22, "Crinoid sea lilies must populate the seabed")
+	assert(ocean.sea_lilies.size() > 0, "Sea lily showcase must remain available")
 	# Test giant clam proximity contraction when diver swims near
 	var sample_clam: Node3D = ocean.giant_clams[0]
 	assert(is_equal_approx(float(sample_clam.get_meta("retract_progress", 0.0)), 0.0))

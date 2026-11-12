@@ -1,23 +1,23 @@
 extends RefCounted
-## Shared art vocabulary. Colours are material pigments, never depth-baked light.
+## Luminous ocean pigments, shared by the world, the asset generator and the UI.
 
-const INK := Color("102735")
-const PAPER := Color("ede7d8")
-const CYAN := Color("80c6c4")
-const AMBER := Color("dfb46d")
-const DANGER := Color("d76e62")
-const PANEL := Color(0.035, 0.085, 0.12, 0.94)
-const MUTED := Color("91a9ab")
+const INK := Color("082b42")
+const PAPER := Color("f4f0dc")
+const CYAN := Color("83ded9")
+const AMBER := Color("edce7a")
+const DANGER := Color("f28c77")
+const PANEL := Color(0.025, 0.10, 0.15, 0.82)
+const MUTED := Color("abc9ce")
 const REGIONS := {
-	"core": {"water": "166b78", "sand": "d8c49e", "rock": "7e8b85", "flora": "839f69", "accent": "d8856a", "shadow": "254753"},
-	"atoll": {"water": "187e89", "sand": "e4d7b4", "rock": "a1ad9b", "flora": "8eaa74", "accent": "e5b75f", "shadow": "325964"},
-	"kelp": {"water": "163f45", "sand": "b8b591", "rock": "657c70", "flora": "7c9752", "accent": "c9b56c", "shadow": "233e44"},
-	"ridge": {"water": "203f5a", "sand": "a6b1ae", "rock": "819cac", "flora": "8a94a2", "accent": "91ccc8", "shadow": "273d54"},
-	"citadel": {"water": "173b4b", "sand": "a3aa9a", "rock": "86958b", "flora": "8c8b94", "accent": "78bdb6", "shadow": "243e4a"},
-	"wreck": {"water": "152e3d", "sand": "8f8b7d", "rock": "6b7778", "flora": "909ba0", "accent": "d99558", "shadow": "273c46"},
-	"bones": {"water": "203b43", "sand": "9e9986", "rock": "6f6759", "flora": "a5a88a", "accent": "cec7ae", "shadow": "2f454b"},
-	"caldera": {"water": "121f28", "sand": "756a5e", "rock": "524a43", "flora": "b29b85", "accent": "c96f36", "shadow": "28343e"},
-	"hadal": {"water": "111b35", "sand": "777d88", "rock": "6d7b9b", "flora": "9ca6b1", "accent": "92bdd2", "shadow": "1b2d44"}
+	"core": {"water": "087fa7", "sand": "eadab2", "rock": "5f9295", "flora": "539e72", "accent": "ef9675", "shadow": "123f69"},
+	"atoll": {"water": "12b2b9", "sand": "f2e7c5", "rock": "8bb7a4", "flora": "8db967", "accent": "edce7a", "shadow": "146585"},
+	"kelp": {"water": "146b69", "sand": "cdcba0", "rock": "4c8278", "flora": "6eac63", "accent": "c8d47e", "shadow": "144c5b"},
+	"ridge": {"water": "235f9a", "sand": "b6cdd0", "rock": "578eac", "flora": "83abb4", "accent": "9ee2e4", "shadow": "193d72"},
+	"citadel": {"water": "155b83", "sand": "cccfb7", "rock": "8eafa6", "flora": "529985", "accent": "e1c578", "shadow": "193859"},
+	"wreck": {"water": "1b4d70", "sand": "adb8ab", "rock": "517c88", "flora": "719da0", "accent": "d79d6a", "shadow": "183850"},
+	"bones": {"water": "255775", "sand": "b6b9a7", "rock": "5d8191", "flora": "8fae9d", "accent": "e8dfbc", "shadow": "1a3e62"},
+	"caldera": {"water": "173650", "sand": "7d8f91", "rock": "354d64", "flora": "a48f75", "accent": "efaa58", "shadow": "182e4b"},
+	"hadal": {"water": "193d72", "sand": "96afc2", "rock": "466c99", "flora": "82a9b9", "accent": "b4e7e6", "shadow": "142d56"}
 }
 const REGION_ANCHORS := {
 	"atoll": Vector3(40, 340, 255), "kelp": Vector3(-260, 280, 200),

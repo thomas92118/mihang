@@ -47,13 +47,13 @@ func _run() -> void:
 		var biome_name: String = game._get_current_biome(game.diver.position)
 		assert(biome_name.contains(lm_info["name"]), "Biome name must identify " + lm_info["name"])
 
-	# Verify Coral Reef & Benthic Seabed Elements in live Ocean scene
-	assert(game.ocean.brain_corals.size() >= 18, "Brain corals must populate the ocean")
-	assert(game.ocean.staghorn_corals.size() >= 25, "Staghorn corals must populate the ocean")
-	assert(game.ocean.table_corals.size() >= 18, "Tiered table corals must populate the ocean")
-	assert(game.ocean.barrel_sponges.size() >= 18, "Giant barrel sponges must populate the ocean")
+	# Interactive showcase remains; mass scenery now uses tested MultiMesh batches.
+	assert(game.ocean.brain_corals.size() > 0, "Brain coral showcase must remain")
+	assert(game.ocean.staghorn_corals.size() > 0, "Staghorn coral showcase must remain")
+	assert(game.ocean.table_corals.size() > 0, "Table coral showcase must remain")
+	assert(game.ocean.barrel_sponges.size() > 0, "Barrel sponge showcase must remain")
 	assert(game.ocean.giant_clams.size() >= 12, "Bioluminescent giant clams must populate the ocean")
-	assert(game.ocean.sea_lilies.size() >= 22, "Crinoid sea lilies must populate the ocean")
+	assert(game.ocean.sea_lilies.size() > 0, "Sea lily showcase must remain")
 	var sample_clam: Node3D = game.ocean.giant_clams[0]
 	game.ocean.last_diver_pos = sample_clam.global_position + Vector3(0.5, 0.5, 0.5)
 	game.ocean._process(0.25)

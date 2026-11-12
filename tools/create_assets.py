@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STAGING = ROOT / '.tools/art-staging'
 SOURCE = STAGING / 'source'
 CONTRACT = json.loads((ROOT / 'assets/source/asset-contract.json').read_text(encoding='utf-8'))
-GENERATOR_VERSION = 'painterly-ocean-1'
+GENERATOR_VERSION = 'luminous-ocean-2'
 TRIANGLE_BUDGETS = {
     'fish': 1900, 'fish_small': 1500, 'fish_predator': 4900, 'fish_abyss': 4900,
     'manta_ray': 4500, 'sea_turtle': 4500, 'squid': 4500, 'crab': 4000, 'jellyfish': 4500,
@@ -42,32 +42,32 @@ CURRENT = ''
 # secondary pigment, metal, membrane/leaf. Ordinary benthos has zero emission.
 PALETTES = {
  'fish_predator': ['527582','ccd2c1','8c9d99','233d48','abc8c4','73959a','a5b3b0','668d95'],
- 'fish': ['2f8699','efe6c9','e69249','1d3f52','f2e2b3','e8be58','b5c4bd','ebaa54'],
- 'fish_small': ['e6b44c','f6e7bd','d97441','33424d','f4df9e','f2ce63','c4ba97','e89d58'],
+ 'fish': ['147baf', 'f1db9e', 'ebaa45', '12395e', 'f3dfaa', 'ecc665', '9cc7cc', 'f2b85d'],
+ 'fish_small': ['e9bf52', 'f4e2aa', 'e98d4a', '1d526a', 'efdc9a', 'edcc66', '9fb8a4', 'eeb457'],
  'fish_abyss': ['48536d','a2adb7','7c718d','1c293e','92cdd0','655e80','929ca4','67758e'],
- 'manta_ray': ['3d6273','d9d7c6','879a93','263c49','b4ccc4','577f8a','acbbb5','608a97'],
+ 'manta_ray': ['145474', 'd8e4d5', '438d9d', '143b60', 'a2d3d3', '2a7e9b', '9fc5c2', '3c8eac'],
  'sea_turtle': ['667c58','d7caa0','a49a6c','354b43','bdc8a1','8b9968','b5b49a','879a76'],
  'squid': ['b67a7e','e2c7b4','d19785','4e4251','c4c9c7','99778b','b7abb0','b9989f'],
  'crab': ['b56c56','ddc6a1','cf9670','4f4541','dfc8aa','8d675d','c6b8a1','bb886b'],
  'jellyfish': ['89b4c4','d4ded4','a49bbf','3b536d','b5d7d2','d4b78f','b3c5c5','a9bacf'],
- 'kelp': ['587c45','d4cb7e','b8ae52','2c4234','c7cb74','b89b49','95a876','8ca854'],
- 'resource_kelp': ['587c45','d4cb7e','b8ae52','2c4234','c7cb74','b89b49','95a876','8ca854'],
- 'coral': ['d96e54','f0d9b5','e58d67','685a4d','f5dfc0','c97968','bfb7a0','e09c7b'],
- 'staghorn_coral': ['de7c5e','f2dec0','e89d78','6e6052','f7e5c8','cf8d7b','c5baa5','e3aa8c'],
- 'table_coral': ['cc7368','ebd0ba','de9282','6b5e52','f2d6bc','bd787e','c6b29c','daa08d'],
- 'brain_coral': ['c1a467','e3cea0','ac915e','756f50','dfc58d','afa173','c2b388','c9b17b'],
+ 'kelp': ['329877', 'b0ce7b', '90ba61', '145569', 'd0d98a', '699e69', '7daf95', '61b080'],
+ 'resource_kelp': ['329877', 'b0ce7b', '90ba61', '145569', 'd0d98a', '699e69', '7daf95', '61b080'],
+ 'coral': ['e9795e', 'e2c99d', 'efab72', '386b79', 'f4dcaa', 'df6d68', '92b5ad', 'ef9975'],
+ 'staghorn_coral': ['e88e60', 'eed5a2', 'f0b979', '3c6d76', 'f5e0b4', 'd8826c', '92b5ad', 'eeb58d'],
+ 'table_coral': ['df816c', 'e6c7a4', 'ecaa82', '3e6878', 'efc896', 'ca697a', '94b1ac', 'e6a391'],
+ 'brain_coral': ['d8b456', 'e6d6a0', 'c8a249', '416f75', 'ead58c', 'b6b66b', '9eb9a1', 'dfc475'],
  'barrel_sponge': ['885060','d2a89a','a86b75','4a333e','deb8a6','6d4352','b3958f','9c606d'],
  'tube_coral': ['94657a','d9b8b4','b48292','523e4c','e0c0ba','7c5368','bba3a5','ab788b'],
  'anemone': ['ba686e','e8cab2','d8857c','5c464e','f2d8bf','a45d6c','bfa5a7','d89888'],
- 'sea_fan': ['b46d79','e3c8b7','ce9391','5e515d','dcbca8','986b7e','c0a8a5','bd8f92'],
+ 'sea_fan': ['c96b82', 'e8bbac', 'db8b99', '36596d', 'edc3a6', 'ad5c81', '94b1ac', 'd98b9d'],
  'tubeworms': ['d5c7ad','e8dcc2','c27561','565451','d7aa93','9c625e','bfb7a7','b67268'],
  'starfish_urchin': ['c17b63','e1c49d','c99d66','4c4b4c','d9b891','85727f','bca9a0','9b8490'],
  'giant_clam': ['aaa49a','e3d6ba','b7a188','59585f','b4c4c1','708a9a','c7bfb1','93a8b5'],
  'sea_lily': ['a4a473','ddd2a2','aba477','555d50','d4c89e','859a83','b6ba9a','b4bc97'],
- 'rock': ['7b8b84','b0b4a0','96a293','465d5d','b8bdab','718782','a4ada3','82958e'],
+ 'rock': ['5e969a', 'aecbb9', '85b5b2', '24546e', 'c0d2b9', '61969d', '8db7b6', '72a5aa'],
  'crystal_spire': ['668b96','c4d8cf','94b6bd','344c5b','9fcec9','7a9eab','acbcb9','8eb6bc'],
  'pod': ['d5d8cd','eeeadc','d4a664','243d4e','8fc6c4','687f87','a9b9b7','49778a'],
- 'ruins': ['8d9c8c','c7c9af','879a88','425e5d','8abdb2','a4ac8c','aeb9a8','72988f'],
+ 'ruins': ['79a8a5', 'd3d9b8', '9ebcb0', '26536b', 'b4d8c5', 'd4ba78', 'a6c4b9', '79acae'],
  'shipwreck': ['526f7b','b3c0b9','b38a58','263e49','a1c6bd','8c7665','92a5a6','6c928e'],
  'resource_titanium': ['708c95','d1d3bf','9dafa9','3d5860','b1c9c6','869d9b','b9c8be','8ea9aa'],
  'resource_copper': ['7d8d75','c8c7a5','bc8959','425b51','c0c5a5','799b81','c49e71','91ad91'],
@@ -128,7 +128,7 @@ def make_material(name):
     y, x = np.mgrid[0:h, 0:w].astype(np.float32)
     u, v = x / w, y / h
     cloud = np.sin(u * TAU * 1.7 + np.sin(v * TAU)) * np.cos(v * TAU * 1.3) * .5
-    brush = np.sin(u * TAU * 16 + np.sin(v * TAU * 3)) * .012
+    brush = np.sin(u * TAU * 16 + np.sin(v * TAU * 3)) * .003
     fine = np.random.default_rng(913 + sum(map(ord, name))).random((h, w), dtype=np.float32) - .5
     creature = name in {'fish', 'fish_small', 'fish_predator', 'fish_abyss', 'manta_ray', 'sea_turtle', 'squid', 'crab', 'jellyfish'}
     artificial = name.startswith('weapon') or name in {'pod', 'shipwreck'}
@@ -141,7 +141,7 @@ def make_material(name):
         row, col = slot // 4, slot % 4
         region = (slice(row*h, (row+1)*h), slice(col*w, (col+1)*w))
         base = color(pigment)[None, None, :]
-        ramp = .88 + .15*v + .065*cloud + brush + fine*.012
+        ramp = .88 + .10*v + .025*cloud + brush + fine*.003
         rgb = base * ramp[:, :, None]
         if creature and slot == 0:
             markings = np.maximum(0.0, np.sin(v * TAU * 3.0 + np.sin(u * TAU) * .65)) ** 6
@@ -156,7 +156,7 @@ def make_material(name):
         albedo[region][:,:,:3] = np.clip(rgb,0,1)
         if name == 'jellyfish' and slot in (0,7):
             albedo[region][:,:,3] = .63 if slot == 0 else .78
-        relief = cloud*.035 + brush*.3
+        relief = cloud*.012 + brush*.15
         if name == 'brain_coral':
             relief += np.tanh(np.sin(u*TAU*5+np.sin(v*TAU*4))*np.cos(v*TAU*4)*2)*.10
         if name in {'barrel_sponge','tube_coral'}:
@@ -183,7 +183,7 @@ def make_material(name):
     mat.use_nodes = True
     mat.use_backface_culling = False
     nodes,links = mat.node_tree.nodes,mat.node_tree.links
-    bsdf = nodes.get('Principled BSDF')
+    bsdf = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
     for key,img in maps.items():
         tex=nodes.new('ShaderNodeTexImage'); tex.name=key; tex.image=img; tex.interpolation='Linear'
     links.new(nodes['albedo'].outputs['Color'],bsdf.inputs['Base Color'])
@@ -441,25 +441,25 @@ def create_fish_predator():
 
 def kelp_blade(name, at, angle, length, width, bone_name=None):
     at = Vector(at)
-    direction = Vector((math.cos(angle), math.sin(angle), .35))
+    direction = Vector((math.cos(angle), math.sin(angle), .12))
     cross = Vector((-math.sin(angle), math.cos(angle), 0))
     verts, uv, faces = [], [], []
-    for i in range(17):
-        t = i / 16
-        for j in range(5):
-            v = j / 4 * 2 - 1
-            envelope = max(.002, math.sin(math.pi * t)) ** .8
-            p = at + direction * t * length + cross * v * width * envelope
-            p.z += math.sin(t * math.pi * 1.6) * length * .22 + math.sin(t * 19 + v * 2) * abs(v) * .04
+    # Budget the ribbon itself, rather than decimating dense ruffles into flags.
+    # Eleven cross-sections retain a tapered tip and an unbroken curved silhouette.
+    for i in range(11):
+        t = i / 10
+        for j in range(3):
+            v = j - 1
+            envelope = max(.001, math.sin(math.pi * t)) ** .82
+            p = at + direction * t * length + cross * (v * width * .64 * envelope + math.sin(t * math.pi) * length * .10)
+            p.z += math.sin(t * math.pi * 1.45) * length * .24 + (1 - abs(v)) * .025 * envelope
             verts.append(p)
-            uv.append((j / 4, t))
-    for i in range(16):
-        for j in range(4):
-            n = i * 5 + j
-            faces.append((n, n + 1, n + 6, n + 5))
+            uv.append((j / 2, t))
+    for i in range(10):
+        for j in range(2):
+            n = i * 3 + j
+            faces.append((n, n + 1, n + 4, n + 3))
     mesh(name, verts, faces, uv, 7, bone_name)
-    pts = [at + direction * i / 12 * length + Vector((0, 0, math.sin(i / 12 * math.pi * 1.6) * length * .22)) for i in range(13)]
-    tube('Luminous leaf midrib', pts, [.009] * 13, 4, bone_name, 4)
 
 
 def create_kelp():
@@ -1683,7 +1683,7 @@ def main():
         folder.mkdir(parents=True,exist_ok=True)
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete(use_global=False)
-    bpy.context.scene.name='Painterly ocean production assets'
+    bpy.context.scene.name='Luminous ocean production assets'
     bpy.context.scene.render.fps=30
     bpy.context.scene.unit_settings.system='METRIC'
     staged_manifest=STAGING/'asset-manifest.json'

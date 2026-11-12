@@ -10,6 +10,7 @@ const Submarine = preload("res://scripts/submarine.gd")
 const SeabedEcology = preload("res://scripts/seabed_ecology.gd")
 const OceanDepths = preload("res://scripts/ocean_depths.gd")
 const ArtDirection = preload("res://scripts/art_direction.gd")
+const OceanComposition = preload("res://scripts/presentation/ocean_composition.gd")
 const ModelFinish = preload("res://scripts/presentation/model_finish.gd")
 const LABEL_FONT = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 const LABEL_FONT_SIZE := 40
@@ -61,6 +62,7 @@ const RELIC_SPECS := [
 ]
 
 var environment: Environment
+var art_depth := 0.0
 var sun: DirectionalLight3D
 var water_surface: MeshInstance3D = null
 var water_surface_mat: ShaderMaterial = null
@@ -122,11 +124,6 @@ var sea_wolves: Array[Node3D] = []
 var schooling_fish: Array[Node3D] = []
 var fish_schools: Array[Dictionary] = []
 var escape_console: Node3D = null
-var dave_arches: Array[Node3D] = []
-var dave_terraces: Array[Node3D] = []
-var distant_seamounts: Array[Node3D] = []
-var ambient_shoals: Array[Dictionary] = []
-var bubble_streams: Array[Dictionary] = []
 var outposts: Array[Node3D] = []
 var explorer_relics: Array[Node3D] = []
 var outer_seabed_chunks: Array[MeshInstance3D] = []
@@ -349,6 +346,7 @@ func _ready() -> void:
 	add_child(seabed_ecology)
 	seabed_ecology.configure(self)
 	set_depth(maxf(0.0, -last_diver_pos.y))
+	_sync_animation_lod(last_diver_pos)
 
 func _create_environment() -> void:
 	environment = Environment.new()
@@ -571,10 +569,13 @@ func _naturalize_scene_materials() -> void:
 	# Decorative lights support local composition, never blanket illumination.
 	for light_node in find_children("*", "OmniLight3D", true, false):
 		var omni := light_node as OmniLight3D
+		var is_authored: bool = bool(omni.get_meta("authored_light", false))
+		var is_vent: bool = omni in vent_lights
+		omni.light_cull_mask = 2
 		omni.distance_fade_enabled = true
-		omni.distance_fade_begin = 28.0 if omni not in vent_lights else 48.0
-		omni.distance_fade_length = 12.0
-		if omni.global_position.y < -4.0 and omni not in vent_lights:
+		omni.distance_fade_begin = 135.0 if is_authored else (40.0 if is_vent else 28.0)
+		omni.distance_fade_length = 24.0 if is_authored else 12.0
+		if omni.global_position.y < -4.0 and not is_authored and not is_vent:
 			omni.light_energy *= 0.22
 			omni.omni_range = minf(omni.omni_range * 0.72, 16.0)
 
@@ -918,61 +919,7 @@ func _populate() -> void:
 	_create_nav_buoy(Vector3(-210, -28, -75), "◀  西洋远洋航道  ·  巨兽龙骨荒原 / 黑曜石火山口")
 	_create_nav_buoy(Vector3(0, -45, -235), "▼  南极渊远洋航道  ·  远古深海母树 / 极渊星辉圣域")
 
-	# 7. 岩石分布 (覆盖浅海、斜坡与深海，采用轻量化球体碰撞体消除 37 万个凹网格碰撞面)
-	for i in range(110):
-		var x: float = rng.randf_range(-190, 190)
-		var z: float = rng.randf_range(-240, 80)
-		if absf(x) < 8 and z > -30 and z < 15:
-			continue
-		var r_scale: float = rng.randf_range(0.8, 3.2)
-		var rock := model("rock", Vector3(x, floor_height(x, z) - 0.3, z), r_scale, 48.0)
-		rock.rotation.y = rng.randf_range(0, TAU)
-		var sb := StaticBody3D.new()
-		var col := CollisionShape3D.new()
-		var sphere := SphereShape3D.new()
-		sphere.radius = r_scale * 1.5
-		col.shape = sphere
-		col.position.y = r_scale * 0.7
-		sb.add_child(col)
-		rock.add_child(sb)
-
-	# 8. 植被与珊瑚分布 (带 GPU 顶点海流摆荡 Shader)
-	for i in range(160):
-		var x: float = rng.randf_range(-160, 160)
-		var z: float = rng.randf_range(-230, 80)
-		var depth_at_pos: float = -floor_height(x, z)
-		var asset: String
-		if depth_at_pos > 50.0:
-			asset = ["tube_coral", "sea_lily", "barrel_sponge"][i % 3]
-		elif depth_at_pos > 25.0:
-			asset = ["tube_coral", "coral", "barrel_sponge", "table_coral", "sea_lily"][i % 5]
-		else:
-			asset = ["coral", "staghorn_coral", "table_coral", "brain_coral", "tube_coral", "kelp"][i % 6]
-		var plant := model(asset, Vector3(x, floor_height(x, z), z), rng.randf_range(0.8, 2.0), 36.0)
-		plant.rotation.y = rng.randf_range(0, TAU)
-		var sway_amt: float = 0.08 if asset in ["brain_coral", "table_coral", "barrel_sponge"] else 0.34
-		apply_plant_shader(plant, sway_amt, 1.25, asset)
-		dynamic_plants.append(plant)
-
-	for p in [Vector3(-7, 0, 2), Vector3(8, 0, -5), Vector3(-9, 0, -16)]:
-		var c := model("coral", Vector3(p.x, floor_height(p.x, p.z), p.z), 1.5, 36.0)
-		apply_plant_shader(c, 0.28, 1.3, "coral")
-		dynamic_plants.append(c)
-
-	# 9. 巨型发光海葵群落
-	for i in range(32):
-		var x: float
-		var z: float
-		if i < 20:
-			x = rng.randf_range(-65, 65)
-			z = rng.randf_range(-45, 25)
-		else:
-			x = rng.randf_range(-75, 75)
-			z = rng.randf_range(-80, -45)
-		var anemone := model("anemone", Vector3(x, floor_height(x, z), z), rng.randf_range(0.85, 1.6), 32.0)
-		anemone.rotation.y = rng.randf_range(0, TAU)
-		apply_plant_shader(anemone, 0.26, 1.45, "anemone")
-		dynamic_plants.append(anemone)
+	# Decorative colonies are now streamed and authored by OceanComposition.
 
 	# 10. 深渊地热结晶石柱群 (轻量圆柱碰撞体替代凹网格碰撞体)
 	for i in range(18):
@@ -1075,8 +1022,6 @@ func _populate() -> void:
 	_spawn_squids()
 	_spawn_crabs()
 	_spawn_tubeworm_colonies()
-	_spawn_sea_fans()
-	_spawn_starfish_urchins()
 	_spawn_coral_reef_colonies()
 	_spawn_extra_creatures()
 	_spawn_sea_wolves()
@@ -1086,7 +1031,6 @@ func _populate() -> void:
 		_register_creature_hitbox(creature)
 
 	_create_particles()
-	_spawn_dave_blue_hole_layers()
 	_populate_open_world_frontiers()
 
 func _spawn_manta_rays() -> void:
@@ -1269,41 +1213,12 @@ func _spawn_coral_reef_colonies() -> void:
 			pearl_light.omni_range = 10.0
 			add_child(pearl_light)
 
-	# 1. 迷宫脑珊瑚群落 (26 处：浅海礁盘与海沟遗迹拱门周边)
-	for i in range(26):
-		var x: float = rng.randf_range(-75, 75)
-		var z: float = rng.randf_range(-58, 32)
-		_place_reef_element("brain_coral", Vector3(x, floor_height(x, z), z), rng.randf_range(0.9, 1.65), rng.randf_range(0, TAU), 44.0)
-
-	# 2. 鹿角珊瑚丛 (30 簇：浅海阳光礁区与琉璃珊瑚礁花园)
-	for i in range(30):
-		var x: float = rng.randf_range(-72, 72)
-		var z: float = rng.randf_range(-52, 35)
-		_place_reef_element("staghorn_coral", Vector3(x, floor_height(x, z), z), rng.randf_range(0.95, 1.75), rng.randf_range(0, TAU), 44.0)
-
-	# 3. 层叠桌形珊瑚礁 (26 簇：浅海台地与暮光断崖边缘)
-	for i in range(26):
-		var x: float = rng.randf_range(-88, 88)
-		var z: float = rng.randf_range(-78, 28)
-		_place_reef_element("table_coral", Vector3(x, floor_height(x, z), z), rng.randf_range(0.95, 1.80), rng.randf_range(0, TAU), 48.0)
-
-	# 4. 巨型褶皱桶状海绵 (24 簇：海妖磷光珊瑚林、斜坡与沉船遗址周边)
-	for i in range(24):
-		var x: float = rng.randf_range(-105, 85)
-		var z: float = rng.randf_range(-115, 18)
-		_place_reef_element("barrel_sponge", Vector3(x, floor_height(x, z), z), rng.randf_range(0.9, 1.7), rng.randf_range(0, TAU), 48.0)
-
 	# 5. 深海发光巨砗磲 (18 处：浅海珊瑚花园、古代遗迹与深渊晶簇海盆)
 	for i in range(18):
 		var x: float = rng.randf_range(-95, 105)
 		var z: float = rng.randf_range(-165, 25)
 		_place_reef_element("giant_clam", Vector3(x, floor_height(x, z), z), rng.randf_range(0.9, 1.5), rng.randf_range(0, TAU), 45.0)
 
-	# 6. 深海羽状海百合与气泡珊瑚簇 (26 簇：暮光斜坡、碧蓝晶簇海盆与深渊海床)
-	for i in range(26):
-		var x: float = rng.randf_range(-110, 110)
-		var z: float = rng.randf_range(-205, -10)
-		_place_reef_element("sea_lily", Vector3(x, floor_height(x, z), z), rng.randf_range(0.95, 1.65), rng.randf_range(0, TAU), 46.0)
 
 func _place_reef_element(asset: String, at: Vector3, scale_val: float, yaw: float, vis_range: float) -> Node3D:
 	var node := model(asset, at, scale_val, vis_range)
@@ -1423,6 +1338,7 @@ func _create_hydrothermal_vent(at: Vector3) -> void:
 		chimney.position = spec["offset"] + Vector3(0, -0.35, 0)
 		chimney.rotation_degrees = spec["tilt"]
 		chimney.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		chimney.layers = 3
 		vent_root.add_child(chimney)
 
 	var crater := MeshInstance3D.new()
@@ -2351,16 +2267,6 @@ func _create_particles() -> void:
 	marine_snow.extra_cull_margin = 1.0
 	add_child(marine_snow)
 
-func _spawn_dave_blue_hole_layers() -> void:
-	var dave_rng := RandomNumberGenerator.new()
-	dave_rng.seed = 20261104
-	_build_shallow_reef_terraces_and_kelp_curtains(dave_rng)
-	_build_blue_hole_stone_arches_and_canyons(dave_rng)
-	_build_twilight_dropoff_and_shipwreck_layers(dave_rng)
-	_build_abyssal_trench_and_cathedral_pillars(dave_rng)
-	_build_distant_seamount_silhouettes(dave_rng)
-	_create_ambient_fish_shoals_and_bubbles(dave_rng)
-
 func _spawn_decor_model(asset: String, at: Vector3, scale_vec: Vector3, rot_vec: Vector3 = Vector3.ZERO, vis_range: float = 110.0, sway: float = 0.0, sway_freq: float = 1.25) -> Node3D:
 	var node := model(asset, at, 1.0, vis_range)
 	node.scale = scale_vec
@@ -2368,462 +2274,6 @@ func _spawn_decor_model(asset: String, at: Vector3, scale_vec: Vector3, rot_vec:
 	if sway > 0.0:
 		apply_plant_shader(node, sway, sway_freq, asset)
 	return node
-
-func _build_reef_terrace_mound(center_xz: Vector2, tier_scale: float, yaw: float, dave_rng: RandomNumberGenerator, deep_style: bool = false) -> Node3D:
-	var base_y: float = floor_height(center_xz.x, center_xz.y)
-	var root := Node3D.new()
-	root.position = Vector3(center_xz.x, base_y, center_xz.y)
-	root.rotation.y = yaw
-	add_child(root)
-	dave_terraces.append(root)
-
-	# 1. 阶梯式叠石礁基座 (Stepped Limestone Reef Base，适配 rock.glb 原点在底部 y=0)
-	var r1 := _spawn_decor_model("rock", Vector3(0, -0.32, 0), Vector3(0.86, 0.46, 0.80) * tier_scale, Vector3(0.04, 0.2, -0.03), 115.0)
-	r1.reparent(root, false)
-	var r2 := _spawn_decor_model("rock", Vector3(1.25 * tier_scale, -0.28 * tier_scale, -0.80 * tier_scale), Vector3(0.62, 0.58, 0.58) * tier_scale, Vector3(-0.05, 1.4, 0.06), 115.0)
-	r2.reparent(root, false)
-	var r3 := _spawn_decor_model("rock", Vector3(-1.18 * tier_scale, -0.28 * tier_scale, 0.72 * tier_scale), Vector3(0.56, 0.48, 0.52) * tier_scale, Vector3(0.03, -1.1, -0.04), 110.0)
-	r3.reparent(root, false)
-
-	# 2. 中层悬挑桌形珊瑚与海扇 (彼此拉开间距，避免模型穿插)
-	var tc1 := _spawn_decor_model("table_coral", Vector3(-1.20 * tier_scale, 0.18 * tier_scale, 0.76 * tier_scale), Vector3.ONE * (0.76 * tier_scale), Vector3(0.04, 0.5, -0.03), 95.0, 0.08, 1.15)
-	tc1.reparent(root, false)
-	var tc2 := _spawn_decor_model("table_coral", Vector3(1.30 * tier_scale, 0.28 * tier_scale, -0.65 * tier_scale), Vector3.ONE * (0.72 * tier_scale), Vector3(-0.03, 2.2, 0.04), 95.0, 0.08, 1.15)
-	tc2.reparent(root, false)
-	var sf1 := _spawn_decor_model("sea_fan", Vector3(1.45 * tier_scale, 0.12 * tier_scale, 0.55 * tier_scale), Vector3.ONE * (0.86 * tier_scale), Vector3(0.16, 0.9, -0.22), 90.0, 0.36, 1.25)
-	sf1.reparent(root, false)
-
-	# 3. 顶层冠冕珊瑚丛与海绵/发光晶簇 (Crown Coral & Sponge / Crystal Cluster)
-	if deep_style:
-		var sp := _spawn_decor_model("crystal_spire", Vector3(0.10 * tier_scale, 0.05 * tier_scale, -0.20 * tier_scale), Vector3(0.68, 0.88, 0.68) * tier_scale, Vector3(0.06, 0.6, -0.04), 125.0)
-		sp.reparent(root, false)
-		var tub := _spawn_decor_model("tube_coral", Vector3(-0.88 * tier_scale, 0.16 * tier_scale, -0.50 * tier_scale), Vector3.ONE * (0.84 * tier_scale), Vector3(0, 1.8, 0), 95.0, 0.25, 1.3)
-		tub.reparent(root, false)
-		var bsp := _spawn_decor_model("barrel_sponge", Vector3(0.88 * tier_scale, 0.18 * tier_scale, 0.42 * tier_scale), Vector3.ONE * (0.78 * tier_scale), Vector3(0, -0.7, 0), 95.0, 0.10, 1.1)
-		bsp.reparent(root, false)
-		var lily_d := _spawn_decor_model("sea_lily", Vector3(-0.25 * tier_scale, 0.16 * tier_scale, 0.78 * tier_scale), Vector3.ONE * (0.88 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 90.0, 0.38, 1.35)
-		lily_d.reparent(root, false)
-	else:
-		var stg := _spawn_decor_model("staghorn_coral", Vector3(0.05 * tier_scale, 0.28 * tier_scale, 0.05 * tier_scale), Vector3.ONE * (0.84 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 95.0, 0.18, 1.25)
-		stg.reparent(root, false)
-		var brn := _spawn_decor_model("brain_coral", Vector3(-0.88 * tier_scale, 0.18 * tier_scale, -0.58 * tier_scale), Vector3.ONE * (0.76 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 90.0, 0.05, 1.1)
-		brn.reparent(root, false)
-		var bsp := _spawn_decor_model("barrel_sponge", Vector3(0.98 * tier_scale, 0.22 * tier_scale, -0.88 * tier_scale), Vector3.ONE * (0.74 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 95.0, 0.10, 1.1)
-		bsp.reparent(root, false)
-		var anm := _spawn_decor_model("anemone", Vector3(0.60 * tier_scale, 0.18 * tier_scale, 0.85 * tier_scale), Vector3.ONE * (0.74 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 85.0, 0.26, 1.4)
-		anm.reparent(root, false)
-		# 仅在浅海礁台后侧点缀修长海藻冠层 (Swaying Kelp Canopy only in sunlit shallows)
-		var kelp_h1: float = dave_rng.randf_range(1.25, 1.75) * tier_scale
-		var k1 := _spawn_decor_model("kelp", Vector3(-0.65 * tier_scale, -0.10 * tier_scale, -1.25 * tier_scale), Vector3(0.82 * tier_scale, kelp_h1, 0.82 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 110.0, 0.40, 1.20)
-		k1.reparent(root, false)
-		var kelp_h2: float = dave_rng.randf_range(1.05, 1.45) * tier_scale
-		var k2 := _spawn_decor_model("kelp", Vector3(1.18 * tier_scale, -0.12 * tier_scale, -1.18 * tier_scale), Vector3(0.72 * tier_scale, kelp_h2, 0.72 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 110.0, 0.36, 1.32)
-		k2.reparent(root, false)
-
-	var lily := _spawn_decor_model("sea_lily", Vector3(-1.42 * tier_scale, 0.02 * tier_scale, 0.15 * tier_scale), Vector3.ONE * (0.82 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 85.0, 0.38, 1.35)
-	lily.reparent(root, false)
-	return root
-
-func _build_shallow_reef_terraces_and_kelp_curtains(dave_rng: RandomNumberGenerator) -> void:
-	# 精心排布前景、中景、侧翼阶梯叠石珊瑚礁台，让出生视野、珊瑚花园与浅海礁床呈现《潜水员戴夫》式饱满层次
-	var shallow_mounds := [
-		# 出生点与主视野左右前景画框 (Framing `underwater` & `gameplay`)
-		{"xz": Vector2(-9.2, 8.8), "scale": 0.78, "yaw": 0.45},
-		{"xz": Vector2(9.2, 8.4), "scale": 0.76, "yaw": -0.55},
-		{"xz": Vector2(-13.2, 1.2), "scale": 0.88, "yaw": 0.85},
-		{"xz": Vector2(12.6, 0.5), "scale": 0.85, "yaw": -0.75},
-		{"xz": Vector2(-8.2, -8.5), "scale": 0.86, "yaw": 1.25},
-		{"xz": Vector2(8.5, -9.5), "scale": 0.84, "yaw": -1.15},
-		{"xz": Vector2(-16.5, -14.5), "scale": 0.96, "yaw": 0.65},
-		{"xz": Vector2(16.0, -15.5), "scale": 0.94, "yaw": -0.85},
-		{"xz": Vector2(0.5, -15.5), "scale": 0.80, "yaw": 0.15},
-		# 浅海礁床与近景沙滩环绕 (`reef-floor` & `sand-close`，保留 (-13..-11, 8..12) 沙纹前景)
-		{"xz": Vector2(-16.5, 14.8), "scale": 0.76, "yaw": 0.95},
-		{"xz": Vector2(-5.2, 14.2), "scale": 0.74, "yaw": -0.45},
-		{"xz": Vector2(-17.2, 4.8), "scale": 0.82, "yaw": 1.55},
-		{"xz": Vector2(-6.2, 1.2), "scale": 0.78, "yaw": -1.05},
-		# 琉璃珊瑚礁花园立体阶梯层 (`coral-sanctuary`)
-		{"xz": Vector2(7.8, 13.5), "scale": 0.76, "yaw": 0.35},
-		{"xz": Vector2(20.4, 13.2), "scale": 0.78, "yaw": -0.65},
-		{"xz": Vector2(8.6, 4.5), "scale": 0.84, "yaw": 1.15},
-		{"xz": Vector2(20.8, 4.2), "scale": 0.86, "yaw": -1.25},
-		{"xz": Vector2(10.5, -14.5), "scale": 0.92, "yaw": 0.55},
-		{"xz": Vector2(21.5, -14.0), "scale": 0.90, "yaw": -0.95},
-		# 外围浅海生态环带
-		{"xz": Vector2(-24.0, -4.0), "scale": 0.98, "yaw": 0.75},
-		{"xz": Vector2(26.0, -8.0), "scale": 0.96, "yaw": -0.65},
-		{"xz": Vector2(-22.0, -24.0), "scale": 1.05, "yaw": 1.35},
-		{"xz": Vector2(24.0, -26.0), "scale": 1.02, "yaw": -1.15},
-	]
-	for m in shallow_mounds:
-		_build_reef_terrace_mound(m["xz"], float(m["scale"]), float(m["yaw"]), dave_rng, false)
-
-func _build_stone_archway(at: Vector3, arch_scale: float, yaw: float, light_col: Color, deep_arch: bool = false) -> Node3D:
-	var arch_root := Node3D.new()
-	arch_root.position = at
-	arch_root.rotation.y = yaw
-	add_child(arch_root)
-	dave_arches.append(arch_root)
-
-	# 采用雕刻拱门模型 + 左右天然礁石基座，构成自然的《潜水员戴夫》蓝洞石拱门廊
-	var main_arch := _spawn_decor_model("ruins", Vector3(0.0, -0.35 * arch_scale, 0.0), Vector3(1.15, 1.05, 1.15) * arch_scale, Vector3.ZERO, 210.0)
-	main_arch.reparent(arch_root, false)
-	var pillar_x: float = 3.65 * arch_scale
-	var top_h: float = 4.6 * arch_scale
-
-	var sh_l := _spawn_decor_model("rock", Vector3(-pillar_x - 0.55 * arch_scale, -0.45 * arch_scale, 0.2), Vector3(0.88, 0.68, 0.82) * arch_scale, Vector3(0, 1.1, 0), 185.0)
-	sh_l.reparent(arch_root, false)
-	var sh_r := _spawn_decor_model("rock", Vector3(pillar_x + 0.55 * arch_scale, -0.45 * arch_scale, -0.2), Vector3(0.88, 0.68, 0.82) * arch_scale, Vector3(0, -0.9, 0), 185.0)
-	sh_r.reparent(arch_root, false)
-
-	# 拱柱外侧与基座的珊瑚/海扇/晶簇装饰 (紧贴拱柱与海床礁座，不悬空于拱洞中央)
-	var top_tc := _spawn_decor_model("table_coral", Vector3(-pillar_x, 0.55 * arch_scale, 0.35), Vector3.ONE * (0.56 * arch_scale), Vector3(0, 0.4, 0), 130.0, 0.08, 1.1)
-	top_tc.reparent(arch_root, false)
-	var hang_fan1 := _spawn_decor_model("sea_fan", Vector3(-pillar_x, 1.65 * arch_scale, 0.32), Vector3.ONE * (0.64 * arch_scale), Vector3(0.18, 0.6, -0.35), 125.0, 0.35, 1.2)
-	hang_fan1.reparent(arch_root, false)
-	var hang_fan2 := _spawn_decor_model("sea_fan", Vector3(pillar_x, 1.55 * arch_scale, -0.28), Vector3.ONE * (0.64 * arch_scale), Vector3(-0.18, -0.5, 0.35), 125.0, 0.35, 1.2)
-	hang_fan2.reparent(arch_root, false)
-
-	if deep_arch:
-		var cry_l := _spawn_decor_model("crystal_spire", Vector3(-pillar_x - 0.85 * arch_scale, -0.25 * arch_scale, 0.35), Vector3.ONE * (0.55 * arch_scale), Vector3(0.08, 0.4, -0.06), 165.0)
-		cry_l.reparent(arch_root, false)
-		var cry_r := _spawn_decor_model("crystal_spire", Vector3(pillar_x + 0.85 * arch_scale, -0.25 * arch_scale, -0.35), Vector3.ONE * (0.55 * arch_scale), Vector3(-0.08, -0.4, 0.06), 165.0)
-		cry_r.reparent(arch_root, false)
-		var top_sp := _spawn_decor_model("barrel_sponge", Vector3(pillar_x * 0.86, 0.42 * arch_scale, 0.28), Vector3.ONE * (0.52 * arch_scale), Vector3(0, 1.2, 0), 155.0, 0.10, 1.1)
-		top_sp.reparent(arch_root, false)
-	else:
-		var top_k := _spawn_decor_model("kelp", Vector3(pillar_x + 0.45 * arch_scale, -0.20 * arch_scale, -0.35), Vector3(0.82, 1.35, 0.82) * arch_scale, Vector3(0, 0.8, 0), 135.0, 0.40, 1.2)
-		top_k.reparent(arch_root, false)
-		var top_stg := _spawn_decor_model("staghorn_coral", Vector3(pillar_x, 0.48 * arch_scale, 0.24), Vector3.ONE * (0.58 * arch_scale), Vector3(0, 1.5, 0), 125.0, 0.18, 1.25)
-		top_stg.reparent(arch_root, false)
-
-	var arch_light := OmniLight3D.new()
-	arch_light.position = Vector3(0, top_h * 0.65, 0)
-	arch_light.light_color = light_col
-	arch_light.light_energy = 1.6 if not deep_arch else 2.2
-	arch_light.omni_range = minf(26.0, 15.0 * arch_scale)
-	arch_light.distance_fade_enabled = true
-	arch_light.distance_fade_begin = 55.0
-	arch_light.distance_fade_length = 24.0
-	arch_root.add_child(arch_light)
-	return arch_root
-
-func _build_blue_hole_stone_arches_and_canyons(_dave_rng: RandomNumberGenerator) -> void:
-	# 蓝洞标志性天然石拱门廊：串联浅海、珊瑚圣所、暮光断崖、沉船海谷与深渊地热海沟
-	var arch_defs := [
-		# 浅海中景左右双石拱门
-		{"pos": Vector3(-12.5, floor_height(-12.5, -19.5), -19.5), "scale": 1.15, "yaw": 0.28, "col": Color(0.25, 0.92, 0.95), "deep": false},
-		{"pos": Vector3(13.5, floor_height(13.5, -22.0), -22.0), "scale": 1.20, "yaw": -0.32, "col": Color(0.30, 0.95, 0.88), "deep": false},
-		# 琉璃珊瑚礁花园背景主石拱门 (`coral-sanctuary`)
-		{"pos": Vector3(15.2, floor_height(15.2, -16.0), -16.0), "scale": 1.25, "yaw": 0.08, "col": Color(0.28, 0.96, 0.90), "deep": false},
-		# 暮光大断崖门户巨拱
-		{"pos": Vector3(-5.0, floor_height(-5.0, -36.0), -36.0), "scale": 1.45, "yaw": 0.18, "col": Color(0.22, 0.82, 1.0), "deep": false},
-		# 大陆坡断崖峡谷石拱 (`slope-floor` 视野中远景)
-		{"pos": Vector3(32.5, floor_height(32.5, -62.0), -62.0), "scale": 1.50, "yaw": -0.38, "col": Color(0.24, 0.86, 1.0), "deep": true},
-		# 失事科考潜艇后方峡谷石拱门 (`shipwreck` 视野背景)
-		{"pos": Vector3(45.0, floor_height(45.0, -70.0), -70.0), "scale": 1.85, "yaw": 0.05, "col": Color(0.22, 0.90, 1.0), "deep": true},
-		# 深海地热裂谷跨海沟巨型玄武岩拱桥 (`deep` & `deep-sea` 视野核心层)
-		{"pos": Vector3(15.0, floor_height(15.0, -172.0), -172.0), "scale": 1.95, "yaw": 0.08, "col": Color(0.92, 0.56, 0.26), "deep": true},
-		{"pos": Vector3(14.5, floor_height(14.5, -178.0), -178.0), "scale": 2.45, "yaw": -0.10, "col": Color(0.22, 0.88, 1.0), "deep": true},
-		# 深渊海床远景玄武岩拱门 (`abyss-floor` 远景上半幅，保留近景地面净空)
-		{"pos": Vector3(-26.0, floor_height(-26.0, -162.0), -162.0), "scale": 1.55, "yaw": 0.25, "col": Color(0.25, 0.88, 1.0), "deep": true},
-	]
-	for ad in arch_defs:
-		_build_stone_archway(ad["pos"], float(ad["scale"]), float(ad["yaw"]), ad["col"], bool(ad["deep"]))
-
-func _build_twilight_dropoff_and_shipwreck_layers(dave_rng: RandomNumberGenerator) -> void:
-	# 1. 暮光大陆坡断崖壁挂珊瑚台地与晶簇岩架 (保留 `slope-floor` 正中地面坡面视野，在两侧与远景排布层叠礁台)
-	var slope_ledges := [
-		Vector2(19.5, -50.0), Vector2(35.5, -50.5), Vector2(22.5, -58.5),
-		Vector2(36.0, -60.0), Vector2(27.0, -65.0), Vector2(33.5, -67.0),
-		Vector2(14.0, -44.0), Vector2(-12.0, -45.0), Vector2(-24.0, -52.0),
-		Vector2(4.0, -50.0), Vector2(-18.0, -62.0), Vector2(18.0, -62.0),
-	]
-	for idx in range(slope_ledges.size()):
-		var xz: Vector2 = slope_ledges[idx]
-		_build_reef_terrace_mound(xz, dave_rng.randf_range(0.72, 0.92), dave_rng.randf_range(0, TAU), dave_rng, true)
-
-	# 2. 失事科考潜艇峡谷背山、岩柱群与发光珊瑚生态簇 (`shipwreck` 视野立体背景，不遮挡艇身)
-	var wreck_pillars := [
-		{"xz": Vector2(31.0, -64.0), "scale": Vector3(1.15, 2.2, 1.10), "yaw": 0.4},
-		{"xz": Vector2(58.0, -63.0), "scale": Vector3(1.20, 2.4, 1.15), "yaw": -0.5},
-		{"xz": Vector2(37.5, -74.0), "scale": Vector3(1.45, 3.0, 1.35), "yaw": 0.8},
-		{"xz": Vector2(52.5, -75.0), "scale": Vector3(1.50, 3.2, 1.40), "yaw": -0.7},
-		{"xz": Vector2(28.5, -55.0), "scale": Vector3(0.95, 1.6, 0.95), "yaw": 0.2},
-		{"xz": Vector2(60.0, -55.0), "scale": Vector3(1.00, 1.7, 0.95), "yaw": -0.3},
-	]
-	for wp in wreck_pillars:
-		var wxz: Vector2 = wp["xz"]
-		var wy: float = floor_height(wxz.x, wxz.y)
-		var sc: Vector3 = wp["scale"]
-		var p_node := _spawn_decor_model("rock", Vector3(wxz.x, wy - 0.65, wxz.y), sc, Vector3(0.04, float(wp["yaw"]), -0.03), 175.0)
-		_spawn_decor_model("rock", Vector3(wxz.x + 0.16, wy + sc.y * 0.78, wxz.y - 0.12), sc * Vector3(0.74, 0.76, 0.74), Vector3(-0.03, float(wp["yaw"]) + 1.3, 0.04), 175.0)
-		# 在岩柱实心表面与柱脚海床布置桌形珊瑚、海扇与晶簇，避免悬空
-		_spawn_decor_model("table_coral", p_node.position + Vector3(0.0, sc.y * 0.72, 0.42 * sc.z), Vector3.ONE * 0.74, Vector3(0, float(wp["yaw"]), 0), 130.0, 0.08, 1.1)
-		var cry_xz := Vector2(wxz.x + 0.85 * sc.x, wxz.y + 0.45 * sc.z)
-		_spawn_decor_model("crystal_spire", Vector3(cry_xz.x, floor_height(cry_xz.x, cry_xz.y) - 0.30, cry_xz.y), Vector3.ONE * 0.72, Vector3(0.06, float(wp["yaw"]), -0.05), 145.0)
-		_spawn_decor_model("sea_fan", p_node.position + Vector3(-0.48 * sc.x, sc.y * 0.65, 0.38 * sc.z), Vector3.ONE * 0.82, Vector3(0.14, float(wp["yaw"]), 0.18), 125.0, 0.35, 1.2)
-
-	# 潜艇周边的多层珊瑚礁台
-	for w_mound in [Vector2(34.0, -52.5), Vector2(55.5, -52.5), Vector2(36.0, -61.5), Vector2(53.5, -61.0)]:
-		_build_reef_terrace_mound(w_mound, 0.78, dave_rng.randf_range(0, TAU), dave_rng, true)
-
-func _build_abyssal_trench_and_cathedral_pillars(dave_rng: RandomNumberGenerator) -> void:
-	# 深渊大裂谷与地热喷口区：构建从海床 (-95m) 拔地而起直达中层水体 (-35m) 的玄武岩巨柱林、悬空晶簇岩台与水母幕墙
-	var abyssal_spires := [
-		# `deep` ((15, -65, -130) -> (15, -48, -170)) 与 `deep-sea` ((15, -88, -152) -> (15, -94, -165)) 视野内的多层次立柱与悬台
-		{"xz": Vector2(1.5, -154.0), "w": 1.55, "tiers": 6, "col": Color(0.22, 0.88, 1.0)},
-		{"xz": Vector2(28.5, -155.0), "w": 1.60, "tiers": 5, "col": Color(1.0, 0.55, 0.18)},
-		{"xz": Vector2(-6.5, -166.0), "w": 1.85, "tiers": 7, "col": Color(0.68, 0.38, 1.0)},
-		{"xz": Vector2(35.0, -168.0), "w": 1.90, "tiers": 7, "col": Color(0.20, 0.92, 0.88)},
-		{"xz": Vector2(6.0, -175.0), "w": 1.70, "tiers": 6, "col": Color(1.0, 0.52, 0.16)},
-		{"xz": Vector2(24.0, -177.0), "w": 1.75, "tiers": 8, "col": Color(0.24, 0.86, 1.0)},
-		{"xz": Vector2(15.0, -190.0), "w": 2.10, "tiers": 9, "col": Color(0.28, 0.92, 1.0)},
-		# `abyss-floor` ((-30, floor+2, -140) -> (-28, floor, -146)) 远景背景柱群 (保持近景地面净空)
-		{"xz": Vector2(-34.5, -160.0), "w": 1.35, "tiers": 4, "col": Color(0.22, 0.88, 1.0)},
-		{"xz": Vector2(-19.5, -161.0), "w": 1.40, "tiers": 5, "col": Color(0.72, 0.42, 1.0)},
-	]
-	for sp in abyssal_spires:
-		var xz: Vector2 = sp["xz"]
-		var base_y: float = floor_height(xz.x, xz.y)
-		var w: float = float(sp["w"])
-		var tiers: int = int(sp["tiers"])
-		var col: Color = sp["col"]
-		var cur_y: float = base_y - 0.65
-		for t_idx in range(tiers):
-			var seg_w: float = w * (1.0 - float(t_idx) * 0.05)
-			var seg_h: float = 2.5
-			var seg_pos := Vector3(xz.x + sin(float(t_idx) * 1.1) * 0.24, cur_y, xz.y + cos(float(t_idx) * 0.9) * 0.24)
-			_spawn_decor_model("rock", seg_pos, Vector3(seg_w, seg_h, seg_w), Vector3(0.03, dave_rng.randf_range(0, TAU), -0.03), 220.0)
-			if t_idx >= 2 and t_idx % 2 == 0:
-				_spawn_decor_model("table_coral", seg_pos + Vector3(0, 1.1, 0.55 * seg_w), Vector3.ONE * 0.78, Vector3(0, dave_rng.randf_range(0, TAU), 0), 195.0, 0.08, 1.1)
-				_spawn_decor_model("tube_coral", seg_pos + Vector3(-0.52 * seg_w, 1.25, 0.42 * seg_w), Vector3.ONE * 0.80, Vector3(0, 1.1, 0), 175.0, 0.28, 1.3)
-			cur_y += 2.95
-		var foot_xz := Vector2(xz.x + 0.85 * w, xz.y + 0.65 * w)
-		_spawn_decor_model("crystal_spire", Vector3(foot_xz.x, floor_height(foot_xz.x, foot_xz.y) - 0.35, foot_xz.y), Vector3.ONE * 0.92, Vector3(0.05, dave_rng.randf_range(0, TAU), -0.04), 205.0)
-
-		# 柱顶嵌入发光晶簇与海绵，无悬空缝隙
-		var crown_pos := Vector3(xz.x, cur_y - 0.85, xz.y)
-		_spawn_decor_model("crystal_spire", crown_pos, Vector3.ONE * 0.82, Vector3(0, dave_rng.randf_range(0, TAU), 0), 215.0)
-		_spawn_decor_model("barrel_sponge", crown_pos + Vector3(0.45 * w, -0.35, 0.32 * w), Vector3.ONE * 0.78, Vector3(0, -0.8, 0), 180.0, 0.10, 1.1)
-
-		var beacon := OmniLight3D.new()
-		beacon.position = crown_pos + Vector3(0, 2.2, 1.4)
-		beacon.light_color = col
-		beacon.light_energy = 2.4
-		beacon.omni_range = 28.0
-		beacon.distance_fade_enabled = true
-		beacon.distance_fade_begin = 60.0
-		beacon.distance_fade_length = 26.0
-		add_child(beacon)
-
-	# 深海地热区海床层叠珊瑚晶簇台 (`deep-sea` 视野近中景两侧，无浅海巨藻)
-	for ds_xz in [Vector2(6.5, -161.5), Vector2(23.5, -161.5), Vector2(8.5, -172.0), Vector2(21.5, -173.0)]:
-		_build_reef_terrace_mound(ds_xz, 0.82, dave_rng.randf_range(0, TAU), dave_rng, true)
-
-func _build_distant_seamount_silhouettes(dave_rng: RandomNumberGenerator) -> void:
-	# 远景深海山脉与石柱群剪影环幕 (Distant Blue Hole Seamount Backdrop Silhouettes)
-	# 控制浅海远景高度不遮挡水面顶部，同时在水平视野尽头形成层叠海底山峰剪影
-	var seamount_defs := [
-		# 浅海北方断崖远景连绵礁山 (Visible in `underwater`, `gameplay`, `reef-floor`, `coral-sanctuary`)
-		{"pos": Vector3(-38.0, -25.0, -46.0), "scale": Vector3(3.2, 2.2, 2.4)},
-		{"pos": Vector3(-21.0, -26.5, -50.0), "scale": Vector3(2.8, 2.4, 2.2)},
-		{"pos": Vector3(0.0, -28.0, -54.0), "scale": Vector3(3.4, 2.5, 2.4)},
-		{"pos": Vector3(21.0, -26.5, -50.0), "scale": Vector3(2.9, 2.3, 2.2)},
-		{"pos": Vector3(38.0, -25.0, -44.0), "scale": Vector3(3.2, 2.2, 2.4)},
-		# 东西侧翼远景海山
-		{"pos": Vector3(-52.0, -23.0, -12.0), "scale": Vector3(3.5, 2.4, 2.8)},
-		{"pos": Vector3(52.0, -23.0, -14.0), "scale": Vector3(3.5, 2.4, 2.8)},
-		# 暮光与深渊远景巨峰
-		{"pos": Vector3(46.0, -62.0, -88.0), "scale": Vector3(4.2, 4.8, 3.2)},
-		{"pos": Vector3(28.0, -64.0, -84.0), "scale": Vector3(3.8, 4.2, 3.0)},
-		{"pos": Vector3(-18.0, -82.0, -196.0), "scale": Vector3(4.8, 6.5, 3.6)},
-		{"pos": Vector3(16.0, -80.0, -202.0), "scale": Vector3(5.2, 7.2, 3.8)},
-		{"pos": Vector3(44.0, -82.0, -194.0), "scale": Vector3(4.8, 6.5, 3.6)},
-	]
-	for sm in seamount_defs:
-		var raw_pos: Vector3 = sm["pos"]
-		var grounded_pos := Vector3(raw_pos.x, floor_height(raw_pos.x, raw_pos.z) - 0.9, raw_pos.z)
-		var node := _spawn_decor_model("rock", grounded_pos, sm["scale"] * Vector3(1.0, 1.45, 1.0), Vector3(0, dave_rng.randf_range(0, TAU), 0), 240.0)
-		distant_seamounts.append(node)
-
-func _create_ambient_fish_shoals_and_bubbles(dave_rng: RandomNumberGenerator) -> void:
-	# 1. 《潜水员戴夫》风格多彩群游热带鱼带与深渊荧光鱼群 (MultiMesh Ambient Ribbon Shoals)
-	var shoal_specs := [
-		# 浅海主视野与珊瑚花园多彩鱼群 (黄金蝶鱼群、小丑橙鱼群、宝蓝拟态鱼群、翠绿雀鲷群)
-		{"center": Vector3(-4.5, -10.2, 4.0), "rx": 6.5, "ry": 1.2, "rz": 4.8, "speed": 0.65, "count": 28, "color": Color(1.0, 0.58, 0.14), "emit": Color(1.0, 0.45, 0.08), "scale": 0.22},
-		{"center": Vector3(5.5, -10.8, 1.5), "rx": 7.2, "ry": 1.4, "rz": 5.2, "speed": 0.58, "count": 30, "color": Color(0.18, 0.78, 1.0), "emit": Color(0.12, 0.65, 1.0), "scale": 0.21},
-		{"center": Vector3(0.0, -11.5, -8.5), "rx": 9.0, "ry": 1.6, "rz": 6.5, "speed": 0.52, "count": 34, "color": Color(1.0, 0.86, 0.18), "emit": Color(0.95, 0.75, 0.12), "scale": 0.24},
-		{"center": Vector3(-11.0, -11.2, 12.0), "rx": 5.8, "ry": 1.1, "rz": 4.5, "speed": 0.62, "count": 26, "color": Color(0.98, 0.36, 0.58), "emit": Color(0.92, 0.25, 0.50), "scale": 0.20},
-		{"center": Vector3(14.5, -11.8, 11.5), "rx": 6.2, "ry": 1.2, "rz": 5.0, "speed": 0.60, "count": 32, "color": Color(0.22, 0.96, 0.76), "emit": Color(0.15, 0.88, 0.68), "scale": 0.22},
-		{"center": Vector3(15.5, -12.5, -3.5), "rx": 7.5, "ry": 1.5, "rz": 5.5, "speed": 0.55, "count": 30, "color": Color(1.0, 0.68, 0.16), "emit": Color(1.0, 0.52, 0.10), "scale": 0.23},
-		# 暮光断崖与失事科考潜艇荧光鱼群 (`slope-floor` & `shipwreck`)
-		{"center": Vector3(28.0, -39.0, -50.0), "rx": 7.5, "ry": 1.8, "rz": 5.8, "speed": 0.56, "count": 32, "color": Color(0.20, 0.92, 1.0), "emit": Color(0.18, 0.85, 1.0), "scale": 0.25},
-		{"center": Vector3(45.0, -50.5, -53.0), "rx": 8.5, "ry": 2.0, "rz": 6.2, "speed": 0.50, "count": 36, "color": Color(0.32, 0.96, 0.85), "emit": Color(0.24, 0.92, 0.80), "scale": 0.26},
-		{"center": Vector3(44.0, -47.0, -61.0), "rx": 9.5, "ry": 2.2, "rz": 6.8, "speed": 0.48, "count": 32, "color": Color(0.88, 0.42, 1.0), "emit": Color(0.78, 0.32, 1.0), "scale": 0.26},
-		# 深海大裂谷与地热喷口中层荧光灯笼鱼群 (`deep` & `deep-sea`)
-		{"center": Vector3(15.0, -56.0, -152.0), "rx": 11.0, "ry": 2.8, "rz": 8.0, "speed": 0.46, "count": 38, "color": Color(0.24, 0.95, 1.0), "emit": Color(0.20, 0.90, 1.0), "scale": 0.28},
-		{"center": Vector3(14.0, -51.0, -164.0), "rx": 12.5, "ry": 3.2, "rz": 9.0, "speed": 0.42, "count": 40, "color": Color(1.0, 0.65, 0.22), "emit": Color(1.0, 0.55, 0.15), "scale": 0.30},
-		{"center": Vector3(15.0, -84.0, -162.0), "rx": 9.5, "ry": 2.2, "rz": 7.5, "speed": 0.52, "count": 36, "color": Color(0.30, 0.98, 0.82), "emit": Color(0.22, 0.92, 0.75), "scale": 0.26},
-	]
-
-	# 提取真实 3D 鱼类模型网格用于 MultiMesh 群游鱼带
-	if not cache.has("fish_small"):
-		cache["fish_small"] = load("res://assets/models/fish_small.glb")
-	var sample_fish_scene: Node3D = cache["fish_small"].instantiate()
-	var base_fish_mesh: Mesh = null
-	for child in sample_fish_scene.find_children("*", "MeshInstance3D", true, false):
-		var mi: MeshInstance3D = child
-		if mi.mesh != null:
-			base_fish_mesh = mi.mesh
-			break
-	sample_fish_scene.free()
-	if base_fish_mesh == null:
-		var fallback := CapsuleMesh.new()
-		fallback.radius = 0.14
-		fallback.height = 0.65
-		base_fish_mesh = fallback
-
-	var fish_orig_mat: BaseMaterial3D = null
-	if base_fish_mesh.get_surface_count() > 0 and base_fish_mesh.surface_get_material(0) is BaseMaterial3D:
-		fish_orig_mat = base_fish_mesh.surface_get_material(0) as BaseMaterial3D
-	var shoal_tints := [Color(1.0, 0.94, 0.80), Color(0.76, 0.94, 1.0), Color(1.0, 0.90, 0.72), Color(0.96, 0.84, 0.88), Color(0.80, 0.96, 0.90), Color(0.98, 0.86, 0.74)]
-	for shoal_index in range(shoal_specs.size()):
-		var spec: Dictionary = shoal_specs[shoal_index]
-		var mmi := MultiMeshInstance3D.new()
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		var mat := ShaderMaterial.new()
-		mat.shader = plant_shader
-		mat.set_shader_parameter("albedo", shoal_tints[shoal_index % shoal_tints.size()])
-		mat.set_shader_parameter("roughness", 0.58)
-		mat.set_shader_parameter("metallic", 0.06)
-		if fish_orig_mat != null:
-			mat.set_shader_parameter("albedo_texture", fish_orig_mat.albedo_texture)
-			mat.set_shader_parameter("normal_texture", fish_orig_mat.normal_texture)
-			mat.set_shader_parameter("orm_texture", fish_orig_mat.roughness_texture)
-		mat.set_shader_parameter("sway_strength", 0.0)
-		mat.set_shader_parameter("emission_energy", 0.0)
-		var mesh_copy: Mesh = base_fish_mesh.duplicate()
-		if mesh_copy is ArrayMesh:
-			for s_i in range(mesh_copy.get_surface_count()):
-				mesh_copy.surface_set_material(s_i, mat)
-		mm.mesh = mesh_copy
-		var cnt: int = int(spec["count"])
-		mm.instance_count = cnt
-		var offsets: Array[Vector3] = []
-		var phases: Array[float] = []
-		for i in range(cnt):
-			offsets.append(Vector3(dave_rng.randf_range(-2.6, 2.6), dave_rng.randf_range(-0.85, 0.85), dave_rng.randf_range(-2.6, 2.6)))
-			phases.append(float(i) * 0.24 + dave_rng.randf_range(0.0, 0.6))
-		mmi.multimesh = mm
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mmi.extra_cull_margin = 16.0
-		add_child(mmi)
-		var shoal_data := {
-			"mmi": mmi,
-			"mm": mm,
-			"center": spec["center"],
-			"rx": float(spec["rx"]),
-			"ry": float(spec["ry"]),
-			"rz": float(spec["rz"]),
-			"speed": float(spec["speed"]),
-			"scale": float(spec["scale"]),
-			"offsets": offsets,
-			"phases": phases,
-			"base_phase": dave_rng.randf_range(0.0, TAU)
-		}
-		ambient_shoals.append(shoal_data)
-		_update_single_shoal(shoal_data, 0.0)
-
-	# 2. 海底礁盘、巨砗磲与裂谷上升微气泡帘 (Rising Underwater Micro-Bubble Curtains)
-	var bubble_spots := [
-		Vector3(-8.5, floor_height(-8.5, 9.0), 9.0),
-		Vector3(8.5, floor_height(8.5, 8.5), 8.5),
-		Vector3(-12.0, floor_height(-12.0, 1.5), 1.5),
-		Vector3(11.5, floor_height(11.5, 0.5), 0.5),
-		Vector3(14.5, floor_height(14.5, 11.5), 11.5),
-		Vector3(17.2, floor_height(17.2, -7.2), -7.2),
-		Vector3(-10.5, floor_height(-10.5, 13.5), 13.5),
-		Vector3(28.0, floor_height(28.0, -49.0), -49.0),
-		Vector3(44.0, floor_height(44.0, -54.0), -54.0),
-		Vector3(47.0, floor_height(47.0, -57.0), -57.0),
-		Vector3(12.0, floor_height(12.0, -162.0), -162.0),
-		Vector3(18.0, floor_height(18.0, -166.0), -166.0),
-	]
-	var bubble_mesh := SphereMesh.new()
-	bubble_mesh.radius = 0.04
-	bubble_mesh.height = 0.08
-	bubble_mesh.radial_segments = 6
-	bubble_mesh.rings = 3
-	var bubble_mat := StandardMaterial3D.new()
-	bubble_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bubble_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bubble_mat.albedo_color = Color(0.63, 0.73, 0.72, 0.24)
-	bubble_mesh.material = bubble_mat
-
-	for b_origin in bubble_spots:
-		var b_mmi := MultiMeshInstance3D.new()
-		var b_mm := MultiMesh.new()
-		b_mm.transform_format = MultiMesh.TRANSFORM_3D
-		b_mm.mesh = bubble_mesh
-		b_mm.instance_count = 22
-		b_mmi.multimesh = b_mm
-		b_mmi.position = b_origin
-		add_child(b_mmi)
-		var stream_data := {
-			"mm": b_mm,
-			"height": 14.0,
-			"speed": dave_rng.randf_range(1.6, 2.4),
-			"seed": dave_rng.randf_range(0.0, TAU)
-		}
-		bubble_streams.append(stream_data)
-		_update_single_bubble_stream(stream_data, 0.0)
-
-func _update_single_shoal(shoal: Dictionary, t_clock: float) -> void:
-	var mm: MultiMesh = shoal["mm"]
-	var center: Vector3 = shoal["center"]
-	var rx: float = shoal["rx"]
-	var ry: float = shoal["ry"]
-	var rz: float = shoal["rz"]
-	var spd: float = shoal["speed"]
-	var sc: float = shoal["scale"]
-	var offsets: Array = shoal["offsets"]
-	var phases: Array = shoal["phases"]
-	var base_p: float = shoal["base_phase"]
-	for i in range(mm.instance_count):
-		var p_val: float = t_clock * spd + base_p + float(phases[i]) * 0.35
-		var off: Vector3 = offsets[i]
-		var pos := center + Vector3(
-			sin(p_val) * rx + cos(p_val * 2.1 + float(i)) * 0.45,
-			sin(p_val * 1.7 + float(i) * 0.5) * ry,
-			cos(p_val) * rz
-		) + off
-		var vel := Vector3(cos(p_val) * rx, cos(p_val * 1.7 + float(i) * 0.5) * ry * 0.5, -sin(p_val) * rz).normalized()
-		var basis := Basis.looking_at(vel if vel.length_squared() > 0.001 else Vector3.FORWARD, Vector3.UP)
-		basis = basis.scaled(Vector3.ONE * (sc * 2.8))
-		mm.set_instance_transform(i, Transform3D(basis, pos))
-
-func _update_single_bubble_stream(stream: Dictionary, t_clock: float) -> void:
-	var mm: MultiMesh = stream["mm"]
-	var max_h: float = stream["height"]
-	var spd: float = stream["speed"]
-	var s_seed: float = stream["seed"]
-	for i in range(mm.instance_count):
-		var ratio: float = fmod((float(i) / float(mm.instance_count)) + t_clock * spd / max_h, 1.0)
-		var y: float = 0.4 + ratio * max_h
-		var wobble_x: float = sin(y * 1.4 + s_seed + float(i)) * (0.18 + ratio * 0.35)
-		var wobble_z: float = cos(y * 1.2 - s_seed + float(i) * 0.7) * (0.18 + ratio * 0.35)
-		var s_factor: float = 0.65 + sin(ratio * PI) * 0.65
-		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * s_factor), Vector3(wobble_x, y, wobble_z)))
-
-func _tick_ambient_scene_layers() -> void:
-	for shoal in ambient_shoals:
-		var c_pos: Vector3 = shoal["center"]
-		if c_pos.distance_squared_to(last_diver_pos) <= 130.0 * 130.0:
-			_update_single_shoal(shoal, clock)
-	for stream in bubble_streams:
-		_update_single_bubble_stream(stream, clock)
 
 func _process(delta: float) -> void:
 	clock += delta
@@ -3083,7 +2533,6 @@ func _process(delta: float) -> void:
 			frag.position.y = sin(clock * 1.8 + bphase) * 0.15
 		frag.rotate_y(delta * 1.5)
 	_tick_schooling_fish(last_diver_pos, delta)
-	_tick_ambient_scene_layers()
 	for relic in explorer_relics:
 		if is_instance_valid(relic) and relic.visible and relic.has_node("RelicCore"):
 			var core_node: Node3D = relic.get_node("RelicCore")
@@ -3094,7 +2543,7 @@ func get_laser_color() -> Color:
 	var background := environment.fog_light_color
 	var luminance: float = background.r * 0.2126 + background.g * 0.7152 + background.b * 0.0722
 	var illumination: float = luminance + environment.ambient_light_energy * 0.12 + sun.light_energy * 0.18
-	var darkness: float = 1.0 - clampf(illumination / 0.6, 0.0, 1.0)
+	var darkness: float = maxf(smoothstep(0.0, 100.0, art_depth), (1.0 - clampf(illumination / 0.6, 0.0, 1.0)) * 0.2)
 	return Color(0.015, 0.08, 0.7).lerp(Color(0.08, 0.5, 1.0), darkness)
 
 static func sample_depth_profile(depth: float) -> Dictionary:
@@ -3108,9 +2557,11 @@ func _update_water_surface_state(is_scoped: bool) -> void:
 	var target_mat: ShaderMaterial = water_underwater_mat if use_underwater else water_surface_mat
 	if target_mat != null and water_surface.material_override != target_mat:
 		water_surface.material_override = target_mat
-	water_surface.visible = not (cam != null and cam.global_position.y < -245.0 and not is_scoped)
+	var looking_up: bool = cam != null and (-cam.global_transform.basis.z.y > 0.32)
+	water_surface.visible = is_scoped or cam == null or cam.global_position.y >= -64.0 or (cam.global_position.y >= -180.0 and looking_up)
 
 func set_depth(depth: float, scoped: bool = false) -> void:
+	art_depth = maxf(depth, 0.0)
 	if scoped != scope_view_enabled:
 		scope_view_enabled = scoped
 		for mesh in scope_meshes:
@@ -3133,6 +2584,22 @@ func set_depth(depth: float, scoped: bool = false) -> void:
 	if is_instance_valid(sun):
 		sun.light_color = profile["sun_color"]
 		sun.light_energy = float(profile["sun_energy"])
+		sun.shadow_enabled = depth < 58.0
+		sun.visible = depth < 210.0
+	var camera := get_viewport().get_camera_3d()
+	if camera != null:
+		set_art_observer(camera.global_position, depth)
+
+func set_world_labels_visible(show_labels: bool) -> void:
+	for node in find_children("*", "Label3D", true, false):
+		var lbl := node as Label3D
+		if not show_labels:
+			if lbl.visible:
+				lbl.set_meta("_pre_title_vis", true)
+				lbl.visible = false
+		elif bool(lbl.get_meta("_pre_title_vis", false)):
+			lbl.remove_meta("_pre_title_vis")
+			lbl.visible = true
 
 func mark_boss_tamed(b_id: String) -> void:
 	conquered_bosses[b_id] = true
@@ -3514,147 +2981,9 @@ func _populate_open_world_frontiers() -> void:
 	submarines.append(atoll_sub)
 	_create_nav_buoy(Vector3(55, 0.2, 348), "⚓  EXPEDITION SUB  /  远洋开拓号环礁停泊港")
 
-	# 4. Region Setpieces: North — Sunlit Coral Atoll Lagoon (40, 340)
-	add_child(_create_marker("☀  SUNLIT ATOLL  /  北境晴空珊瑚环礁", Vector3(40, floor_height(40, 340) + 9.0, 340), Color(0.35, 1.0, 0.92)))
-	for i in range(18):
-		var ang := float(i) * TAU / 18.0
-		var rad := 26.0 + frng.randf_range(-6.0, 22.0)
-		var ax := 40.0 + cos(ang) * rad
-		var az := 340.0 + sin(ang) * rad
-		var ay := floor_height(ax, az)
-		var c_asset: String = ["staghorn_coral", "table_coral", "brain_coral", "coral"][i % 4]
-		var c_node := model(c_asset, Vector3(ax, ay, az), frng.randf_range(1.2, 2.3), 85.0)
-		c_node.rotation.y = frng.randf_range(0, TAU)
-		apply_plant_shader(c_node, 0.14, 1.2, c_asset)
-		if i % 5 == 0:
-			_place_reef_element("giant_clam", Vector3(ax + 2.5, floor_height(ax + 2.5, az), az), 1.45, ang, 75.0)
-
-	# 5. Northwest — Emerald Kelp Labyrinth Strait (-260, 280)
-	add_child(_create_marker("🌿  EMERALD KELP STRAIT  /  翡翠巨藻迷宫海峡", Vector3(-260, floor_height(-260, 280) + 12.0, 280), Color(0.35, 1.0, 0.65)))
-	for i in range(26):
-		var kx := -260.0 + frng.randf_range(-75.0, 75.0)
-		var kz := 280.0 + frng.randf_range(-70.0, 70.0)
-		var ky := floor_height(kx, kz)
-		_spawn_decor_model("kelp", Vector3(kx, ky, kz), Vector3(1.4, frng.randf_range(2.2, 3.5), 1.4), Vector3(0, frng.randf_range(0, TAU), 0), 120.0, 0.42, 1.2)
-		if i % 6 == 0:
-			_build_stone_archway(Vector3(kx, ky, kz), 1.45, frng.randf_range(0, TAU), Color(0.25, 1.0, 0.72), false)
-
-	# 6. Northeast — Aurora Crystal Ridge (380, 290)
-	add_child(_create_marker("✦  AURORA CRYSTAL RIDGE  /  东北极光晶洞海岭", Vector3(380, floor_height(380, 290) + 12.0, 290), Color(0.55, 0.85, 1.0)))
-	for i in range(16):
-		var rx := 380.0 + frng.randf_range(-65.0, 65.0)
-		var rz := 290.0 + frng.randf_range(-65.0, 65.0)
-		var ry := floor_height(rx, rz) - 0.3
-		var sp := model("crystal_spire", Vector3(rx, ry, rz), frng.randf_range(1.6, 2.8), 120.0)
-		sp.rotation.y = frng.randf_range(0, TAU)
-	var aurora_light := OmniLight3D.new()
-	aurora_light.position = Vector3(380, floor_height(380, 290) + 8.0, 290)
-	aurora_light.light_color = Color(0.38, 0.82, 1.0)
-	aurora_light.light_energy = 5.5
-	aurora_light.omni_range = 42.0
-	add_child(aurora_light)
-
-	# 7. East — Sunken Star Observatory Citadel (460, -60)
-	add_child(_create_marker("🏛  SUNKEN OBSERVATORY  /  东海沉没星象古都", Vector3(460, floor_height(460, -60) + 13.0, -60), Color(0.4, 0.92, 1.0)))
-	for i in range(6):
-		var ang := float(i) * TAU / 6.0
-		var cx := 460.0 + cos(ang) * 32.0
-		var cz := -60.0 + sin(ang) * 32.0
-		var arch := model("ruins", Vector3(cx, floor_height(cx, cz), cz), 1.85, 135.0)
-		arch.rotation.y = ang + PI * 0.5
-		model("crystal_spire", Vector3(cx, floor_height(cx, cz) + 0.2, cz), 1.4, 115.0)
-	var citadel_light := OmniLight3D.new()
-	citadel_light.position = Vector3(460, floor_height(460, -60) + 9.0, -60)
-	citadel_light.light_color = Color(0.25, 0.9, 1.0)
-	citadel_light.light_energy = 5.8
-	citadel_light.omni_range = 44.0
-	add_child(citadel_light)
-
-	# 8. Southeast — Ghost Fleet Shoal (420, -380)
-	add_child(_create_marker("⚓  GHOST FLEET SHOAL  /  东南幽灵沉船墓场", Vector3(420, floor_height(420, -380) + 12.0, -380), Color(1.0, 0.78, 0.36)))
-	for w_off: Vector2 in [Vector2(-18, -12), Vector2(22, 16)]:
-		var wx: float = 420.0 + w_off.x
-		var wz: float = -380.0 + w_off.y
-		var wrk := model("shipwreck", Vector3(wx, floor_height(wx, wz) + 0.9, wz), 1.45, 130.0)
-		wrk.rotation = Vector3(0.06, frng.randf_range(0, TAU), -0.14)
-
-	# 9. West — Leviathan Fossil Graveyard (-480, -90)
-	add_child(_create_marker("☠  LEVIATHAN GRAVEYARD  /  西洋巨兽龙骨荒原", Vector3(-480, floor_height(-480, -90) + 14.0, -90), Color(0.55, 0.95, 0.88)))
-	var bone_mat := StandardMaterial3D.new()
-	bone_mat.set_meta("painterly_finished", true)
-	bone_mat.albedo_color = Color("cec7ae")
-	bone_mat.roughness = 0.84
-	bone_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
-	bone_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
-	var bone_weathered_mat := StandardMaterial3D.new()
-	bone_weathered_mat.set_meta("painterly_finished", true)
-	bone_weathered_mat.albedo_color = Color("99937f")
-	bone_weathered_mat.roughness = 0.90
-	bone_weathered_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
-	var rib_meshes := {
-		"-full": _build_leviathan_rib_mesh(-1.0, false),
-		"+full": _build_leviathan_rib_mesh(1.0, false),
-		"-broken": _build_leviathan_rib_mesh(-1.0, true),
-		"+broken": _build_leviathan_rib_mesh(1.0, true),
-	}
-	var vertebra_mesh := CylinderMesh.new()
-	vertebra_mesh.bottom_radius = 1.65
-	vertebra_mesh.top_radius = 1.45
-	vertebra_mesh.height = 3.2
-	vertebra_mesh.radial_segments = 8
-	for r_idx in range(7):
-		var rz := -90.0 - 36.0 + float(r_idx) * 12.0
-		var ry := floor_height(-480.0, rz)
-		var spine := MeshInstance3D.new()
-		spine.mesh = vertebra_mesh
-		spine.material_override = bone_weathered_mat
-		spine.position = Vector3(-480.0 + sin(float(r_idx) * 0.7) * 1.2, ry + 0.65, rz)
-		spine.rotation = Vector3(PI * 0.5 + 0.06 * cos(float(r_idx)), sin(float(r_idx)) * 0.12, 0.0)
-		spine.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		spine.visibility_range_end = 160.0
-		spine.set_meta("base_visibility_range", 160.0)
-		scope_meshes.append(spine)
-		add_child(spine)
-		for side: float in [-1.0, 1.0]:
-			var rib := MeshInstance3D.new()
-			var is_broken := (r_idx == 1 and side > 0.0) or (r_idx == 5 and side < 0.0)
-			var mesh_key := ("+" if side > 0.0 else "-") + ("broken" if is_broken else "full")
-			rib.mesh = rib_meshes[mesh_key]
-			rib.material_override = bone_mat
-			rib.position = Vector3(-480.0 + side * 14.5, ry - 0.6, rz)
-			rib.scale = Vector3(1.0, 1.0 - absf(float(r_idx) - 3.0) * 0.05, 1.0)
-			rib.rotation.y = sin(float(r_idx) * 1.3 + side) * 0.08
-			rib.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			rib.visibility_range_end = 160.0
-			rib.set_meta("base_visibility_range", 160.0)
-			scope_meshes.append(rib)
-			add_child(rib)
-
-	# 10. Southwest — Obsidian Volcanic Caldera (-440, -420)
-	add_child(_create_marker("♨  OBSIDIAN CALDERA  /  黑曜石海底火山口", Vector3(-440, floor_height(-440, -420) + 15.0, -420), Color(1.0, 0.52, 0.2)))
-	for v_off: Vector2 in [Vector2(0, 0), Vector2(-24, 18), Vector2(26, -16), Vector2(-18, -26), Vector2(20, 24)]:
-		var vx: float = -440.0 + v_off.x
-		var vz: float = -420.0 + v_off.y
-		_create_hydrothermal_vent(Vector3(vx, floor_height(vx, vz), vz))
-
-	# 11. Far South — Hadal Starlight Sanctum (60, -640)
-	add_child(_create_marker("✦  HADAL STARLIGHT SANCTUM  /  南极渊星辉圣域", Vector3(60, floor_height(60, -640) + 16.0, -640), Color(0.65, 0.78, 1.0)))
-	for i in range(8):
-		var ang := float(i) * TAU / 8.0
-		var hx := 60.0 + cos(ang) * 28.0
-		var hz := -640.0 + sin(ang) * 28.0
-		var hy := floor_height(hx, hz)
-		model("crystal_spire", Vector3(hx, hy - 0.2, hz), 2.3, 145.0)
-		if i % 4 == 0:
-			var tx := hx * 0.2 + 48.0
-			var tz := hz * 0.2 - 512.0
-			_spawn_decor_model("tubeworms", Vector3(tx, terrain_height(tx, tz), tz), Vector3.ONE * 1.5, Vector3(0, ang, 0), 85.0, 0.20, 0.8)
-	var starlight := OmniLight3D.new()
-	starlight.position = Vector3(60, floor_height(60, -640) + 10.0, -640)
-	starlight.light_color = Color(0.45, 0.72, 1.0)
-	starlight.light_energy = 6.5
-	starlight.omni_range = 52.0
-	add_child(starlight)
+	var composition := OceanComposition.new()
+	add_child(composition)
+	composition.configure(self)
 
 	# 12. Distribute Open-World Mineral Resources & Frontier Marine Wildlife
 	var res_kinds := ["titanium", "copper", "quartz", "kelp"]
@@ -4055,3 +3384,32 @@ func _build_leviathan_rib_mesh(side: float, broken: bool) -> ArrayMesh:
 		st.add_vertex(tip_ring[s]); st.add_vertex(tip_ring[sn]); st.add_vertex(tip_center)
 	st.generate_normals()
 	return st.commit()
+
+func set_art_observer(at: Vector3, depth_override: float = -1.0) -> void:
+	if not is_processing() and at.distance_squared_to(last_diver_pos) > 4.0:
+		_sync_animation_lod(at)
+	# Water hue follows region weights smoothly, without modifying the shared
+	# depth/energy contract used by visibility and navigation.
+	var weights := ArtDirection.region_weights(Vector2(at.x, at.z))
+	var water := Color(0, 0, 0, 1)
+	for region: String in weights:
+		var color: Color = ArtDirection.region_profile(region).water
+		var weight: float = weights[region]
+		water.r += color.r * weight
+		water.g += color.g * weight
+		water.b += color.b * weight
+	var depth := depth_override if depth_override >= 0.0 else maxf(0.0, -at.y)
+	var profile := sample_depth_profile(depth)
+	var amount := 0.48 * (1.0 - smoothstep(150.0, 600.0, depth)) + 0.15
+	var fog: Color = profile.fog_color.lerp(water, amount)
+	environment.fog_light_color = fog
+	environment.background_color = (fog.srgb_to_linear() * float(profile.fog_energy)).linear_to_srgb()
+
+func _sync_animation_lod(observer: Vector3) -> void:
+	var prev := last_diver_pos
+	last_diver_pos = observer
+	for creature in get_creatures():
+		if is_instance_valid(creature):
+			_update_creature_animation(creature)
+	if is_processing():
+		last_diver_pos = prev

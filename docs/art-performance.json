@@ -1,0 +1,183 @@
+{
+  "renderer": "Godot 4.7.2 Compatibility / AMD Radeon Graphics",
+  "resolution": [
+    1280,
+    800
+  ],
+  "camera_script": "tests/art_review.gd",
+  "samples_per_region": 80,
+  "regions": [
+    {
+      "region": "core",
+      "before": {
+        "draw_calls": 1864.0,
+        "p50_ms": 45.554,
+        "p95_ms": 177.263,
+        "region": "core",
+        "video_memory": 392323660.0
+      },
+      "after": {
+        "draw_calls": 1324.0,
+        "p50_ms": 16.773,
+        "p95_ms": 26.478,
+        "region": "core",
+        "video_memory": 383456614.0
+      },
+      "p95_change_percent": -85.1,
+      "draw_call_change_percent": -29.0
+    },
+    {
+      "region": "atoll",
+      "before": {
+        "draw_calls": 309.0,
+        "p50_ms": 35.048,
+        "p95_ms": 150.879,
+        "region": "atoll",
+        "video_memory": 392352652.0
+      },
+      "after": {
+        "draw_calls": 287.0,
+        "p50_ms": 11.033,
+        "p95_ms": 29.27,
+        "region": "atoll",
+        "video_memory": 383470694.0
+      },
+      "p95_change_percent": -80.6,
+      "draw_call_change_percent": -7.1
+    },
+    {
+      "region": "kelp",
+      "before": {
+        "draw_calls": 78.0,
+        "p50_ms": 42.978,
+        "p95_ms": 76.196,
+        "region": "kelp",
+        "video_memory": 392330380.0
+      },
+      "after": {
+        "draw_calls": 54.0,
+        "p50_ms": 11.171,
+        "p95_ms": 17.067,
+        "region": "kelp",
+        "video_memory": 383460390.0
+      },
+      "p95_change_percent": -77.6,
+      "draw_call_change_percent": -30.8
+    },
+    {
+      "region": "ridge",
+      "before": {
+        "draw_calls": 69.0,
+        "p50_ms": 53.137,
+        "p95_ms": 70.065,
+        "region": "ridge",
+        "video_memory": 392318444.0
+      },
+      "after": {
+        "draw_calls": 45.0,
+        "p50_ms": 11.24,
+        "p95_ms": 20.235,
+        "region": "ridge",
+        "video_memory": 383465734.0
+      },
+      "p95_change_percent": -71.1,
+      "draw_call_change_percent": -34.8
+    },
+    {
+      "region": "citadel",
+      "before": {
+        "draw_calls": 84.0,
+        "p50_ms": 21.215,
+        "p95_ms": 42.665,
+        "region": "citadel",
+        "video_memory": 392347256.0
+      },
+      "after": {
+        "draw_calls": 66.0,
+        "p50_ms": 11.055,
+        "p95_ms": 12.98,
+        "region": "citadel",
+        "video_memory": 383495250.0
+      },
+      "p95_change_percent": -69.6,
+      "draw_call_change_percent": -21.4
+    },
+    {
+      "region": "wreck",
+      "before": {
+        "draw_calls": 54.0,
+        "p50_ms": 16.694,
+        "p95_ms": 39.644,
+        "region": "wreck",
+        "video_memory": 392367544.0
+      },
+      "after": {
+        "draw_calls": 53.0,
+        "p50_ms": 11.089,
+        "p95_ms": 12.049,
+        "region": "wreck",
+        "video_memory": 383515346.0
+      },
+      "p95_change_percent": -69.6,
+      "draw_call_change_percent": -1.9
+    },
+    {
+      "region": "bones",
+      "before": {
+        "draw_calls": 71.0,
+        "p50_ms": 20.67,
+        "p95_ms": 47.063,
+        "region": "bones",
+        "video_memory": 392356344.0
+      },
+      "after": {
+        "draw_calls": 50.0,
+        "p50_ms": 11.126,
+        "p95_ms": 11.727,
+        "region": "bones",
+        "video_memory": 383511314.0
+      },
+      "p95_change_percent": -75.1,
+      "draw_call_change_percent": -29.6
+    },
+    {
+      "region": "caldera",
+      "before": {
+        "draw_calls": 80.0,
+        "p50_ms": 19.946,
+        "p95_ms": 44.796,
+        "region": "caldera",
+        "video_memory": 392412204.0
+      },
+      "after": {
+        "draw_calls": 73.0,
+        "p50_ms": 11.985,
+        "p95_ms": 22.063,
+        "region": "caldera",
+        "video_memory": 383569798.0
+      },
+      "p95_change_percent": -50.7,
+      "draw_call_change_percent": -8.8
+    },
+    {
+      "region": "hadal",
+      "before": {
+        "draw_calls": 60.0,
+        "p50_ms": 17.503,
+        "p95_ms": 36.993,
+        "region": "hadal",
+        "video_memory": 392447820.0
+      },
+      "after": {
+        "draw_calls": 53.0,
+        "p50_ms": 11.107,
+        "p95_ms": 12.153,
+        "region": "hadal",
+        "video_memory": 383612070.0
+      },
+      "p95_change_percent": -67.1,
+      "draw_call_change_percent": -11.7
+    }
+  ],
+  "p95_gate_passed": true
+}

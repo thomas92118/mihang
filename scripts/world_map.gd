@@ -7,9 +7,9 @@ const ArtDirection = preload("res://scripts/art_direction.gd")
 const WORLD_HALF := 900.0
 const WORLD_SPAN := 1800.0
 const SURVEY_GRID := 24
-const FOG_UNSURVEYED := Color(0.032, 0.072, 0.098, 0.88)
+const FOG_UNSURVEYED := Color(0.028, 0.068, 0.096, 0.64)
 const FOG_SURVEYED := Color(0.032, 0.072, 0.098, 0.0)
-const RADAR_FOG_MODULATE := Color(1.0, 1.0, 1.0, 0.84 / 0.88)
+const RADAR_FOG_MODULATE := Color(1.0, 1.0, 1.0, 1.0)
 
 const INK := ArtDirection.INK
 const PAPER := ArtDirection.PAPER
@@ -22,15 +22,15 @@ const HARBOR_SAGE := Color("8eaa74")
 const BOSS_LANDMARK_IDS := ["altar", "storm_ridge", "kraken_trench", "turtle_basin", "obsidian_caldera"]
 
 const REGION_LABELS := [
-	{"name": "北境晴空环礁", "pos": Vector2(40, 380), "sub": "SUNLIT ATOLL"},
-	{"name": "翡翠巨藻海峡", "pos": Vector2(-310, 310), "sub": "KELP STRAIT"},
-	{"name": "极光晶洞海岭", "pos": Vector2(410, 320), "sub": "AURORA RIDGE"},
-	{"name": "核心蓝洞海域", "pos": Vector2(0, -40), "sub": "CENTRAL BLUE HOLE"},
-	{"name": "东海星象古都", "pos": Vector2(510, -60), "sub": "SUNKEN CITADEL"},
-	{"name": "西洋龙骨荒原", "pos": Vector2(-520, -90), "sub": "LEVIATHAN WASTES"},
-	{"name": "黑曜石火山口", "pos": Vector2(-460, -450), "sub": "OBSIDIAN CALDERA"},
-	{"name": "沉船幽灵浅滩", "pos": Vector2(450, -410), "sub": "GHOST FLEET"},
-	{"name": "极渊星辉圣域", "pos": Vector2(60, -670), "sub": "HADAL SANCTUM"}
+	{"name": "北境珊瑚环礁", "pos": Vector2(40, 445), "sub": "SUNLIT ATOLL"},
+	{"name": "翡翠巨藻海峡", "pos": Vector2(-340, 375), "sub": "KELP STRAIT"},
+	{"name": "极光晶柱海岭", "pos": Vector2(415, 320), "sub": "AURORA RIDGE"},
+	{"name": "中央出生浅礁", "pos": Vector2(-115, -75), "sub": "CENTRAL REEF"},
+	{"name": "沉没星象古都", "pos": Vector2(535, -135), "sub": "SUNKEN CITADEL"},
+	{"name": "巨兽龙骨荒原", "pos": Vector2(-555, -165), "sub": "LEVIATHAN WASTES"},
+	{"name": "黑曜石火山口", "pos": Vector2(-470, -505), "sub": "OBSIDIAN CALDERA"},
+	{"name": "幽灵沉船海滩", "pos": Vector2(450, -420), "sub": "GHOST FLEET"},
+	{"name": "极渊星辉圣域", "pos": Vector2(60, -725), "sub": "HADAL SANCTUM"}
 ]
 
 static var _bathy_cache: Dictionary = {}
@@ -70,12 +70,12 @@ static func _bathymetry_color(depth: float, world_x: float, world_z: float) -> C
 		reg_shadow.b += csh.b * w
 	var hadal_w: float = float(weights.get("hadal", 0.0))
 	var caldera_w: float = float(weights.get("caldera", 0.0))
-	var c_surface := Color("2b7c83").lerp(reg_water.lerp(reg_sand, 0.36), 0.34)
-	var c_reef := Color("1d606b").lerp(reg_water.lerp(reg_sand, 0.16), 0.32)
-	var c_shelf := Color("174956").lerp(reg_water.lerp(reg_rock, 0.25), 0.30)
-	var c_twilight := Color("133443").lerp(reg_shadow, 0.28)
-	var c_bathyal := Color("0e222f").lerp(reg_shadow.lerp(INK, 0.55), 0.25)
-	var c_hadal := Color("07121b").lerp(Color("0a1624"), hadal_w)
+	var c_surface := Color("22b0b8").lerp(reg_water.lerp(reg_sand, 0.42), 0.46)
+	var c_reef := Color("168fa8").lerp(reg_water.lerp(reg_sand, 0.22), 0.44)
+	var c_shelf := Color("157092").lerp(reg_water.lerp(reg_rock, 0.30), 0.42)
+	var c_twilight := Color("18597f").lerp(reg_water.lerp(reg_shadow, 0.55), 0.38)
+	var c_bathyal := Color("183e63").lerp(reg_shadow.lerp(INK, 0.55), 0.25)
+	var c_hadal := Color("122b4d").lerp(Color("0a1624"), hadal_w)
 	var chart_depth := clampf(depth, 0.0, OceanDepths.MAX_SEAFLOOR_DEPTH)
 	var base: Color
 	if chart_depth < 35.0:
@@ -97,7 +97,7 @@ static func _bathymetry_color(depth: float, world_x: float, world_z: float) -> C
 	var dist_100 := minf(phase_100, 100.0 - phase_100)
 	var strength_100 := 1.0 - smoothstep(0.0, 1.05, dist_100)
 	var contour_ink := CYAN.lerp(PAPER, 0.35)
-	base = base.lerp(contour_ink, strength_50 * 0.055 + strength_100 * 0.045)
+	base = base.lerp(contour_ink, strength_50 * 0.075 + strength_100 * 0.065)
 	return base
 
 static func build_bathymetry_texture(resolution: int = 128) -> ImageTexture:
@@ -229,7 +229,7 @@ class CompassStrip extends Control:
 					col = AMBER
 				var txt: String = str(d["txt"])
 				var fsz: int = 12 if bool(d["major"]) else 10
-				draw_string(font, Vector2(x - float(txt.length()) * 3.8, 15.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, col)
+				draw_string(font, Vector2(x - float(txt.length()) * 3.8, 14.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, col)
 
 			_draw_pip(font, _bearing_to(home_pos), "⌂", HARBOR_SAGE, half_fov, cx, w)
 			if has_nearest_outpost:
@@ -243,7 +243,7 @@ class CompassStrip extends Control:
 	func _draw_pip(font: Font, bearing: float, icon: String, col: Color, half_fov: float, cx: float, w: float) -> void:
 		var diff := clampf(_angle_diff(bearing, heading_yaw), -half_fov, half_fov)
 		var x := cx + (diff / half_fov) * (w * 0.45)
-		draw_string(font, Vector2(x - 5.0, 23.0), icon, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col)
+		draw_string(font, Vector2(x - 5.0, 29.0), icon, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col)
 
 
 class MinimapRadar extends Control:
@@ -652,6 +652,10 @@ class SeaChartCanvas extends Control:
 				draw_string(font, Vector2(gp.x + 3.0, 13.0), "%+dm" % g, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(MUTED, 0.58))
 
 		if font:
+			var anchor_pts: Array[Vector2] = [_world_to_canvas(Ocean.HOME.x, Ocean.HOME.z)]
+			for out in outposts:
+				var op: Vector3 = out["pos"]
+				anchor_pts.append(_world_to_canvas(op.x, op.z))
 			for reg in REGION_LABELS:
 				var rpos: Vector2 = reg["pos"]
 				var rgx := clampi(floori((rpos.x + WORLD_HALF) / cell_span), 0, SURVEY_GRID - 1)
@@ -660,6 +664,15 @@ class SeaChartCanvas extends Control:
 				var cp := _world_to_canvas(rpos.x, rpos.y)
 				if not rect.has_point(cp):
 					continue
+				if not seen:
+					var label_rect := Rect2(cp - Vector2(46.0, 16.0), Vector2(92.0, 26.0))
+					var crowded := false
+					for ap in anchor_pts:
+						if Rect2(ap - Vector2(16.0, 18.0), Vector2(142.0, 36.0)).intersects(label_rect):
+							crowded = true
+							break
+					if crowded:
+						continue
 				var rcol := Color(PAPER, 0.76) if seen else Color(MUTED, 0.26)
 				var rtxt := str(reg["name"]) if seen else "未勘测海域"
 				draw_string(font, cp - Vector2(42, 0), rtxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, rcol)
