@@ -10,6 +10,8 @@ const UnderwaterAudio = preload("res://scripts/underwater_audio.gd")
 const EnergyOrb = preload("res://scripts/energy_orb.gd")
 const Submarine = preload("res://scripts/submarine.gd")
 const SubmarineTorpedoCls = preload("res://scripts/submarine_torpedo.gd")
+const GameInput = preload("res://scripts/input_controller.gd")
+const TouchControls = preload("res://scripts/touch_controls.gd")
 
 const LANDMARK_SPECS := {
 	"shallows": {"name": "逃生舱浅礁", "pos": Vector3(0, -9, 8), "radius": 28.0, "desc": "阳光明媚的浅海珊瑚林"},
@@ -69,6 +71,10 @@ var attack_buffer_timer: float = 0.0
 var stasis_fields: Array[Dictionary] = []
 var scope_scan_timer := 0.0
 var scope_distance := 2000.0
+var input_controller: Node
+var touch_controls: Control
+var touch_layer: CanvasLayer
+var controls_return_screen := "pause"
 var _target_ray_query := PhysicsRayQueryParameters3D.new()
 var _target_ray_exclude: Array[RID] = []
 var _target_ray_excluded_rid: RID = RID()
@@ -87,12 +93,24 @@ static func _build_landmarks() -> Dictionary:
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_configure_input_window()
+	get_window().size_changed.connect(_configure_input_window)
 	_setup_input()
+	input_controller = GameInput.new()
+	input_controller.name = "InputController"
+	add_child(input_controller)
+	input_controller.setup_defaults()
+	input_controller.action_changed.connect(_on_input_action_changed)
+	input_controller.device_changed.connect(_on_input_device_changed)
+	input_controller.settings_changed.connect(_sync_input_presentation)
+	if DisplayServer.is_touchscreen_available():
+		input_controller.notify_device("touch")
 	ocean = Ocean.new()
 	add_child(ocean)
 	ocean.boss_encounter_started.connect(_on_boss_encounter_started)
 	ocean.boss_defeated.connect(_on_boss_defeated)
 	diver = Diver.new()
+	diver.input_controller = input_controller
 	add_child(diver)
 	_reset_position()
 	title_camera = Camera3D.new()
@@ -102,6 +120,10 @@ func _ready() -> void:
 	_update_title_camera(0.0)
 	hud = HUD.new()
 	add_child(hud)
+	hud.configure_input(input_controller)
+	hud.action_requested.connect(_on_hud_action_requested)
+	hud.input_settings_requested.connect(func(values: Dictionary): input_controller.apply_settings(values))
+	hud.close_requested.connect(_close_input_screen)
 	hud.start_requested.connect(_start)
 	hud.resume_requested.connect(func(): _set_screen("play"))
 	hud.restart_requested.connect(_restart)
@@ -119,6 +141,7 @@ func _ready() -> void:
 	hud.map_waypoint_cleared.connect(_on_map_waypoint_cleared)
 	hud.fast_travel_requested.connect(_on_fast_travel_requested)
 	hud.sonar_ping_requested.connect(_trigger_sonar_ping)
+	_setup_touch_controls()
 	state.reveal_world_area(diver.position, 135.0)
 	_setup_audio()
 	_setup_overlay()
@@ -135,7 +158,7 @@ func _setup_input() -> void:
 		"left": KEY_A,
 		"right": KEY_D,
 		"ascend": KEY_SPACE,
-		"descend": KEY_C,
+		"descend": KEY_CTRL,
 		"sprint": KEY_SHIFT,
 		"interact": KEY_E,
 		"craft_menu": KEY_TAB,
@@ -168,18 +191,117 @@ func _setup_input() -> void:
 	for action in keys:
 		if not InputMap.has_action(action):
 			InputMap.add_action(action)
-		InputMap.action_erase_events(action)
 		var key := InputEventKey.new()
 		key.physical_keycode = keys[action]
-		InputMap.action_add_event(action, key)
-
-	var descend := InputEventKey.new()
-	descend.physical_keycode = KEY_CTRL
-	InputMap.action_add_event("descend", descend)
+		if not InputMap.action_has_event(action, key):
+			InputMap.action_add_event(action, key)
 
 	var mouse_attack := InputEventMouseButton.new()
 	mouse_attack.button_index = MOUSE_BUTTON_LEFT
-	InputMap.action_add_event("attack", mouse_attack)
+	if not InputMap.action_has_event("attack", mouse_attack):
+		InputMap.action_add_event("attack", mouse_attack)
+
+func _setup_touch_controls() -> void:
+	touch_layer = CanvasLayer.new()
+	touch_layer.name = "TouchControlLayer"
+	touch_layer.layer = 10
+	add_child(touch_layer)
+	touch_controls = TouchControls.new()
+	touch_layer.add_child(touch_controls)
+	touch_controls.action_changed.connect(func(action: String, pressed: bool, cancelled: bool):
+		input_controller.set_action("touch_button_" + action, action, pressed, cancelled)
+	)
+	touch_controls.movement_changed.connect(func(value: Vector2):
+		input_controller.set_axis("touch_move_x", "left", "right", value.x)
+		input_controller.set_axis("touch_move_y", "forward", "backward", value.y)
+	)
+	touch_controls.look_dragged.connect(func(relative: Vector2):
+		if screen == "play":
+			diver.apply_look_delta(relative, true)
+	)
+	touch_controls.quick_menu_requested.connect(func(): _on_hud_action_requested("quick_menu"))
+	touch_controls.touch_used.connect(func(): input_controller.notify_device("touch"))
+	_sync_input_presentation()
+
+func _configure_input_window() -> void:
+	# Web/mobile menus use device-independent pixels instead of shrinking a
+	# 1280x800 desktop canvas until the controls become too small to touch.
+	if not (OS.has_feature("web") or OS.has_feature("android") or OS.has_feature("ios")):
+		return
+	var window := get_window()
+	if window != get_tree().root:
+		return
+	var display_scale := maxf(1.0, DisplayServer.screen_get_scale())
+	if window.content_scale_size != Vector2i.ZERO:
+		window.content_scale_size = Vector2i.ZERO
+	if not is_equal_approx(window.content_scale_factor, display_scale):
+		window.content_scale_factor = display_scale
+
+func _on_input_device_changed(_device: String) -> void:
+	# Finish registering the new source before hiding/canceling the old touch
+	# surface, so a held action can transfer without an intermediate release.
+	_sync_input_presentation.call_deferred()
+
+func _sync_input_presentation() -> void:
+	if not is_instance_valid(input_controller):
+		return
+	var mode: String = str(input_controller.settings.get("touch_mode", "auto"))
+	var show_touch: bool = mode == "on" or (mode == "auto" and input_controller.active_device == "touch")
+	if is_instance_valid(touch_controls):
+		touch_controls.configure(input_controller.settings)
+		touch_controls.set_gameplay_enabled(screen == "play" and show_touch)
+		touch_controls.visible = screen == "play" and show_touch
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if screen == "play" and input_controller.active_device == "keyboard" and not show_touch else Input.MOUSE_MODE_VISIBLE
+
+func _close_input_screen() -> void:
+	if screen == "controls":
+		_set_screen(controls_return_screen)
+	elif screen != "main" and screen != "win":
+		_set_screen("play")
+
+func _on_hud_action_requested(action: String) -> void:
+	if action == "controls":
+		controls_return_screen = screen if screen in ["main", "pause", "quick", "play"] else "play"
+		_set_screen("controls")
+		return
+	if action == "quick_menu":
+		if screen in ["play", "quick"]:
+			_set_screen("play" if screen == "quick" else "quick")
+		return
+	if screen == "quick":
+		_set_screen("play")
+	input_controller.set_action("hud_shortcut", action, true)
+	input_controller.set_action("hud_shortcut", action, false)
+
+func _on_input_action_changed(action: String, pressed: bool, cancelled: bool) -> void:
+	if cancelled:
+		if action == "attack" and is_instance_valid(diver):
+			diver.cancel_gun_charge()
+			attack_input_buffered = false
+		return
+	if pressed and action == "ui_cancel" and screen != "play":
+		_close_input_screen()
+		return
+	if pressed and action == "quick_menu":
+		_on_hud_action_requested(action)
+		return
+	if pressed and action in ["camera_closer", "camera_farther"] and screen == "play":
+		diver.adjust_camera_distance(-0.35 if action == "camera_closer" else 0.35)
+		return
+	var event := InputEventAction.new()
+	event.action = action
+	event.pressed = pressed
+	_handle_action_event(event)
+
+func _input_hint(action: String) -> String:
+	return input_controller.hint(action) if is_instance_valid(input_controller) else action
+
+func _cancel_attack_input() -> void:
+	if is_instance_valid(input_controller):
+		input_controller.cancel_action("attack")
+	if is_instance_valid(diver):
+		diver.cancel_gun_charge()
+	attack_input_buffered = false
 
 func _reset_position() -> void:
 	diver.cancel_gun_charge()
@@ -217,6 +339,10 @@ func _set_screen(value: String) -> void:
 			title_camera.make_current()
 		else:
 			diver.camera.make_current()
+	if is_instance_valid(input_controller):
+		input_controller.set_context(screen)
+	if is_instance_valid(touch_controls):
+		touch_controls.cancel_all()
 	diver.active = screen == "play"
 	if screen != "play":
 		diver.cancel_gun_charge()
@@ -228,9 +354,9 @@ func _set_screen(value: String) -> void:
 			home_arrow.visible = false
 		if is_instance_valid(waypoint_arrow):
 			waypoint_arrow.visible = false
-	get_tree().paused = screen in ["pause", "craft", "sushi", "mount_board", "map", "win"]
+	get_tree().paused = screen in ["pause", "craft", "sushi", "mount_board", "map", "win", "quick", "controls"]
 	hud.set_screen(screen)
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if screen == "play" else Input.MOUSE_MODE_VISIBLE
+	_sync_input_presentation()
 
 func _get_current_biome(pos: Vector3) -> String:
 	var depth: float = maxf(0, -pos.y)
@@ -295,11 +421,21 @@ func _check_landmarks() -> void:
 					hud.toast("【全域二十四景勘测达成】你已探明整片开放大洋的全部生态地标！")
 
 func _unhandled_input(event: InputEvent) -> void:
+	# GUI and the multitouch layer get the event before gameplay does.
+	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
+		return
+	if is_instance_valid(input_controller):
+		if input_controller.handle_event(event):
+			get_viewport().set_input_as_handled()
+	else:
+		_handle_action_event(event)
+
+func _handle_action_event(event: InputEvent) -> void:
 	if event.is_action_pressed("pause_game"):
 		if screen == "play":
 			_set_screen("pause")
-		elif screen in ["pause", "craft", "sushi", "mount_board", "map"]:
-			_set_screen("play")
+		elif screen in ["pause", "craft", "sushi", "mount_board", "map", "quick", "controls"]:
+			_close_input_screen()
 	elif event.is_action_pressed("world_map") and screen in ["play", "craft", "sushi", "mount_board", "map"]:
 		_set_screen("play" if screen == "map" else "map")
 	elif event.is_action_pressed("sonar_ping") and screen in ["play", "map"]:
@@ -339,7 +475,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			attack_input_buffered = true
 			attack_buffer_timer = ATTACK_BUFFER_WINDOW
 	elif event.is_action_released("attack") and screen == "play":
-		if diver.current_weapon == "sonic" and not Input.is_action_pressed("attack"):
+		if diver.current_weapon == "sonic" and diver.gun_trigger_held:
 			diver.damage_bonus = state.weapon_attack_bonus
 			_dispatch_attack(diver.release_gun_charge())
 	elif event.is_action_pressed("aim") and screen == "play":
@@ -407,6 +543,7 @@ func _switch_weapon(weapon_id: String) -> void:
 	if weapon_id != "marker_gun" and not state.weapons.has(weapon_id):
 		hud.toast("尚未解锁【%s】，请在逃生舱制造台制作" % names.get(weapon_id, weapon_id))
 		return
+	_cancel_attack_input()
 	diver.set_weapon(weapon_id)
 	attack_input_buffered = false
 	UnderwaterAudio.play_sound(get_tree(), "weapon_equip", -5.0, randf_range(0.96, 1.04))
@@ -568,9 +705,9 @@ func _physics_process(delta: float) -> void:
 
 	if is_instance_valid(active_submarine):
 		state.oxygen = state.max_oxygen
-		var input := Input.get_vector("left", "right", "forward", "backward")
-		var vert := Input.get_axis("descend", "ascend")
-		var is_boost := Input.is_action_pressed("sprint")
+		var input := Vector2(input_controller.get_axis("left", "right"), input_controller.get_axis("forward", "backward")).limit_length()
+		var vert: float = input_controller.get_axis("descend", "ascend")
+		var is_boost: bool = input_controller.is_action_pressed("sprint")
 		active_submarine.pilot_direct(delta, input, vert, is_boost, diver.camera.global_basis)
 		diver.global_position = active_submarine.get_camera_anchor_position()
 		diver.velocity = active_submarine.velocity
@@ -581,9 +718,7 @@ func _physics_process(delta: float) -> void:
 			_dismount_beast()
 		else:
 			# 1. 坐骑转向机动 (A 左拐, D 右拐)：敏捷平滑偏航与水动力侧倾
-			var turn_val := 0.0
-			if Input.is_action_pressed("left"): turn_val += 1.0
-			if Input.is_action_pressed("right"): turn_val -= 1.0
+			var turn_val: float = input_controller.get_axis("right", "left")
 			if turn_val != 0.0:
 				m_node.rotate_y(turn_val * 2.8 * delta)
 				diver.rotate_y(turn_val * 2.8 * delta)
@@ -592,16 +727,14 @@ func _physics_process(delta: float) -> void:
 			m_node.rotation.z = lerp_angle(m_node.rotation.z, roll_target, delta * 7.5)
 
 			# 2. 坐骑俯仰升降 (空格 上升, C 下降)
-			var vert_val := Input.get_axis("descend", "ascend")
+			var vert_val: float = input_controller.get_axis("descend", "ascend")
 			var pitch_target := clampf(-vert_val * 0.28, -0.35, 0.35)
 			m_node.rotation.x = lerp_angle(m_node.rotation.x, pitch_target, delta * 6.5)
 
 			# 3. 推进动力 (W 前进, S 后退)
-			var fwd_val := 0.0
-			if Input.is_action_pressed("forward"): fwd_val += 1.0
-			if Input.is_action_pressed("backward"): fwd_val -= 0.55
+			var fwd_val: float = input_controller.get_strength("forward") - input_controller.get_strength("backward") * 0.55
 
-			var is_boost: bool = Input.is_action_pressed("sprint")
+			var is_boost: bool = input_controller.is_action_pressed("sprint")
 			var spd: float = float(m_entry.get("speed", 22.0)) * (1.65 if is_boost else 1.0)
 
 			var m_fwd := -m_node.global_basis.z
@@ -701,8 +834,13 @@ func _present_attack_hit(atk: Dictionary, hit: Dictionary, from: Vector3, dir: V
 				hud.toast("声波脉冲震晕【%s】" % hit["name"])
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and screen == "play" and is_instance_valid(hud):
-		_set_screen("pause")
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		if is_instance_valid(input_controller):
+			input_controller.cancel_all()
+		if is_instance_valid(touch_controls):
+			touch_controls.cancel_all()
+		if screen == "play" and is_instance_valid(hud):
+			_set_screen("pause")
 
 func _process(delta: float) -> void:
 	if screen == "main":
@@ -1235,8 +1373,8 @@ func _board_submarine(sub: Node3D) -> void:
 	active_submarine = sub as Submarine
 	if not active_submarine:
 		return
+	_cancel_attack_input()
 	active_submarine.board(diver)
-	diver.cancel_gun_charge()
 	if diver.booster_active:
 		diver.toggle_booster()
 	diver.rotation.y = active_submarine.rotation.y
@@ -1246,11 +1384,12 @@ func _board_submarine(sub: Node3D) -> void:
 	if is_instance_valid(diver.weapon_mount):
 		diver.weapon_mount.visible = false
 	UnderwaterAudio.play_sound(get_tree(), "sub_enter", -3.5, 1.0)
-	hud.toast("【已登舰驾驶】" + active_submarine.sub_name + " · WASD 航行 / 空格 C 升降 / R 鱼雷 / E 离舰")
+	hud.toast("【已登舰驾驶】" + active_submarine.sub_name + " · WASD 航行 / 空格 Ctrl 升降 / R 鱼雷 / E 离舰")
 
 func _disembark_submarine() -> void:
 	if not is_instance_valid(active_submarine):
 		return
+	_cancel_attack_input()
 	var exit_pos := active_submarine.disembark()
 	exit_pos.x = clampf(exit_pos.x, -900.0, 900.0)
 	exit_pos.z = clampf(exit_pos.z, -900.0, 900.0)
@@ -1875,6 +2014,7 @@ func _mount_beast(idx: int) -> void:
 	if is_instance_valid(active_submarine):
 		hud.toast("驾驶潜水艇期间无法骑乘生物！")
 		return
+	_cancel_attack_input()
 	tamed_beasts[idx]["deployed"] = true
 	var m_node: Node3D = tamed_beasts[idx].get("node")
 	if is_instance_valid(m_node):
@@ -1883,9 +2023,10 @@ func _mount_beast(idx: int) -> void:
 	var kind_str: String = str(tamed_beasts[idx].get("kind", ""))
 	diver.set_mount_mode(true, kind_str.begins_with("boss"))
 	UnderwaterAudio.play_sound(get_tree(), "mount_ride")
-	hud.toast("【驾驭坐骑】已骑乘【%s】· W 前进 / C 下降 / 空格 上升 / A D 转向 / G 离鞍 / O 收纳" % tamed_beasts[idx]["name"])
+	hud.toast("【驾驭坐骑】已骑乘【%s】· W 前进 / Ctrl 下降 / 空格 上升 / A D 转向 / G 离鞍 / O 收纳" % tamed_beasts[idx]["name"])
 
 func _dismount_beast() -> void:
+	_cancel_attack_input()
 	if active_mount_idx >= 0:
 		hud.toast("【已下坐骑】契约战兽进入护卫阵型跟随！")
 		active_mount_idx = -1

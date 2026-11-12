@@ -18,6 +18,7 @@ var camera: Camera3D
 var lamp: SpotLight3D
 var lamp_fill: OmniLight3D
 var active: bool = false
+var input_controller: Node
 var upgraded: bool = false
 var exploration_mode: bool = false
 var sprinting: bool = false
@@ -1035,40 +1036,74 @@ func _trigger_slash_vfx(rot_deg: Vector3, target_scale: Vector3, color: Color, d
 		blade_bubbles.restart()
 		blade_bubbles.emitting = true
 
+func _control_strength(action: String) -> float:
+	return float(input_controller.get_strength(action)) if is_instance_valid(input_controller) else Input.get_action_strength(action)
+
+func _control_axis(negative: String, positive: String) -> float:
+	return _control_strength(positive) - _control_strength(negative)
+
+func _look_settings(key: String, default_value: Variant) -> Variant:
+	return input_controller.settings.get(key, default_value) if is_instance_valid(input_controller) else default_value
+
+func _apply_look_angles(angles: Vector2) -> void:
+	rotate_y(-angles.x)
+	camera.rotation.x = clampf(camera.rotation.x - angles.y, -1.45, 1.45)
+	if is_instance_valid(equipment_rig):
+		equipment_rig.rotation = camera.rotation
+	camera.position = camera.basis.z * _applied_camera_distance
+	mouse_lag_target.x = clampf(mouse_lag_target.x - angles.x * 0.27, -0.04, 0.04)
+	mouse_lag_target.y = clampf(mouse_lag_target.y + angles.y * 0.27, -0.035, 0.035)
+
+func apply_look_delta(relative: Vector2, from_touch: bool = false) -> void:
+	if not active:
+		return
+	var sensitivity := 0.00028 if scoped else (0.0011 if aiming else 0.0022)
+	if from_touch:
+		sensitivity *= float(_look_settings("touch_sensitivity", 1.0))
+	var direction := relative
+	if bool(_look_settings("invert_y", false)):
+		direction.y = -direction.y
+	_apply_look_angles(direction * sensitivity)
+
+func apply_look_rate(value: Vector2, delta: float) -> void:
+	if not active or value.is_zero_approx():
+		return
+	var sensitivity: float = 2.4 * float(_look_settings("gamepad_sensitivity", 1.0))
+	sensitivity *= 0.127 if scoped else (0.5 if aiming else 1.0)
+	if bool(_look_settings("invert_y", false)):
+		value.y = -value.y
+	# Sticks express angular velocity; mouse/touch express displacement.
+	_apply_look_angles(value * sensitivity * delta)
+
+func adjust_camera_distance(amount: float) -> void:
+	third_person_distance = clampf(third_person_distance + amount, THIRD_PERSON_MIN_DIST, THIRD_PERSON_MAX_DIST)
+
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
+		return
 	if active and event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		var sensitivity := 0.00028 if scoped else (0.0011 if aiming else 0.0022)
-		rotate_y(-event.relative.x * sensitivity)
-		camera.rotation.x = clampf(camera.rotation.x - event.relative.y * sensitivity, -1.45, 1.45)
-		if is_instance_valid(equipment_rig):
-			equipment_rig.rotation = camera.rotation
-		camera.position = camera.basis.z * _applied_camera_distance
-		# 视角转动惯性滞后 (Viewmodel lag behind mouse)
-		mouse_lag_target.x = clampf(mouse_lag_target.x - event.relative.x * 0.0006, -0.04, 0.04)
-		mouse_lag_target.y = clampf(mouse_lag_target.y + event.relative.y * 0.0006, -0.035, 0.035)
+		apply_look_delta(event.relative)
 	elif active and event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			third_person_distance = clampf(third_person_distance - 0.35, THIRD_PERSON_MIN_DIST, THIRD_PERSON_MAX_DIST)
+			adjust_camera_distance(-0.35)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			third_person_distance = clampf(third_person_distance + 0.35, THIRD_PERSON_MIN_DIST, THIRD_PERSON_MAX_DIST)
+			adjust_camera_distance(0.35)
 
 func _physics_process(delta: float) -> void:
 	if not active:
 		velocity = Vector3.ZERO
 		_update_third_person_camera(delta)
 		return
+	if is_instance_valid(input_controller):
+		apply_look_rate(input_controller.get_look_vector(), delta)
 	if in_submarine_mode or in_mount_mode:
-		sprinting = not aiming and Input.is_action_pressed("sprint")
+		sprinting = not aiming and _control_strength("sprint") > 0.5
 		var veh_fov: float = SCOPE_FOV if scoped else (AIM_FOV if aiming else (84.0 if sprinting else 78.0))
 		camera.fov = lerpf(camera.fov, veh_fov, 1.0 - exp(-delta * 9.0))
 		_update_third_person_camera(delta)
 		return
 	# A 左拐 (Turn left), D 右拐 (Turn right)
-	var turn_val := 0.0
-	if Input.is_action_pressed("left"):
-		turn_val += 1.0
-	if Input.is_action_pressed("right"):
-		turn_val -= 1.0
+	var turn_val := _control_axis("right", "left")
 	if turn_val != 0.0:
 		var turn_rate := 2.4
 		rotate_y(turn_val * turn_rate * delta)
@@ -1076,21 +1111,17 @@ func _physics_process(delta: float) -> void:
 	turn_bank = lerpf(turn_bank, clampf(-turn_val * 0.32, -0.35, 0.35), 1.0 - exp(-delta * 8.0))
 
 	# W 前进, S 后退
-	var fwd_val := 0.0
-	if Input.is_action_pressed("forward"):
-		fwd_val += 1.0
-	if Input.is_action_pressed("backward"):
-		fwd_val -= 0.65
+	var fwd_val := _control_strength("forward") - _control_strength("backward") * 0.65
 
 	# C 下降, 空格 上升
-	var vert_val := Input.get_axis("descend", "ascend")
+	var vert_val := _control_axis("descend", "ascend")
 
 	var forward_dir := -camera.global_basis.z
 	var right_dir := camera.global_basis.x
 	var direction := forward_dir * fwd_val + right_dir * (-turn_val * 0.28)
 	direction.y += vert_val
 
-	sprinting = not aiming and Input.is_action_pressed("sprint") and direction.length_squared() > 0.1
+	sprinting = not aiming and _control_strength("sprint") > 0.5 and direction.length_squared() > 0.1
 	var base_speed: float = 8.5 if (upgraded or exploration_mode) else 5.2
 	if booster_active:
 		base_speed = 19.5 if (upgraded or exploration_mode) else 16.0

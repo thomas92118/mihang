@@ -21,6 +21,9 @@ signal map_waypoint_set(world_xz: Vector2)
 signal map_waypoint_cleared
 signal fast_travel_requested(target_id: String, world_pos: Vector3, target_name: String)
 signal sonar_ping_requested
+signal action_requested(action: String)
+signal input_settings_requested(values: Dictionary)
+signal close_requested
 
 const INK := Art.PAPER
 const MUTED := Art.MUTED
@@ -117,7 +120,33 @@ var map_sel_desc: Label
 var map_travel_btn: Button
 var map_waypoint_btn: Button
 var map_clear_wp_btn: Button
+var map_focus_button: Button
 var map_selected_info: Dictionary = {}
+var input_controller: Node
+var quick_buttons: Dictionary = {}
+var settings_controls: Dictionary = {}
+var menu_scrolls: Dictionary = {}
+var menu_contents: Dictionary = {}
+var menu_min_sizes: Dictionary = {}
+var _focus_memory: Dictionary = {}
+var _focus_refresh_clock := 0.0
+var _hint_regex := RegEx.new()
+var _hint_cache: Dictionary = {}
+var _hint_generation := 0
+var _touch_layout := false
+var _instrument_layout: Dictionary = {}
+var _settings_syncing := false
+
+const QUICK_ACTIONS := [
+	["weapon_1", "潜水战术刀"], ["weapon_2", "破拆战斧"], ["weapon_3", "蓝光静滞枪"], ["weapon_4", "光标指示枪"],
+	["aim", "切换精准瞄准"], ["scope", "远距瞄准镜"], ["dash", "涡流突进"], ["toggle_shield", "能量护盾"],
+	["sonar_ping", "声呐勘测脉冲"], ["salvage_drone", "无人机打捞"], ["booster", "手持助推器"], ["lamp", "潜水探照灯"],
+	["mount_toggle", "骑乘 / 离鞍"], ["recall_pets", "召回伙伴"], ["mount_board", "收纳 / 生物应援板"],
+	["craft_menu", "装备制造台"], ["sushi_menu", "料理 / 商店 / 图鉴"], ["world_map", "海图与跃迁"],
+	["camera_closer", "拉近第三人称视角"], ["camera_farther", "拉远第三人称视角"],
+	["mount_slot_1", "选择伙伴 1"], ["mount_slot_2", "选择伙伴 2"], ["mount_slot_3", "选择伙伴 3"],
+	["mount_slot_4", "选择伙伴 4"], ["mount_slot_5", "选择伙伴 5"], ["mount_slot_6", "选择伙伴 6"]
+]
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -127,8 +156,12 @@ func _ready() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var font: FontFile = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 	var sym_font: FontFile = preload("res://assets/fonts/Symbols-Subset.ttf")
-	if not font.fallbacks.has(sym_font):
-		font.fallbacks = [sym_font]
+	var controls_font: FontFile = preload("res://assets/fonts/Controls-CJK-Subset.otf")
+	var fallbacks: Array[Font] = font.fallbacks.duplicate()
+	for fallback: Font in [controls_font, sym_font]:
+		if not fallbacks.has(fallback):
+			fallbacks.append(fallback)
+	font.fallbacks = fallbacks
 	ThemeDB.fallback_font = font
 	root.theme = OceanUiTheme.build(font)
 	bathy_texture = WorldMap.build_bathymetry_texture(128)
@@ -140,14 +173,25 @@ func _ready() -> void:
 	_build_mount_board()
 	_build_map()
 	_build_win()
+	_build_quick()
+	_build_controls()
+	_prepare_menu_scrolling()
+	_cache_instrument_layout()
+	_hint_regex.compile("(?<![A-Za-z0-9])(WASD|W/S|A/D|A D|空格/Ctrl|空格 Ctrl|T/Y|1—4|Shift|Ctrl|Tab|Esc|空格|按 2|按 3|W(?=\\s*前进)|[RTYCEMNOGZVHQFB])(?![A-Za-z0-9₂:]|\\s*轴|\\s*北|\\s*东)")
+	root.resized.connect(_apply_layout)
 	toast_label = _label(root, "", Rect2(-390, 130, 780, 44), 15, CYAN, Vector2(0.5, 0))
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast_label.add_theme_stylebox_override("normal", _style(PANEL, Color(0.46, 0.88, 0.83, 0.35)))
 	toast_label.hide()
 	set_screen("main")
+	_apply_layout()
 
 func _process(delta: float) -> void:
 	_detail_time = maxf(0.0, _detail_time - delta)
+	_focus_refresh_clock -= delta
+	if _focus_refresh_clock <= 0.0 and menus.has(active_screen):
+		_focus_refresh_clock = 0.2
+		_refresh_navigation()
 	if toast_time > 0.0:
 		toast_time = maxf(0.0, toast_time - delta)
 		if is_instance_valid(boss_panel):
@@ -334,14 +378,15 @@ func _build_main() -> void:
 	_line(menu, Rect2(74, 72, 38, 2), AMBER_GOLD)
 	_label(menu, "一 场 始 于 浅 礁 的 远 行", Rect2(126, 60, 430, 28), 14, Art.PAPER)
 	_label(menu, "深蓝回声", Rect2(68, 184, 510, 100), 76, INK)
-	_label(menu, "A B Y S S A L   E C H O", Rect2(78, 295, 490, 32), 18, CYAN)
+	_label(menu, "A B Y S S A L   E C H O", Rect2(78, 295, 490, 32), 18, CYAN).set_meta("_no_hint", true)
 	_line(menu, Rect2(78, 365, 50, 1), AMBER_GOLD)
 	_label(menu, "循着微光，游向未知。", Rect2(76, 389, 470, 40), 25, INK)
 	_label(menu, "穿过摇曳的海底森林，
 在沉睡的古城，听见大海的回声。", Rect2(78, 450, 470, 68), 16, MUTED)
-	_button(menu, "自由探险  /  EXPLORE", Rect2(78, 558, 390, 56), func() -> void: start_requested.emit("explore"), true)
-	_button(menu, "生存航程  /  SURVIVE", Rect2(78, 628, 390, 48), func() -> void: start_requested.emit("survival"))
-	_label(menu, "九片海域  ·  一段属于你的潜航记录", Rect2(78, -66, 540, 28), 14, MUTED, Vector2(0, 1))
+	_button(menu, "自由探险  /  EXPLORE", Rect2(78, 536, 390, 52), func() -> void: start_requested.emit("explore"), true)
+	_button(menu, "生存航程  /  SURVIVE", Rect2(78, 598, 390, 46), func() -> void: start_requested.emit("survival"))
+	_button(menu, "操作设置 / 触摸屏与手柄", Rect2(78, 654, 390, 42), func() -> void: action_requested.emit("controls"))
+	_label(menu, "九片海域  ·  一段属于你的潜航记录", Rect2(78, -52, 540, 28), 14, MUTED, Vector2(0, 1))
 	_label(menu, "THE LIVING OCEAN
 00 — 600 m", Rect2(-300, -94, 240, 58), 14, Art.PAPER, Vector2(1, 1)).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
@@ -355,7 +400,8 @@ func _build_pause() -> void:
 	_button(card, "继续潜航", Rect2(32, 205, 436, 46), func() -> void: resume_requested.emit(), true)
 	var map_button := _button(card, "M / 勘测海图", Rect2(32, 263, 436, 42), func() -> void: open_map_requested.emit())
 	map_button.name = "OpenSeaChartButton"
-	_button(card, "重新开始", Rect2(32, 317, 436, 42), func() -> void: restart_requested.emit())
+	_button(card, "操作设置", Rect2(32, 317, 208, 42), func() -> void: action_requested.emit("controls"))
+	_button(card, "重新开始", Rect2(252, 317, 216, 42), func() -> void: restart_requested.emit())
 	_label(card, "Esc 返回海底", Rect2(32, 382, 436, 20), 10, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 func _build_craft() -> void:
@@ -462,7 +508,8 @@ func _build_map() -> void:
 	sea_chart.waypoint_cleared.connect(func() -> void: map_waypoint_cleared.emit())
 	sea_chart.fast_travel_requested.connect(func(tid: String, wpos: Vector3, tname: String) -> void: fast_travel_requested.emit(tid, wpos, tname))
 	sea_chart.selection_changed.connect(_on_sea_chart_selection)
-	_label(card, "左键选择 / 右键标点 / 双击跃迁 / 滚轮缩放 / 中键平移", Rect2(24, 697, 600, 18), 10, MUTED)
+	sea_chart.sidebar_focus_requested.connect(_focus_map_sidebar)
+	map_focus_button = _button(card, "操作海图 / 中键平移 · 滚轮缩放 · 左键选点", Rect2(24, 689, 600, 27), func() -> void: sea_chart.grab_focus())
 	var side := _panel(card, Rect2(648, 84, 388, 550))
 	_label(side, "海域勘测记录", Rect2(18, 16, 352, 22), 14, INK)
 	map_stats_label = _label(side, "", Rect2(18, 48, 352, 82), 12, MUTED)
@@ -522,6 +569,72 @@ func _build_win() -> void:
 	win_time = _label(card, "本次潜航 00:00", Rect2(36, 292, 608, 24), 12, CYAN)
 	_button(card, "继续探索", Rect2(36, 368, 330, 48), func() -> void: resume_requested.emit(), true)
 	_button(card, "开启新航程", Rect2(382, 368, 262, 48), func() -> void: restart_requested.emit())
+
+func _build_quick() -> void:
+	var menu := _menu("quick")
+	var card := _panel(menu, Rect2(-430, -350, 860, 700), Vector2(0.5, 0.5))
+	_label(card, "潜航操作 / 快捷面板", Rect2(28, 20, 804, 24), 12, CYAN)
+	_label(card, "选择装备与能力", Rect2(27, 52, 804, 38), 28, INK)
+	_label(card, "方向键选择 · 确认执行 · 返回继续潜航", Rect2(28, 96, 804, 22), 12, MUTED)
+	for i in range(QUICK_ACTIONS.size()):
+		var entry: Array = QUICK_ACTIONS[i]
+		var action := str(entry[0])
+		var title := str(entry[1])
+		var button := _button(card, title, Rect2(28 + (i % 3) * 270, 132 + int(i / 3) * 52, 254, 44), func() -> void: action_requested.emit(action))
+		button.name = "Quick_" + action
+		quick_buttons[action] = button
+	_button(card, "操作设置", Rect2(28, 636, 254, 44), func() -> void: action_requested.emit("controls"))
+	_button(card, "返回潜航", Rect2(568, 636, 254, 44), func() -> void: close_requested.emit(), true)
+
+func _build_controls() -> void:
+	var menu := _menu("controls")
+	var card := _panel(menu, Rect2(-350, -320, 700, 640), Vector2(0.5, 0.5))
+	_label(card, "操作设置 / 自动保存", Rect2(28, 20, 644, 24), 12, CYAN)
+	_label(card, "调整你的潜航手感", Rect2(27, 54, 644, 38), 28, INK)
+	_setting_slider(card, "gamepad_sensitivity", "手柄视角灵敏度", 120, 0.2, 3.0, 0.1)
+	_setting_slider(card, "touch_sensitivity", "触控视角灵敏度", 178, 0.2, 3.0, 0.1)
+	_setting_slider(card, "deadzone", "手柄摇杆死区", 236, 0.05, 0.6, 0.05)
+	_setting_slider(card, "touch_scale", "触控按钮大小", 294, 0.75, 1.5, 0.05)
+	_setting_slider(card, "touch_opacity", "触控按钮透明度", 352, 0.2, 1.0, 0.05)
+	var invert := CheckButton.new()
+	_place(invert, card, Rect2(28, 414, 300, 44))
+	invert.text = "反转视角 Y 轴"
+	invert.focus_mode = Control.FOCUS_ALL
+	invert.toggled.connect(func(enabled: bool) -> void:
+		if not _settings_syncing:
+			input_settings_requested.emit({"invert_y": enabled})
+	)
+	settings_controls["invert_y"] = invert
+	_label(card, "触控显示", Rect2(28, 482, 250, 24), 14, INK)
+	var mode := OptionButton.new()
+	_place(mode, card, Rect2(320, 470, 352, 44))
+	mode.add_item("自动 / 根据输入设备")
+	mode.add_item("始终显示")
+	mode.add_item("隐藏触控")
+	mode.item_selected.connect(func(index: int) -> void:
+		if not _settings_syncing:
+			input_settings_requested.emit({"touch_mode": ["auto", "on", "off"][index]})
+	)
+	settings_controls["touch_mode"] = mode
+	_label(card, "手柄：左杆推进 / 转向，右杆观察，肩键升降。\n触屏：左摇杆移动，右侧滑动观察，攻击可长按蓄力。", Rect2(28, 532, 644, 46), 12, MUTED)
+	_button(card, "返回", Rect2(28, 588, 644, 40), func() -> void: close_requested.emit(), true)
+
+func _setting_slider(parent: Control, key: String, title: String, y: float, minimum: float, maximum: float, increment: float) -> void:
+	_label(parent, title, Rect2(28, y + 8, 274, 26), 14, INK)
+	var slider := HSlider.new()
+	_place(slider, parent, Rect2(320, y, 252, 44))
+	slider.min_value = minimum
+	slider.max_value = maximum
+	slider.step = increment
+	slider.focus_mode = Control.FOCUS_ALL
+	settings_controls[key] = slider
+	var value_label := _label(parent, "", Rect2(590, y + 8, 82, 26), 13, CYAN)
+	slider.value_changed.connect(func(value: float) -> void:
+		value_label.text = "%.2f" % value
+		if not _settings_syncing:
+			input_settings_requested.emit({key: value})
+	)
+	slider.set_meta("value_label", value_label)
 
 func update_hud(data: Dictionary) -> void:
 	if not is_instance_valid(oxygen_value):
@@ -946,8 +1059,13 @@ func update_hud(data: Dictionary) -> void:
 		win_title.text = "深海收到了回声"
 		win_desc.text = "求救信标已重新上线。\n救援船正在驶来，你将平安返航。"
 		win_time.text = "本次潜航  %02d:%02d  /  救援协议已启动" % [floori(float(seconds) / 60.0), seconds % 60]
+	_apply_device_hints()
+	_apply_touch_visibility()
 
 func set_screen(screen: String) -> void:
+	var focused := root.get_viewport().gui_get_focus_owner()
+	if is_instance_valid(focused) and menus.has(active_screen) and menus[active_screen].is_ancestor_of(focused):
+		_focus_memory[active_screen] = focused
 	active_screen = screen
 	instruments.visible = screen == "play"
 	for key: String in menus:
@@ -958,12 +1076,355 @@ func set_screen(screen: String) -> void:
 		sea_chart.center_on_player()
 	if screen != "play":
 		toast_label.hide()
+	if screen == "controls":
+		_sync_input_settings()
+	_refresh_navigation.call_deferred()
 
 func toast(message: String) -> void:
-	toast_label.text = message
+	toast_label.text = format_input_text(message)
+	toast_label.set_meta("_hint_source", message)
+	toast_label.set_meta("_hint_rendered", toast_label.text)
 	toast_time = 3.6
 	toast_label.modulate.a = 1.0
 	toast_label.visible = active_screen in ["play", "craft", "sushi", "mount_board", "map"]
+
+func configure_input(controller: Node) -> void:
+	input_controller = controller
+	_hint_cache.clear()
+	_hint_generation += 1
+	if is_instance_valid(controller):
+		if not controller.device_changed.is_connected(_on_input_device_changed):
+			controller.device_changed.connect(_on_input_device_changed)
+		if not controller.settings_changed.is_connected(_on_input_settings_changed):
+			controller.settings_changed.connect(_on_input_settings_changed)
+		sea_chart.input_controller = controller
+	_sync_input_settings()
+	_apply_layout()
+	_apply_device_hints()
+
+func _on_input_device_changed(_device: String) -> void:
+	_hint_cache.clear()
+	_hint_generation += 1
+	_apply_layout()
+	_apply_device_hints()
+	_refresh_navigation.call_deferred()
+
+func _on_input_settings_changed() -> void:
+	_hint_cache.clear()
+	_hint_generation += 1
+	_sync_input_settings()
+	_apply_layout()
+	_apply_device_hints()
+
+func get_input_hint(action: String) -> String:
+	if is_instance_valid(input_controller):
+		return str(input_controller.hint(action))
+	return str({"forward": "W", "backward": "S", "left": "A", "right": "D", "ascend": "空格", "descend": "Ctrl", "attack": "R", "aim": "T", "scope": "Y", "interact": "E", "craft_menu": "Tab", "pause_game": "Esc", "world_map": "M", "sonar_ping": "N", "mount_board": "O", "toggle_shield": "C", "dash": "Q", "booster": "H", "lamp": "F", "sprint": "Shift", "recall_pets": "Z", "mount_toggle": "G", "salvage_drone": "V", "sushi_menu": "B", "weapon_2": "2", "weapon_3": "3", "quick_menu": "快捷操作"}.get(action, action))
+
+func _join_hints(first_action: String, second_action: String, separator := "/") -> String:
+	var first := get_input_hint(first_action)
+	var second := get_input_hint(second_action)
+	return first if first == second else first + separator + second
+
+func format_input_text(text: String) -> String:
+	if not is_instance_valid(input_controller) or str(input_controller.active_device) == "keyboard":
+		return text
+	if text == "A B Y S S A L   E C H O":
+		return text
+	var matches := _hint_regex.search_all(text)
+	if matches.is_empty():
+		return text
+	if _hint_cache.is_empty():
+		_hint_cache = {
+			"WASD": get_input_hint("forward"),
+			"W": get_input_hint("forward"),
+			"W/S": _join_hints("forward", "backward"),
+			"A/D": _join_hints("left", "right"),
+			"A D": _join_hints("left", "right", " "),
+			"空格/Ctrl": _join_hints("ascend", "descend"),
+			"空格 Ctrl": _join_hints("ascend", "descend", " / "),
+			"T/Y": _join_hints("aim", "scope"),
+			"1—4": get_input_hint("quick_menu"), "Shift": get_input_hint("sprint"),
+			"Ctrl": get_input_hint("descend"), "空格": get_input_hint("ascend"),
+			"按 2": "使用 " + get_input_hint("weapon_2"),
+			"按 3": "使用 " + get_input_hint("weapon_3"), "Tab": get_input_hint("craft_menu"),
+			"Esc": get_input_hint("pause_game"), "R": get_input_hint("attack"), "T": get_input_hint("aim"),
+			"Y": get_input_hint("scope"), "C": get_input_hint("toggle_shield"), "E": get_input_hint("interact"),
+			"M": get_input_hint("world_map"), "N": get_input_hint("sonar_ping"), "O": get_input_hint("mount_board"),
+			"G": get_input_hint("mount_toggle"), "Z": get_input_hint("recall_pets"), "V": get_input_hint("salvage_drone"),
+			"H": get_input_hint("booster"), "Q": get_input_hint("dash"), "F": get_input_hint("lamp"), "B": get_input_hint("sushi_menu")
+		}
+	var result := ""
+	var cursor := 0
+	for match_result: RegExMatch in matches:
+		var start := match_result.get_start()
+		var token := match_result.get_string()
+		result += text.substr(cursor, start - cursor)
+		if token == "G" and _is_currency_unit(text, start):
+			result += token
+		else:
+			result += str(_hint_cache.get(token, token))
+		cursor = match_result.get_end()
+	return result + text.substr(cursor)
+
+static func _is_currency_unit(text: String, index: int) -> bool:
+	var pos := index - 1
+	while pos >= 0 and (text[pos] == " " or text[pos] == "\t"):
+		pos -= 1
+	return pos >= 0 and text.unicode_at(pos) >= 48 and text.unicode_at(pos) <= 57
+
+func _apply_device_hints() -> void:
+	if not is_instance_valid(root):
+		return
+	var device := str(input_controller.active_device) if is_instance_valid(input_controller) else "keyboard"
+	if is_instance_valid(map_focus_button):
+		var description := "操作海图 / 中键平移 · 滚轮缩放 · 左键选点"
+		if device == "touch":
+			description = "操作海图 / 单指平移 · 双指缩放 · 点选坐标"
+		elif device == "gamepad":
+			description = "操作海图 / 左杆平移 · 十字键选点 · X/□ 操作栏"
+		map_focus_button.text = description
+		map_focus_button.set_meta("_hint_source", description)
+	if is_instance_valid(minimap_radar):
+		minimap_radar.map_hint = get_input_hint("world_map")
+	for node in root.find_children("*", "Control", true, false):
+		if not (node is Label or node is Button):
+			continue
+		if bool(node.get_meta("_no_hint", false)):
+			continue
+		if menus.has("controls") and menus["controls"].is_ancestor_of(node):
+			continue
+		var current := str(node.text)
+		if int(node.get_meta("_hint_generation", -1)) == _hint_generation and current == str(node.get_meta("_hint_rendered", "")):
+			continue
+		var source := str(node.get_meta("_hint_source", current))
+		if current != str(node.get_meta("_hint_rendered", current)):
+			source = current
+		var rendered := format_input_text(source)
+		node.set_meta("_hint_source", source)
+		node.set_meta("_hint_rendered", rendered)
+		node.set_meta("_hint_generation", _hint_generation)
+		if current != rendered:
+			node.text = rendered
+
+func _sync_input_settings() -> void:
+	if settings_controls.is_empty():
+		return
+	_settings_syncing = true
+	var values: Dictionary = {"gamepad_sensitivity": 1.0, "touch_sensitivity": 1.0, "deadzone": 0.2, "touch_scale": 1.0, "touch_opacity": 0.75, "invert_y": false, "touch_mode": "auto"}
+	if is_instance_valid(input_controller):
+		values.merge(input_controller.settings, true)
+	for key: String in settings_controls:
+		var control: Control = settings_controls[key]
+		if control is HSlider:
+			control.set_value_no_signal(float(values[key]))
+			(control.get_meta("value_label") as Label).text = "%.2f" % control.value
+		elif control is CheckButton:
+			control.set_pressed_no_signal(bool(values[key]))
+		elif control is OptionButton:
+			control.select(maxi(0, ["auto", "on", "off"].find(str(values[key]))))
+	_settings_syncing = false
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not menus.has(active_screen):
+		return
+	if event.is_action_pressed("ui_cancel") and active_screen != "main":
+		close_requested.emit()
+		get_viewport().set_input_as_handled()
+	elif active_screen == "map" and event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_X:
+		if sea_chart.has_focus():
+			_focus_map_sidebar()
+		else:
+			sea_chart.grab_focus()
+		get_viewport().set_input_as_handled()
+
+func _input(event: InputEvent) -> void:
+	# Tab keeps its existing workbench shortcut after menus gain keyboard focus.
+	# Shift+Tab and the direction keys remain available for focus navigation.
+	if active_screen in ["craft", "sushi", "mount_board", "map"] and event is InputEventKey and event.pressed and not event.echo and not event.shift_pressed and event.is_action_pressed("craft_menu"):
+		action_requested.emit("craft_menu")
+		get_viewport().set_input_as_handled()
+
+func _focus_map_sidebar() -> void:
+	if not map_waypoint_btn.disabled:
+		map_waypoint_btn.grab_focus()
+	else:
+		map_clear_wp_btn.grab_focus()
+
+func _focusable_controls() -> Array[Control]:
+	var controls: Array[Control] = []
+	if not menus.has(active_screen):
+		return controls
+	for node in menus[active_screen].find_children("*", "Control", true, false):
+		if not node.is_visible_in_tree() or node.focus_mode == Control.FOCUS_NONE:
+			continue
+		if node is BaseButton and not node.disabled:
+			controls.append(node)
+		elif node is HSlider or node == sea_chart:
+			controls.append(node)
+	return controls
+
+func _refresh_navigation() -> void:
+	var controls := _focusable_controls()
+	if controls.is_empty():
+		return
+	for i in range(controls.size()):
+		var control: Control = controls[i]
+		control.focus_next = control.get_path_to(controls[(i + 1) % controls.size()])
+		control.focus_previous = control.get_path_to(controls[posmod(i - 1, controls.size())])
+		for direction: int in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+			var best: Control = control
+			var best_score := INF
+			var axis: Vector2 = {SIDE_LEFT: Vector2.LEFT, SIDE_TOP: Vector2.UP, SIDE_RIGHT: Vector2.RIGHT, SIDE_BOTTOM: Vector2.DOWN}[direction]
+			for candidate: Control in controls:
+				if candidate == control:
+					continue
+				var delta := candidate.get_global_rect().get_center() - control.get_global_rect().get_center()
+				var projection := delta.dot(axis)
+				if projection <= 4.0:
+					continue
+				var perpendicular := absf(delta.cross(axis))
+				var score := projection + perpendicular * 3.0
+				if score < best_score:
+					best = candidate
+					best_score = score
+			control.set_focus_neighbor(direction, control.get_path_to(best))
+	var focused := root.get_viewport().gui_get_focus_owner()
+	if focused not in controls:
+		var remembered = _focus_memory.get(active_screen)
+		if is_instance_valid(remembered) and remembered in controls:
+			remembered.grab_focus()
+		elif active_screen == "map":
+			sea_chart.grab_focus()
+		else:
+			controls[0].grab_focus()
+
+func _prepare_menu_scrolling() -> void:
+	menu_min_sizes = {"main": Vector2(720, 740), "pause": Vector2(532, 462), "craft": Vector2(932, 732), "sushi": Vector2(1032, 748), "mount_board": Vector2(972, 732), "map": Vector2(1092, 760), "win": Vector2(712, 512), "quick": Vector2(892, 732), "controls": Vector2(732, 672)}
+	for key: String in menus:
+		var menu: Control = menus[key]
+		var children := menu.get_children()
+		var scroll := ScrollContainer.new()
+		menu.add_child(scroll)
+		scroll.name = "AccessibleScroll"
+		scroll.follow_focus = true
+		scroll.scroll_deadzone = 12
+		scroll.mouse_filter = Control.MOUSE_FILTER_PASS
+		var content := Control.new()
+		scroll.add_child(content)
+		content.name = "MenuContent"
+		content.mouse_filter = Control.MOUSE_FILTER_PASS
+		content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		for child in children:
+			if child is ColorRect:
+				continue
+			child.reparent(content, false)
+		menu_scrolls[key] = scroll
+		menu_contents[key] = content
+
+func get_layout_safe_rect() -> Rect2:
+	var available := Rect2(Vector2.ZERO, root.size)
+	if DisplayServer.get_name() != "headless" and (OS.has_feature("android") or OS.has_feature("ios")):
+		var safe := DisplayServer.get_display_safe_area()
+		var window_size := Vector2(DisplayServer.window_get_size())
+		if safe.size.x > 0 and safe.size.y > 0 and window_size.x > 0 and window_size.y > 0:
+			var scale_factor := root.size / window_size
+			available = available.intersection(Rect2(Vector2(safe.position) * scale_factor, Vector2(safe.size) * scale_factor))
+	return available
+
+func _cache_instrument_layout() -> void:
+	for node in instruments.find_children("*", "Control", true, false):
+		_instrument_layout[node] = [node.anchor_left, node.anchor_top, node.anchor_right, node.anchor_bottom, node.offset_left, node.offset_top, node.offset_right, node.offset_bottom]
+
+func _set_control_rect(control: Control, rect: Rect2, anchor := Vector2.ZERO) -> void:
+	control.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	control.anchor_left = anchor.x
+	control.anchor_right = anchor.x
+	control.anchor_top = anchor.y
+	control.anchor_bottom = anchor.y
+	control.offset_left = rect.position.x
+	control.offset_top = rect.position.y
+	control.offset_right = rect.end.x
+	control.offset_bottom = rect.end.y
+
+func _apply_layout() -> void:
+	if not is_instance_valid(root) or menu_scrolls.is_empty():
+		return
+	var safe := get_layout_safe_rect()
+	_set_control_rect(instruments, safe)
+	var frame := safe.grow(-16.0)
+	for key: String in menu_scrolls:
+		var scroll: ScrollContainer = menu_scrolls[key]
+		_set_control_rect(scroll, frame)
+		var content: Control = menu_contents[key]
+		content.custom_minimum_size = menu_min_sizes[key]
+		content.size = frame.size.max(content.custom_minimum_size)
+		if key == "main":
+			for child in content.get_children():
+				if child is OceanUiTheme.ExpeditionPlate:
+					child.visible = frame.size.x >= 1050.0
+	_touch_layout = false
+	if is_instance_valid(input_controller):
+		var mode := str(input_controller.settings.get("touch_mode", "auto"))
+		_touch_layout = mode == "on" or (mode == "auto" and (str(input_controller.active_device) == "touch" or (DisplayServer.is_touchscreen_available() and str(input_controller.active_device) != "gamepad")))
+	for node: Control in _instrument_layout:
+		var old: Array = _instrument_layout[node]
+		node.anchor_left = old[0]
+		node.anchor_top = old[1]
+		node.anchor_right = old[2]
+		node.anchor_bottom = old[3]
+		node.offset_left = old[4]
+		node.offset_top = old[5]
+		node.offset_right = old[6]
+		node.offset_bottom = old[7]
+	if _touch_layout:
+		var life: Control = instruments.get_node("LifeSupportInstrument")
+		_set_control_rect(life, Rect2(20, 96 if safe.size.y < 650.0 else 144, 246, 100))
+		_set_control_rect(shield_label, Rect2(20, 202 if safe.size.y < 650.0 else 250, 246, 20))
+		_set_control_rect(tame_panel, Rect2(20, 282, 246, 64))
+		var center_width := minf(440.0, maxf(200.0, safe.size.x * 0.38))
+		_set_control_rect(weapon_bar_label.get_parent(), Rect2(-center_width * 0.5, -115, center_width, 38), Vector2(0.5, 1))
+		_set_control_rect(weapon_bar_label, Rect2(12, 9, center_width - 24, 22))
+		weapon_bar_label.clip_text = true
+		_set_control_rect(equipment_value, Rect2(-center_width * 0.5, -70, center_width, 18), Vector2(0.5, 1))
+		equipment_value.clip_text = true
+		_set_control_rect(booster_indicator, Rect2(-center_width * 0.5, -115, center_width, 38), Vector2(0.5, 1))
+		_set_control_rect(sub_panel, Rect2(-center_width * 0.5, -160, center_width, 112), Vector2(0.5, 1))
+		_set_control_rect(sub_name_label, Rect2(12, 6, center_width - 24, 22))
+		_set_control_rect(sub_speed_label, Rect2(12, 28, center_width - 24, 22))
+		_set_control_rect(sub_weapon_label, Rect2(12, 50, center_width - 24, 22))
+		_set_control_rect(sub_hull_bar, Rect2(12, 78, center_width - 24, 4))
+		_set_control_rect(sub_hull_label, Rect2(12, 86, center_width - 24, 20))
+		if safe.size.y < 650.0:
+			_set_control_rect(boss_panel, Rect2(-294, 100, 274, 66), Vector2(1, 0))
+			_set_control_rect(boss_name, Rect2(16, 8, 242, 22))
+			_set_control_rect(boss_bar, Rect2(16, 34, 242, 4))
+			_set_control_rect(boss_warning, Rect2(16, 42, 242, 18))
+			boss_name.clip_text = true
+			boss_warning.clip_text = true
+	elif is_instance_valid(_cargo):
+		_cargo.visible = true
+		mission_detail.visible = true
+		explore_summary_label.visible = true
+	_apply_touch_visibility()
+	_refresh_navigation.call_deferred()
+
+func _apply_touch_visibility() -> void:
+	var compact := _touch_layout and root.size.y < 650.0
+	if _touch_layout:
+		instruments.get_node("CargoInstrument").hide()
+	minimap_radar.visible = not compact
+	home_value.visible = not compact
+	if compact:
+		mission_detail.hide()
+		explore_summary_label.hide()
+		pinned_panel.hide()
+		tame_panel.hide()
+		weapon_hint.hide()
+	for node in sub_panel.get_children():
+		if node is Label and str(node.get_meta("_hint_source", node.text)).begins_with("W/S"):
+			node.visible = not _touch_layout
 
 func _set_font_color(ctrl: Control, col: Color) -> void:
 	if ctrl.get_meta("_fc", Color(-1.0, -1.0, -1.0, -1.0)) != col:
