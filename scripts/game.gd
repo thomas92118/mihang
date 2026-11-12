@@ -425,6 +425,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
 		return
 	if is_instance_valid(input_controller):
+		if screen == "play" and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			var touch_forced: bool = str(input_controller.settings.get("touch_mode", "auto")) == "on"
+			if not touch_forced and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+				# Web pointer lock can be lost independently of the active device.
+				# Retry inside a real pressed event; a deferred refresh cannot
+				# reliably regain it. Consume this click so it does not attack.
+				input_controller.notify_device("keyboard")
+				_sync_input_presentation()
+				get_viewport().set_input_as_handled()
+				return
 		if input_controller.handle_event(event):
 			get_viewport().set_input_as_handled()
 	else:
@@ -834,7 +844,8 @@ func _present_attack_hit(atk: Dictionary, hit: Dictionary, from: Vector3, dir: V
 				hud.toast("声波脉冲震晕【%s】" % hit["name"])
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+	# Web canvas blur sends the window notification, not application focus out.
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
 		if is_instance_valid(input_controller):
 			input_controller.cancel_all()
 		if is_instance_valid(touch_controls):
