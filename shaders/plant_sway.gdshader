@@ -19,7 +19,7 @@ uniform vec3 uv_offset = vec3(0.0);
 uniform bool natural_palette = false;
 uniform vec3 palette_dark : source_color = vec3(0.22, 0.20, 0.15);
 uniform vec3 palette_light : source_color = vec3(0.64, 0.59, 0.45);
-uniform float palette_strength : hint_range(0.0, 1.0) = 0.98;
+uniform float palette_strength : hint_range(0.0, 1.0) = 0.0;
 
 uniform float sway_strength : hint_range(0.0, 2.0) = 0.35;
 uniform float sway_frequency : hint_range(0.0, 5.0) = 1.25;
@@ -48,11 +48,11 @@ void vertex() {
 
 void fragment() {
 	vec2 material_uv = UV * uv_scale.xy + uv_offset.xy;
-	vec3 raw_albedo = albedo.rgb * texture(albedo_texture, material_uv).rgb;
+	vec3 raw_albedo = albedo.rgb * texture(albedo_texture, material_uv).rgb * COLOR.rgb;
 	float luma = dot(raw_albedo, vec3(0.299, 0.587, 0.114));
 	// Preserve the imported pigments without the old saturation boost. Absorption
 	// belongs to incident sunlight, not albedo: a nearby lamp restores warm hues.
-	ALBEDO = clamp(mix(vec3(luma), raw_albedo, 0.88), vec3(0.0), vec3(1.0));
+	ALBEDO = clamp(raw_albedo, vec3(0.0), vec3(1.0));
 	if (natural_palette) {
 		// Texture samples are linear. Lift their dark range smoothly rather than
 		// flattening it into bands or preserving the source's artificial colours.
@@ -62,10 +62,10 @@ void fragment() {
 	}
 	vec3 orm = texture(orm_texture, material_uv).rgb;
 	AO = orm.r;
-	ROUGHNESS = clamp(roughness * orm.g, 0.48, 1.0);
+	ROUGHNESS = clamp(roughness * mix(0.72, 1.0, orm.g), 0.18, 1.0);
 	METALLIC = metallic * orm.b;
 	NORMAL_MAP = texture(normal_texture, material_uv).rgb;
-	NORMAL_MAP_DEPTH = normal_scale;
+	NORMAL_MAP_DEPTH = normal_scale * 0.55;
 	if (emission_energy > 0.0) {
 		float auto_phase = dot(MODEL_MATRIX[3].xz, vec2(1.73, 2.41));
 		float pulse = 0.92 + sin(TIME * 0.8 + phase_offset + auto_phase) * 0.08;

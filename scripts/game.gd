@@ -1703,17 +1703,31 @@ func _capture() -> void:
 	_start("explore")
 	diver.active = false
 	diver.lamp.visible = true
-	diver.position = Vector3(15, -88, -152)
-	diver.camera.look_at(Vector3(15, -94, -165))
-	ocean.set_depth(88.0)
+	if is_instance_valid(diver.lamp_fill):
+		diver.lamp_fill.visible = true
+	var deep_y: float = ocean.floor_height(15.0, -152.0) + 3.2
+	diver.position = Vector3(15.0, deep_y, -152.0)
+	diver.rotation = Vector3.ZERO
+	diver.camera.rotation = Vector3(-0.14, 0.0, 0.0)
+	diver._update_third_person_camera(0.0)
+	ocean.set_depth(-deep_y)
+	if ocean.has_node("SeabedEcology"):
+		ocean.get_node("SeabedEcology").update_observer(diver.position, 0.1)
 	await get_tree().create_timer(0.3).timeout
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png("res://docs/deep-sea.png")
 
 	# Capture sunken research submarine shipwreck in exploration mode
-	diver.position = Vector3(45.0, -53.2, -45.0)
-	diver.camera.look_at(Vector3(45.0, -55.2, -55.0))
-	ocean.set_depth(53.2)
+	var wreck_y: float = ocean.floor_height(37.5, -53.2) + 4.2
+	diver.position = Vector3(37.5, wreck_y, -53.2)
+	diver.rotation = Vector3.ZERO
+	diver.camera.rotation = Vector3(-0.10, -1.28, 0.0)
+	if is_instance_valid(diver.diver_model):
+		diver.diver_model.rotation.y = -1.28
+	diver._update_third_person_camera(0.0)
+	ocean.set_depth(-wreck_y)
+	if ocean.has_node("SeabedEcology"):
+		ocean.get_node("SeabedEcology").update_observer(diver.position, 0.1)
 	await get_tree().create_timer(0.3).timeout
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png("res://docs/shipwreck.png")

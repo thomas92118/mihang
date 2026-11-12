@@ -8,11 +8,14 @@ func _run() -> void:
 	var args := OS.get_cmdline_user_args()
 	var staging := "--staging" in args
 	var visual := "--visual" in args
-	var manifest_path := "res://.tools/alien-staging/asset-manifest.json" if staging else "res://assets/source/asset-manifest.json"
+	var manifest_path := "res://.tools/art-staging/asset-manifest.json" if staging else "res://assets/source/asset-manifest.json"
 	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(manifest_path))
+	var contract: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/source/asset-contract.json"))
 	assert(not manifest.is_empty())
 	if not staging:
 		assert(manifest.size() == 34)
+		for id: String in contract:
+			assert(manifest.has(id), id + ": production asset missing")
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.near = 0.001
@@ -34,11 +37,15 @@ func _run() -> void:
 		DirAccess.make_dir_recursive_absolute("res://assets/source/alien-ocean-v2/godot-previews")
 	for id: String in manifest:
 		var entry: Dictionary = manifest[id]
+		assert(contract.has(id), id + ": unknown asset ID")
+		assert(entry.get("license", "") == "MIT" and entry.get("external_sources", ["unknown"]).is_empty(), id + ": source provenance missing")
+		assert(int(entry.triangles) <= int(entry.triangle_budget), id + ": mesh budget exceeded")
+		assert(int(entry.texture_resolution) <= 1024, id + ": texture budget exceeded")
 		var scene: Node3D
 		if staging:
 			var document := GLTFDocument.new()
 			var state := GLTFState.new()
-			assert(document.append_from_file("res://.tools/alien-staging/models/" + id + ".glb", state) == OK)
+			assert(document.append_from_file("res://.tools/art-staging/models/" + id + ".glb", state) == OK)
 			scene = document.generate_scene(state)
 		else:
 			scene = load("res://" + entry.file).instantiate()
@@ -58,7 +65,7 @@ func _run() -> void:
 				assert(mat.normal_enabled and mat.normal_texture != null, id + ": normal missing")
 				assert(mat.roughness_texture != null and mat.metallic_texture != null, id + ": ORM missing")
 				assert(mat.emission_enabled and mat.emission_texture != null, id + ": emission missing")
-		var dimensions: Array = entry.dimensions_godot_xyz
+		var dimensions: Array = contract[id].dimensions_godot_xyz
 		for axis in 3:
 			assert(absf(bounds.size[axis] - dimensions[axis]) < maxf(0.005, dimensions[axis] * 0.1), id + ": size contract changed")
 		var players := scene.find_children("*", "AnimationPlayer", true, false)
@@ -98,5 +105,10 @@ func _run() -> void:
 	camera.free()
 	sun.free()
 	await process_frame
+	if staging:
+		var proof := FileAccess.open("res://.tools/art-staging/validated.sha256", FileAccess.WRITE)
+		assert(proof != null)
+		proof.store_string(FileAccess.get_sha256(manifest_path))
+		proof.close()
 	print("PASS: ", manifest.size(), " asset contracts")
 	quit()

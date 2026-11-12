@@ -1,5 +1,7 @@
 extends Node3D
 
+const ModelFinish = preload("res://scripts/presentation/model_finish.gd")
+
 var species := ""
 var animation_clock := 0.0
 var limbs: Array[Node3D] = []
@@ -26,6 +28,7 @@ func configure(kind: String) -> void:
 			_build_sea_wolf()
 		"school_fish":
 			_build_school_fish()
+	ModelFinish.apply(self, kind)
 
 func animate(delta: float) -> void:
 	animation_clock += delta
@@ -272,13 +275,15 @@ func _build_kraken() -> void:
 		tentacle_root.position = Vector3(cos(angle) * 2.5, -0.4, sin(angle) * 2.5)
 		add_child(tentacle_root)
 		var length := 14.0
-		var seg_count := 4
+		var seg_count := 8
 		var parent_node: Node3D = tentacle_root
 		for s in range(seg_count):
 			var seg_len: float = length / seg_count
-			var start_p := Vector3(0, -s * seg_len * 0.7, -s * seg_len * 0.7)
-			var end_p := Vector3(0, -(s + 1) * seg_len * 0.7, -(s + 1) * seg_len * 0.7)
-			_tube(start_p, end_p, 0.45 - s * 0.08, skin, parent_node)
+			var t0 := float(s) / seg_count
+			var t1 := float(s + 1) / seg_count
+			var start_p := Vector3(sin(t0 * PI * 1.3) * 1.3, -t0 * length * 0.7, -t0 * length * 0.7)
+			var end_p := Vector3(sin(t1 * PI * 1.3) * 1.3, -t1 * length * 0.7, -t1 * length * 0.7)
+			_tube(start_p, end_p, lerpf(0.46, 0.055, t0), skin, parent_node)
 			_ellipsoid("SuckerGlow", (start_p + end_p) * 0.5 + Vector3(0, -0.15, 0), Vector3.ONE * 0.35, sucker_mat, parent_node)
 		limbs.append(tentacle_root)
 
@@ -346,16 +351,16 @@ func _material(color: Color, metallic: float = 0.0, luminous: bool = false) -> S
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
 	material.metallic = metallic * 0.65
-	material.roughness = 0.32
-	material.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	material.specular_mode = BaseMaterial3D.SPECULAR_TOON
-	material.rim_enabled = true
+	material.roughness = 0.65
+	material.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	material.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	material.rim_enabled = false
 	material.rim = 0.56
 	material.rim_tint = 0.32
 	if luminous:
 		material.emission_enabled = true
 		material.emission = color
-		material.emission_energy_multiplier = 2.2
+		material.emission_energy_multiplier = 0.26
 	return material
 
 func _ellipsoid(label: String, at: Vector3, size: Vector3, material: Material, parent: Node3D = null) -> MeshInstance3D:
@@ -366,6 +371,9 @@ func _ellipsoid(label: String, at: Vector3, size: Vector3, material: Material, p
 	sphere.height = 1.0
 	sphere.radial_segments = 16
 	sphere.rings = 8
+	if species in ["water_dragon", "seal", "sea_wolf", "flying_fish"] and size.z > size.x:
+		sphere.radial_segments = 20
+		sphere.rings = 10
 	part.mesh = sphere
 	part.position = at
 	part.scale = size
@@ -376,7 +384,7 @@ func _ellipsoid(label: String, at: Vector3, size: Vector3, material: Material, p
 func _tube(start: Vector3, finish: Vector3, radius: float, material: Material, parent: Node3D = null) -> void:
 	var part := MeshInstance3D.new()
 	var cylinder := CylinderMesh.new()
-	cylinder.top_radius = radius * 0.8
+	cylinder.top_radius = radius * 0.72
 	cylinder.bottom_radius = radius
 	cylinder.height = start.distance_to(finish)
 	cylinder.radial_segments = 8

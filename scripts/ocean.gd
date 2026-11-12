@@ -9,6 +9,8 @@ const MarineCreature = preload("res://scripts/marine_creature.gd")
 const Submarine = preload("res://scripts/submarine.gd")
 const SeabedEcology = preload("res://scripts/seabed_ecology.gd")
 const OceanDepths = preload("res://scripts/ocean_depths.gd")
+const ArtDirection = preload("res://scripts/art_direction.gd")
+const ModelFinish = preload("res://scripts/presentation/model_finish.gd")
 const LABEL_FONT = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 const LABEL_FONT_SIZE := 40
 const BOSS_ARENA_CENTER := Vector3(-50, -76, -170)
@@ -379,6 +381,9 @@ func _create_environment() -> void:
 	sun.rotation_degrees = Vector3(-68, -28, 0)
 	sun.light_color = Color(1.0, 0.97, 0.89)
 	sun.light_energy = 1.25
+	sun.shadow_enabled = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.directional_shadow_max_distance = 50.0
 	add_child(sun)
 
 	var surface := MeshInstance3D.new()
@@ -469,7 +474,10 @@ func _create_terrain() -> void:
 	sediment.seamless = true
 	sediment.noise = noise
 	material.set_shader_parameter("sediment_noise", sediment)
+	material.set_shader_parameter("region_palette", OceanDepths.region_palette_texture())
+	material.set_shader_parameter("use_region_palette", true)
 	terrain.material_override = material
+	terrain.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(terrain)
 	terrain.create_trimesh_collision()
 
@@ -489,6 +497,7 @@ func _create_terrain() -> void:
 		chunk.name = str(cdef["name"])
 		chunk.mesh = _build_seabed_grid_mesh(cx0, cx1, cz0, cz1, 16)
 		chunk.material_override = material
+		chunk.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(chunk)
 		chunk.create_trimesh_collision()
 		outer_seabed_chunks.append(chunk)
@@ -504,9 +513,12 @@ func model(asset: String, at: Vector3, size: float = 1.0, visibility_range: floa
 	# Rigid models share the same natural, depth-aware lighting as vegetation.
 	# Surface overrides leave the imported PBR resources and animations intact.
 	apply_plant_shader(instance, 0.0, 0.0, asset)
+	var casts_landmark_shadow := asset in ["pod", "ruins", "shipwreck", "manta_ray", "sea_turtle", "fish_predator", "fish_abyss"]
 	if visibility_range > 0.0:
 		for child in instance.find_children("*", "GeometryInstance3D", true, false):
 			var gi: GeometryInstance3D = child
+			if not casts_landmark_shadow:
+				gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			gi.visibility_range_end = visibility_range
 			gi.set_meta("base_visibility_range", visibility_range)
 			scope_meshes.append(gi)
@@ -539,75 +551,43 @@ func _asset_emission_scale(asset_key: String) -> float:
 		_:
 			return 0.012
 
-func configure_natural_palette(material: ShaderMaterial, asset_key: String) -> void:
-	# The source kit contains fluorescent pigment baked into its colour maps.
-	# Preserve those maps' texture while giving benthic species real pigments.
-	var palettes := {
-		"rock": [Color(0.22, 0.23, 0.20), Color(0.57, 0.54, 0.45)],
-		"kelp": [Color(0.12, 0.18, 0.075), Color(0.52, 0.48, 0.20)],
-		"resource_kelp": [Color(0.12, 0.18, 0.075), Color(0.52, 0.48, 0.20)],
-		"coral": [Color(0.27, 0.16, 0.105), Color(0.70, 0.56, 0.39)],
-		"brain_coral": [Color(0.32, 0.22, 0.16), Color(0.74, 0.65, 0.46)],
-		"staghorn_coral": [Color(0.30, 0.22, 0.14), Color(0.81, 0.73, 0.54)],
-		"table_coral": [Color(0.31, 0.19, 0.16), Color(0.70, 0.49, 0.37)],
-		"barrel_sponge": [Color(0.24, 0.20, 0.13), Color(0.60, 0.48, 0.30)],
-		"sea_fan": [Color(0.24, 0.13, 0.12), Color(0.60, 0.32, 0.25)],
-		"sea_lily": [Color(0.21, 0.22, 0.14), Color(0.62, 0.58, 0.38)],
-		"tube_coral": [Color(0.23, 0.17, 0.15), Color(0.68, 0.50, 0.34)],
-		"anemone": [Color(0.24, 0.20, 0.15), Color(0.65, 0.59, 0.39)],
-		"giant_clam": [Color(0.16, 0.22, 0.21), Color(0.51, 0.62, 0.52)],
-		"starfish_urchin": [Color(0.22, 0.14, 0.10), Color(0.57, 0.35, 0.21)],
-		"tubeworms": [Color(0.22, 0.16, 0.13), Color(0.67, 0.53, 0.43)],
-		"crystal_spire": [Color(0.12, 0.21, 0.22), Color(0.42, 0.68, 0.69)],
-		"ruins": [Color(0.23, 0.25, 0.22), Color(0.54, 0.58, 0.49)],
-		"fish": [Color(0.16, 0.23, 0.25), Color(0.64, 0.72, 0.69)],
-		"fish_small": [Color(0.37, 0.25, 0.09), Color(0.82, 0.69, 0.32)],
-		"fish_predator": [Color(0.13, 0.20, 0.23), Color(0.52, 0.60, 0.60)],
-		"fish_abyss": [Color(0.07, 0.11, 0.13), Color(0.31, 0.38, 0.37)],
-		"manta_ray": [Color(0.08, 0.13, 0.15), Color(0.37, 0.46, 0.48)],
-		"sea_turtle": [Color(0.13, 0.20, 0.13), Color(0.44, 0.45, 0.28)],
-		"squid": [Color(0.24, 0.16, 0.14), Color(0.64, 0.53, 0.43)],
-		"crab": [Color(0.24, 0.14, 0.08), Color(0.60, 0.36, 0.21)],
-		"resource_copper": [Color(0.22, 0.15, 0.10), Color(0.60, 0.39, 0.24)],
-		"resource_titanium": [Color(0.18, 0.22, 0.23), Color(0.60, 0.63, 0.58)],
-		"resource_quartz": [Color(0.28, 0.34, 0.35), Color(0.76, 0.80, 0.74)]
-	}
-	if not palettes.has(asset_key):
-		return
-	material.set_shader_parameter("natural_palette", true)
-	material.set_shader_parameter("palette_dark", palettes[asset_key][0])
-	material.set_shader_parameter("palette_light", palettes[asset_key][1])
-	material.set_shader_parameter("palette_strength", 1.0)
+func configure_natural_palette(material: ShaderMaterial, asset_key: String, region_id: String = "core") -> void:
+	# Texture pigments remain intact. Depth absorption belongs to incident light.
+	var profile := ArtDirection.material_profile(asset_key, "", region_id)
+	material.set_shader_parameter("natural_palette", false)
+	material.set_shader_parameter("palette_strength", 0.0)
+	material.set_shader_parameter("palette_dark", profile.shadow)
+	material.set_shader_parameter("palette_light", profile.tip)
+	material.set_shader_parameter("roughness", profile.roughness)
+	material.set_shader_parameter("metallic", profile.metallic)
+
+func _attach_landmark_collision(instance: Node3D, asset_key: String) -> void:
+	# The original collision geometry is independent of the replacement artwork.
+	var frozen: PackedScene = load("res://assets/collision/" + asset_key + ".tscn")
+	instance.add_child(frozen.instantiate())
 
 func _naturalize_scene_materials() -> void:
-	var visited: Dictionary = {}
-	for child in find_children("*", "MeshInstance3D", true, false):
-		var mesh_instance: MeshInstance3D = child
-		if mesh_instance.mesh == null:
-			continue
-		for surface_index in mesh_instance.mesh.get_surface_count():
-			var material := mesh_instance.get_active_material(surface_index)
-			if not material is BaseMaterial3D or visited.has(material.get_instance_id()):
-				continue
-			visited[material.get_instance_id()] = true
-			var base_material: BaseMaterial3D = material
-			base_material.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
-			base_material.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
-			base_material.rim_enabled = false
-			if base_material.shading_mode != BaseMaterial3D.SHADING_MODE_UNSHADED:
-				base_material.roughness = maxf(base_material.roughness, 0.62)
-				if base_material.emission_enabled:
-					base_material.emission_energy_multiplier *= 0.18
-	# These are decorative fill lights; navigation and vehicle lights nested
-	# under their own nodes retain their functional settings.
-	for child in get_children():
-		if child is OmniLight3D and child.position.y < -4.0 and child not in vent_lights:
-			var fill_light: OmniLight3D = child
-			fill_light.light_energy *= 0.22
-			fill_light.omni_range *= 0.8
+	ModelFinish.apply(self, "environment")
+	# Decorative lights support local composition, never blanket illumination.
+	for light_node in find_children("*", "OmniLight3D", true, false):
+		var omni := light_node as OmniLight3D
+		omni.distance_fade_enabled = true
+		omni.distance_fade_begin = 28.0 if omni not in vent_lights else 48.0
+		omni.distance_fade_length = 12.0
+		if omni.global_position.y < -4.0 and omni not in vent_lights:
+			omni.light_energy *= 0.22
+			omni.omni_range = minf(omni.omni_range * 0.72, 16.0)
 
 func apply_plant_shader(node: Node3D, sway_str: float = 0.35, sway_freq: float = 1.25, asset_key: String = "") -> void:
 	var palette_key := asset_key if asset_key != "" else str(node.get_meta("visual_asset", ""))
+	var share_material := palette_key != "" and palette_key != "giant_clam"
+	var world_pos := node.global_position if node.is_inside_tree() else node.position
+	if not node.is_inside_tree():
+		var parent_node := node.get_parent()
+		while parent_node is Node3D and parent_node != self:
+			world_pos = (parent_node as Node3D).transform * world_pos
+			parent_node = parent_node.get_parent()
+	var region_id := ArtDirection.region_id_at(world_pos.x, world_pos.z)
 	for child in node.find_children("*", "MeshInstance3D"):
 		var mesh_inst: MeshInstance3D = child
 		if not mesh_inst.mesh:
@@ -615,9 +595,9 @@ func apply_plant_shader(node: Node3D, sway_str: float = 0.35, sway_freq: float =
 		for s in range(mesh_inst.mesh.get_surface_count()):
 			var orig_mat = mesh_inst.mesh.surface_get_material(s)
 			var material_id: int = orig_mat.get_instance_id() if orig_mat != null else 0
-			var cache_key := "%s_%d_%d_%.2f_%.2f" % [asset_key, material_id, s, sway_str, sway_freq]
+			var cache_key := "%s_%s_%d_%d_%.2f_%.2f" % [palette_key, region_id, material_id, s, sway_str, sway_freq]
 			var sm: ShaderMaterial = plant_materials.get(cache_key, null)
-			if sm == null or asset_key == "":
+			if sm == null or not share_material:
 				sm = ShaderMaterial.new()
 				sm.shader = plant_shader
 				if orig_mat is BaseMaterial3D:
@@ -639,10 +619,11 @@ func apply_plant_shader(node: Node3D, sway_str: float = 0.35, sway_freq: float =
 						sm.set_shader_parameter("emission_texture", orig_mat.emission_texture)
 				sm.set_shader_parameter("sway_strength", sway_str)
 				sm.set_shader_parameter("sway_frequency", sway_freq)
-				configure_natural_palette(sm, palette_key)
-				if asset_key != "":
+				configure_natural_palette(sm, palette_key, region_id)
+				if share_material:
 					plant_materials[cache_key] = sm
 			mesh_inst.set_surface_override_material(s, sm)
+		mesh_inst.extra_cull_margin = maxf(mesh_inst.extra_cull_margin, sway_str * 3.0)
 
 func _update_creature_animation(node: Node3D) -> void:
 	if not node.has_meta("animation_player"):
@@ -714,30 +695,44 @@ func _populate() -> void:
 	console_body.add_child(console_col)
 	escape_console.add_child(console_body)
 	var c_base := MeshInstance3D.new()
-	var b_box := BoxMesh.new()
-	b_box.size = Vector3(1.2, 1.2, 0.9)
+	var b_box := CylinderMesh.new()
+	b_box.bottom_radius = 0.68
+	b_box.top_radius = 0.52
+	b_box.height = 1.08
+	b_box.radial_segments = 16
 	c_base.mesh = b_box
 	var c_mat := StandardMaterial3D.new()
-	c_mat.albedo_color = Color(0.18, 0.34, 0.52)
-	c_mat.metallic = 0.45
-	c_mat.roughness = 0.22
-	c_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	c_mat.specular_mode = BaseMaterial3D.SPECULAR_TOON
-	c_mat.rim_enabled = true
-	c_mat.rim = 0.5
+	c_mat.albedo_color = ArtDirection.INK.lightened(0.14)
+	c_mat.metallic = 0.36
+	c_mat.roughness = 0.48
+	c_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	c_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
 	c_base.material_override = c_mat
 	escape_console.add_child(c_base)
+	var c_collar := MeshInstance3D.new()
+	var collar_box := BoxMesh.new()
+	collar_box.size = Vector3(1.06, 0.26, 0.82)
+	c_collar.mesh = collar_box
+	c_collar.position = Vector3(0, 0.54, 0.10)
+	c_collar.rotation_degrees = Vector3(-18, 0, 0)
+	var collar_mat := StandardMaterial3D.new()
+	collar_mat.albedo_color = ArtDirection.PAPER.darkened(0.08)
+	collar_mat.metallic = 0.24
+	collar_mat.roughness = 0.44
+	collar_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	c_collar.material_override = collar_mat
+	escape_console.add_child(c_collar)
 	var screen_mesh := MeshInstance3D.new()
 	var s_quad := QuadMesh.new()
-	s_quad.size = Vector2(0.9, 0.6)
+	s_quad.size = Vector2(0.86, 0.50)
 	screen_mesh.mesh = s_quad
-	screen_mesh.position = Vector3(0, 0.65, 0.3)
+	screen_mesh.position = Vector3(0, 0.70, 0.24)
 	screen_mesh.rotation_degrees = Vector3(-35, 0, 0)
 	var s_mat := StandardMaterial3D.new()
-	s_mat.albedo_color = Color(0.08, 0.45, 0.85)
+	s_mat.albedo_color = ArtDirection.INK
 	s_mat.emission_enabled = true
-	s_mat.emission = Color(0.15, 0.85, 1.0)
-	s_mat.emission_energy_multiplier = 2.4
+	s_mat.emission = ArtDirection.CYAN
+	s_mat.emission_energy_multiplier = 0.42
 	screen_mesh.material_override = s_mat
 	escape_console.add_child(screen_mesh)
 	var c_light := OmniLight3D.new()
@@ -757,8 +752,7 @@ func _populate() -> void:
 	# 2. 浅海与海沟古代遗迹拱门
 	var arch := model("ruins", Vector3(2, floor_height(2, -25), -25), 1.4, 95.0)
 	arch.rotation.y = 0.15
-	for child in arch.find_children("*", "MeshInstance3D"):
-		child.create_trimesh_collision()
+	_attach_landmark_collision(arch, "ruins")
 	var arch_marker := _create_marker("◈  ANCIENT RUINS  /  古代海沟遗迹", Vector3(2, floor_height(2, -25) + 6.0, -25), Color(0.4, 0.9, 0.8))
 	add_child(arch_marker)
 
@@ -766,8 +760,7 @@ func _populate() -> void:
 	var altar_pos := Vector3(-50, floor_height(-50, -170), -170)
 	var altar := model("ruins", altar_pos, 1.8, 95.0)
 	altar.rotation.y = 0.45
-	for child in altar.find_children("*", "MeshInstance3D"):
-		child.create_trimesh_collision()
+	_attach_landmark_collision(altar, "ruins")
 	var altar_light := OmniLight3D.new()
 	altar_light.position = altar_pos + Vector3(0, 5, 0)
 	altar_light.light_color = Color(0.18, 0.92, 1.0)
@@ -793,8 +786,7 @@ func _populate() -> void:
 	var wreck_pos := Vector3(45, floor_height(45, -55) + 0.9, -55)
 	var wreck := model("shipwreck", wreck_pos, 1.35, 95.0)
 	wreck.rotation = Vector3(0.08, 0.45, -0.15)
-	for child in wreck.find_children("*", "MeshInstance3D"):
-		child.create_trimesh_collision()
+	_attach_landmark_collision(wreck, "shipwreck")
 	var wreck_beacon := OmniLight3D.new()
 	wreck_beacon.position = wreck_pos + Vector3(0, 6.2, 0)
 	wreck_beacon.light_color = Color(0.2, 0.95, 1.0)
@@ -807,7 +799,7 @@ func _populate() -> void:
 	wreck_interior.light_energy = 2.8
 	wreck_interior.omni_range = 15.0
 	add_child(wreck_interior)
-	var wreck_marker := _create_marker("⚓  RESEARCH SHIPWRECK  /  失事科考潜艇", wreck_pos + Vector3(0, 8.5, 0), Color(1.0, 0.8, 0.4))
+	var wreck_marker := _create_marker("⚓  RESEARCH SHIPWRECK  /  失事科考潜艇", wreck_pos + Vector3(0, 6.4, 0), Color(1.0, 0.8, 0.4))
 	add_child(wreck_marker)
 
 	# 5.1 失事潜艇黑匣子交互终端 (Black Box Data Terminal)
@@ -888,8 +880,7 @@ func _populate() -> void:
 	var yard_center := Vector3(-110, floor_height(-110, -185), -185)
 	var dock_arch := model("ruins", yard_center, 2.4, 95.0)
 	dock_arch.rotation.y = PI * 0.25
-	for child in dock_arch.find_children("*", "MeshInstance3D"):
-		child.create_trimesh_collision()
+	_attach_landmark_collision(dock_arch, "ruins")
 	_create_hydrothermal_vent(yard_center + Vector3(-16, 0, 10))
 	_create_hydrothermal_vent(yard_center + Vector3(18, 0, -12))
 	var yard_beacon := OmniLight3D.new()
@@ -1247,22 +1238,9 @@ func _spawn_coral_reef_colonies() -> void:
 	var garden_light := OmniLight3D.new()
 	garden_light.position = garden_center + Vector3(0, 3.8, 0)
 	garden_light.light_color = Color(0.25, 0.95, 0.88)
-	garden_light.light_energy = 3.6
-	garden_light.omni_range = 26.0
+	garden_light.light_energy = 1.4
+	garden_light.omni_range = 12.0
 	add_child(garden_light)
-	# 《潜水员戴夫》式浅海暖色珊瑚礁高光补光，强化冷暖色彩碰撞
-	for warm_spot in [
-		{"pos": Vector3(0.0, floor_height(0.0, 5.5) + 3.2, 5.5), "col": Color(1.0, 0.76, 0.42), "energy": 2.4, "range": 18.0},
-		{"pos": Vector3(-9.5, floor_height(-9.5, 4.0) + 3.0, 4.0), "col": Color(1.0, 0.64, 0.46), "energy": 2.1, "range": 16.0},
-		{"pos": Vector3(11.0, floor_height(11.0, 3.5) + 3.0, 3.5), "col": Color(1.0, 0.72, 0.40), "energy": 2.1, "range": 16.0},
-		{"pos": Vector3(18.5, floor_height(18.5, -8.5) + 2.6, -8.5), "col": Color(1.0, 0.66, 0.38), "energy": 2.5, "range": 19.0},
-	]:
-		var reef_warm := OmniLight3D.new()
-		reef_warm.position = warm_spot["pos"]
-		reef_warm.light_color = warm_spot["col"]
-		reef_warm.light_energy = float(warm_spot["energy"])
-		reef_warm.omni_range = float(warm_spot["range"])
-		add_child(reef_warm)
 
 	# 在潜水员出生点视野前方与琉璃珊瑚礁花园精心布置代表性高保真珊瑚礁组合
 	var showcase_spots := [
@@ -1372,16 +1350,23 @@ func _place_reef_element(asset: String, at: Vector3, scale_val: float, yaw: floa
 	return node
 
 func _configure_label_3d(lbl: Label3D, orig_font_size: int, orig_pixel_size: float) -> void:
+	if "/" in lbl.text and not "\n" in lbl.text:
+		lbl.text = lbl.text.get_slice("/", 1).strip_edges()
 	lbl.font = LABEL_FONT
 	lbl.font_size = LABEL_FONT_SIZE
 	lbl.pixel_size = orig_pixel_size * float(orig_font_size) / float(LABEL_FONT_SIZE)
-	lbl.outline_size = maxi(1, roundi(12.0 * float(LABEL_FONT_SIZE) / float(orig_font_size)))
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lbl.no_depth_test = true
+	lbl.no_depth_test = false
+	lbl.visibility_range_end = 10.5 if "[E]" in lbl.text else 28.0
+	var is_warm := lbl.modulate.r > lbl.modulate.b * 1.2
+	lbl.modulate = ArtDirection.AMBER if is_warm else ArtDirection.PAPER.lerp(ArtDirection.CYAN, 0.42)
+	lbl.outline_modulate = Color(ArtDirection.INK.r, ArtDirection.INK.g, ArtDirection.INK.b, 0.88)
+	lbl.outline_size = 4
 
 func _create_marker(text: String, at: Vector3, color: Color) -> Label3D:
 	var marker := Label3D.new()
-	marker.text = text
+	# Long bilingual labels stay in the chart; world labels show the short name.
+	marker.text = text.get_slice("/", 1).strip_edges() if "/" in text else text
 	marker.position = at
 	marker.modulate = color
 	_configure_label_3d(marker, 40, 0.0085)
@@ -1418,34 +1403,45 @@ func _create_hydrothermal_vent(at: Vector3) -> void:
 	add_child(vent_root)
 
 	var chimney_height: float = 8.5
-	var chimney := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.bottom_radius = 2.4
-	cyl.top_radius = 1.1
-	cyl.height = chimney_height
-	chimney.mesh = cyl
-	var basalt := StandardMaterial3D.new()
-	basalt.albedo_color = Color(0.22, 0.26, 0.38)
-	basalt.roughness = 0.45
-	basalt.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	basalt.specular_mode = BaseMaterial3D.SPECULAR_TOON
-	basalt.rim_enabled = true
-	basalt.rim = 0.42
-	chimney.material_override = basalt
-	chimney.position.y = chimney_height * 0.5
-	vent_root.add_child(chimney)
+	var seabed_node := get_node_or_null("Seabed") as MeshInstance3D
+	var basalt_mat: Material = seabed_node.material_override if seabed_node != null else null
+	if basalt_mat == null:
+		var fallback_basalt := StandardMaterial3D.new()
+		fallback_basalt.albedo_color = Color("2d2825")
+		fallback_basalt.roughness = 0.94
+		fallback_basalt.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+		basalt_mat = fallback_basalt
+	var spire_specs := [
+		{"offset": Vector3.ZERO, "h": chimney_height, "r0": 2.25, "r1": 0.84, "tilt": Vector3(2.5, 14.0, -1.8), "seed": 1.1},
+		{"offset": Vector3(1.75, 0.0, 0.80), "h": 4.9, "r0": 1.25, "r1": 0.46, "tilt": Vector3(-5.0, 38.0, 6.0), "seed": 2.7},
+		{"offset": Vector3(-1.45, 0.0, -1.05), "h": 3.5, "r0": 1.05, "r1": 0.38, "tilt": Vector3(4.5, -24.0, -5.0), "seed": 4.3},
+	]
+	for spec in spire_specs:
+		var chimney := MeshInstance3D.new()
+		chimney.mesh = _build_faceted_basalt_spire_mesh(float(spec["h"]), float(spec["r0"]), float(spec["r1"]), float(spec["seed"]))
+		chimney.material_override = basalt_mat
+		chimney.position = spec["offset"] + Vector3(0, -0.35, 0)
+		chimney.rotation_degrees = spec["tilt"]
+		chimney.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		vent_root.add_child(chimney)
 
 	var crater := MeshInstance3D.new()
 	var crater_mesh := CylinderMesh.new()
-	crater_mesh.bottom_radius = 1.05
-	crater_mesh.top_radius = 0.8
-	crater_mesh.height = 0.6
+	crater_mesh.bottom_radius = 0.62
+	crater_mesh.top_radius = 0.48
+	crater_mesh.height = 0.26
+	crater_mesh.radial_segments = 7
 	crater.mesh = crater_mesh
 	var magma := StandardMaterial3D.new()
-	magma.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	magma.albedo_color = Color(1.0, 0.45, 0.08)
+	magma.set_meta("painterly_finished", true)
+	magma.albedo_color = Color("cf642c")
+	magma.roughness = 0.55
+	magma.emission_enabled = true
+	magma.emission = Color("e07838")
+	magma.emission_energy_multiplier = 1.15
 	crater.material_override = magma
-	crater.position.y = chimney_height + 0.15
+	crater.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	crater.position.y = chimney_height - 0.48
 	vent_root.add_child(crater)
 
 	var light := OmniLight3D.new()
@@ -2351,6 +2347,7 @@ func _create_particles() -> void:
 	var snow_material := ShaderMaterial.new()
 	snow_material.shader = load("res://shaders/marine_snow.gdshader")
 	marine_snow.material_override = snow_material
+	marine_snow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	marine_snow.extra_cull_margin = 1.0
 	add_child(marine_snow)
 
@@ -2380,50 +2377,50 @@ func _build_reef_terrace_mound(center_xz: Vector2, tier_scale: float, yaw: float
 	add_child(root)
 	dave_terraces.append(root)
 
-	# 1. 阶梯式叠石礁基座 (Stepped Limestone Reef Base，适配 rock.glb 原生 3.2m 尺寸)
-	var r1 := _spawn_decor_model("rock", Vector3(0, -0.22, 0), Vector3(0.82, 0.36, 0.76) * tier_scale, Vector3(0.04, 0.2, -0.03), 115.0)
+	# 1. 阶梯式叠石礁基座 (Stepped Limestone Reef Base，适配 rock.glb 原点在底部 y=0)
+	var r1 := _spawn_decor_model("rock", Vector3(0, -0.32, 0), Vector3(0.86, 0.46, 0.80) * tier_scale, Vector3(0.04, 0.2, -0.03), 115.0)
 	r1.reparent(root, false)
-	var r2 := _spawn_decor_model("rock", Vector3(1.35 * tier_scale, 0.18 * tier_scale, -0.85 * tier_scale), Vector3(0.58, 0.44, 0.55) * tier_scale, Vector3(-0.05, 1.4, 0.06), 115.0)
+	var r2 := _spawn_decor_model("rock", Vector3(1.25 * tier_scale, -0.28 * tier_scale, -0.80 * tier_scale), Vector3(0.62, 0.58, 0.58) * tier_scale, Vector3(-0.05, 1.4, 0.06), 115.0)
 	r2.reparent(root, false)
-	var r3 := _spawn_decor_model("rock", Vector3(-1.25 * tier_scale, 0.10 * tier_scale, 0.75 * tier_scale), Vector3(0.52, 0.34, 0.48) * tier_scale, Vector3(0.03, -1.1, -0.04), 110.0)
+	var r3 := _spawn_decor_model("rock", Vector3(-1.18 * tier_scale, -0.28 * tier_scale, 0.72 * tier_scale), Vector3(0.56, 0.48, 0.52) * tier_scale, Vector3(0.03, -1.1, -0.04), 110.0)
 	r3.reparent(root, false)
 
 	# 2. 中层悬挑桌形珊瑚与海扇 (彼此拉开间距，避免模型穿插)
-	var tc1 := _spawn_decor_model("table_coral", Vector3(-1.35 * tier_scale, 0.42 * tier_scale, 0.85 * tier_scale), Vector3.ONE * (0.78 * tier_scale), Vector3(0.04, 0.5, -0.03), 95.0, 0.08, 1.15)
+	var tc1 := _spawn_decor_model("table_coral", Vector3(-1.20 * tier_scale, 0.18 * tier_scale, 0.76 * tier_scale), Vector3.ONE * (0.76 * tier_scale), Vector3(0.04, 0.5, -0.03), 95.0, 0.08, 1.15)
 	tc1.reparent(root, false)
-	var tc2 := _spawn_decor_model("table_coral", Vector3(1.45 * tier_scale, 0.68 * tier_scale, -0.65 * tier_scale), Vector3.ONE * (0.72 * tier_scale), Vector3(-0.03, 2.2, 0.04), 95.0, 0.08, 1.15)
+	var tc2 := _spawn_decor_model("table_coral", Vector3(1.30 * tier_scale, 0.28 * tier_scale, -0.65 * tier_scale), Vector3.ONE * (0.72 * tier_scale), Vector3(-0.03, 2.2, 0.04), 95.0, 0.08, 1.15)
 	tc2.reparent(root, false)
-	var sf1 := _spawn_decor_model("sea_fan", Vector3(1.65 * tier_scale, 0.48 * tier_scale, 0.65 * tier_scale), Vector3.ONE * (0.88 * tier_scale), Vector3(0.16, 0.9, -0.22), 90.0, 0.36, 1.25)
+	var sf1 := _spawn_decor_model("sea_fan", Vector3(1.45 * tier_scale, 0.12 * tier_scale, 0.55 * tier_scale), Vector3.ONE * (0.86 * tier_scale), Vector3(0.16, 0.9, -0.22), 90.0, 0.36, 1.25)
 	sf1.reparent(root, false)
 
 	# 3. 顶层冠冕珊瑚丛与海绵/发光晶簇 (Crown Coral & Sponge / Crystal Cluster)
 	if deep_style:
-		var sp := _spawn_decor_model("crystal_spire", Vector3(0.15 * tier_scale, 0.55 * tier_scale, -0.25 * tier_scale), Vector3(0.75, 0.95, 0.75) * tier_scale, Vector3(0.06, 0.6, -0.04), 125.0)
+		var sp := _spawn_decor_model("crystal_spire", Vector3(0.10 * tier_scale, 0.05 * tier_scale, -0.20 * tier_scale), Vector3(0.68, 0.88, 0.68) * tier_scale, Vector3(0.06, 0.6, -0.04), 125.0)
 		sp.reparent(root, false)
-		var tub := _spawn_decor_model("tube_coral", Vector3(-0.95 * tier_scale, 0.52 * tier_scale, -0.55 * tier_scale), Vector3.ONE * (0.88 * tier_scale), Vector3(0, 1.8, 0), 95.0, 0.25, 1.3)
+		var tub := _spawn_decor_model("tube_coral", Vector3(-0.88 * tier_scale, 0.16 * tier_scale, -0.50 * tier_scale), Vector3.ONE * (0.84 * tier_scale), Vector3(0, 1.8, 0), 95.0, 0.25, 1.3)
 		tub.reparent(root, false)
-		var bsp := _spawn_decor_model("barrel_sponge", Vector3(0.95 * tier_scale, 0.58 * tier_scale, 0.45 * tier_scale), Vector3.ONE * (0.82 * tier_scale), Vector3(0, -0.7, 0), 95.0, 0.10, 1.1)
+		var bsp := _spawn_decor_model("barrel_sponge", Vector3(0.88 * tier_scale, 0.18 * tier_scale, 0.42 * tier_scale), Vector3.ONE * (0.78 * tier_scale), Vector3(0, -0.7, 0), 95.0, 0.10, 1.1)
 		bsp.reparent(root, false)
-		var lily_d := _spawn_decor_model("sea_lily", Vector3(-0.25 * tier_scale, 0.50 * tier_scale, 0.85 * tier_scale), Vector3.ONE * (0.92 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 90.0, 0.38, 1.35)
+		var lily_d := _spawn_decor_model("sea_lily", Vector3(-0.25 * tier_scale, 0.16 * tier_scale, 0.78 * tier_scale), Vector3.ONE * (0.88 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 90.0, 0.38, 1.35)
 		lily_d.reparent(root, false)
 	else:
-		var stg := _spawn_decor_model("staghorn_coral", Vector3(0.05 * tier_scale, 0.62 * tier_scale, 0.05 * tier_scale), Vector3.ONE * (0.85 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 95.0, 0.18, 1.25)
+		var stg := _spawn_decor_model("staghorn_coral", Vector3(0.05 * tier_scale, 0.28 * tier_scale, 0.05 * tier_scale), Vector3.ONE * (0.84 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 95.0, 0.18, 1.25)
 		stg.reparent(root, false)
-		var brn := _spawn_decor_model("brain_coral", Vector3(-0.95 * tier_scale, 0.48 * tier_scale, -0.65 * tier_scale), Vector3.ONE * (0.78 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 90.0, 0.05, 1.1)
+		var brn := _spawn_decor_model("brain_coral", Vector3(-0.88 * tier_scale, 0.18 * tier_scale, -0.58 * tier_scale), Vector3.ONE * (0.76 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 90.0, 0.05, 1.1)
 		brn.reparent(root, false)
-		var bsp := _spawn_decor_model("barrel_sponge", Vector3(1.05 * tier_scale, 0.56 * tier_scale, -0.95 * tier_scale), Vector3.ONE * (0.76 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 95.0, 0.10, 1.1)
+		var bsp := _spawn_decor_model("barrel_sponge", Vector3(0.98 * tier_scale, 0.22 * tier_scale, -0.88 * tier_scale), Vector3.ONE * (0.74 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 95.0, 0.10, 1.1)
 		bsp.reparent(root, false)
-		var anm := _spawn_decor_model("anemone", Vector3(0.65 * tier_scale, 0.52 * tier_scale, 0.95 * tier_scale), Vector3.ONE * (0.75 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 85.0, 0.26, 1.4)
+		var anm := _spawn_decor_model("anemone", Vector3(0.60 * tier_scale, 0.18 * tier_scale, 0.85 * tier_scale), Vector3.ONE * (0.74 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 85.0, 0.26, 1.4)
 		anm.reparent(root, false)
 		# 仅在浅海礁台后侧点缀修长海藻冠层 (Swaying Kelp Canopy only in sunlit shallows)
 		var kelp_h1: float = dave_rng.randf_range(1.25, 1.75) * tier_scale
-		var k1 := _spawn_decor_model("kelp", Vector3(-0.65 * tier_scale, 0.35 * tier_scale, -1.35 * tier_scale), Vector3(0.82 * tier_scale, kelp_h1, 0.82 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 110.0, 0.40, 1.20)
+		var k1 := _spawn_decor_model("kelp", Vector3(-0.65 * tier_scale, -0.10 * tier_scale, -1.25 * tier_scale), Vector3(0.82 * tier_scale, kelp_h1, 0.82 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 110.0, 0.40, 1.20)
 		k1.reparent(root, false)
 		var kelp_h2: float = dave_rng.randf_range(1.05, 1.45) * tier_scale
-		var k2 := _spawn_decor_model("kelp", Vector3(1.25 * tier_scale, 0.30 * tier_scale, -1.25 * tier_scale), Vector3(0.72 * tier_scale, kelp_h2, 0.72 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 110.0, 0.36, 1.32)
+		var k2 := _spawn_decor_model("kelp", Vector3(1.18 * tier_scale, -0.12 * tier_scale, -1.18 * tier_scale), Vector3(0.72 * tier_scale, kelp_h2, 0.72 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 110.0, 0.36, 1.32)
 		k2.reparent(root, false)
 
-	var lily := _spawn_decor_model("sea_lily", Vector3(-1.55 * tier_scale, 0.25 * tier_scale, 0.15 * tier_scale), Vector3.ONE * (0.82 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 85.0, 0.38, 1.35)
+	var lily := _spawn_decor_model("sea_lily", Vector3(-1.42 * tier_scale, 0.02 * tier_scale, 0.15 * tier_scale), Vector3.ONE * (0.82 * tier_scale), Vector3(0, dave_rng.randf_range(0, TAU), 0), 85.0, 0.38, 1.35)
 	lily.reparent(root, false)
 	return root
 
@@ -2469,42 +2466,45 @@ func _build_stone_archway(at: Vector3, arch_scale: float, yaw: float, light_col:
 	dave_arches.append(arch_root)
 
 	# 采用雕刻拱门模型 + 左右天然礁石基座，构成自然的《潜水员戴夫》蓝洞石拱门廊
-	var main_arch := _spawn_decor_model("ruins", Vector3.ZERO, Vector3(1.15, 1.05, 1.15) * arch_scale, Vector3.ZERO, 210.0)
+	var main_arch := _spawn_decor_model("ruins", Vector3(0.0, -0.35 * arch_scale, 0.0), Vector3(1.15, 1.05, 1.15) * arch_scale, Vector3.ZERO, 210.0)
 	main_arch.reparent(arch_root, false)
-	var half_w: float = 3.2 * arch_scale
+	var pillar_x: float = 3.65 * arch_scale
 	var top_h: float = 4.6 * arch_scale
 
-	var sh_l := _spawn_decor_model("rock", Vector3(-half_w, 0.3 * arch_scale, 0.2), Vector3(0.72, 0.55, 0.68) * arch_scale, Vector3(0, 1.1, 0), 185.0)
+	var sh_l := _spawn_decor_model("rock", Vector3(-pillar_x - 0.55 * arch_scale, -0.45 * arch_scale, 0.2), Vector3(0.88, 0.68, 0.82) * arch_scale, Vector3(0, 1.1, 0), 185.0)
 	sh_l.reparent(arch_root, false)
-	var sh_r := _spawn_decor_model("rock", Vector3(half_w, 0.3 * arch_scale, -0.2), Vector3(0.72, 0.55, 0.68) * arch_scale, Vector3(0, -0.9, 0), 185.0)
+	var sh_r := _spawn_decor_model("rock", Vector3(pillar_x + 0.55 * arch_scale, -0.45 * arch_scale, -0.2), Vector3(0.88, 0.68, 0.82) * arch_scale, Vector3(0, -0.9, 0), 185.0)
 	sh_r.reparent(arch_root, false)
 
-	# 拱顶与侧壁的珊瑚/海扇/海藻装饰 (Arch-top & Hanging Reef Life)
-	var top_tc := _spawn_decor_model("table_coral", Vector3(-half_w * 0.75, top_h * 0.55, 0.4), Vector3.ONE * (0.75 * arch_scale), Vector3(0, 0.4, 0), 130.0, 0.08, 1.1)
+	# 拱柱外侧与基座的珊瑚/海扇/晶簇装饰 (紧贴拱柱与海床礁座，不悬空于拱洞中央)
+	var top_tc := _spawn_decor_model("table_coral", Vector3(-pillar_x, 0.55 * arch_scale, 0.35), Vector3.ONE * (0.56 * arch_scale), Vector3(0, 0.4, 0), 130.0, 0.08, 1.1)
 	top_tc.reparent(arch_root, false)
-	var hang_fan1 := _spawn_decor_model("sea_fan", Vector3(-half_w * 0.65, top_h * 0.45, 0.5), Vector3.ONE * (0.82 * arch_scale), Vector3(0.30, 0.6, -0.55), 125.0, 0.35, 1.2)
+	var hang_fan1 := _spawn_decor_model("sea_fan", Vector3(-pillar_x, 1.65 * arch_scale, 0.32), Vector3.ONE * (0.64 * arch_scale), Vector3(0.18, 0.6, -0.35), 125.0, 0.35, 1.2)
 	hang_fan1.reparent(arch_root, false)
-	var hang_fan2 := _spawn_decor_model("sea_fan", Vector3(half_w * 0.65, top_h * 0.42, -0.4), Vector3.ONE * (0.82 * arch_scale), Vector3(-0.28, -0.5, 0.55), 125.0, 0.35, 1.2)
+	var hang_fan2 := _spawn_decor_model("sea_fan", Vector3(pillar_x, 1.55 * arch_scale, -0.28), Vector3.ONE * (0.64 * arch_scale), Vector3(-0.18, -0.5, 0.35), 125.0, 0.35, 1.2)
 	hang_fan2.reparent(arch_root, false)
 
 	if deep_arch:
-		var cry_l := _spawn_decor_model("crystal_spire", Vector3(-half_w * 0.85, top_h * 0.35, 0.5), Vector3.ONE * (0.85 * arch_scale), Vector3(0.22, 0.4, -0.25), 165.0)
+		var cry_l := _spawn_decor_model("crystal_spire", Vector3(-pillar_x - 0.85 * arch_scale, -0.25 * arch_scale, 0.35), Vector3.ONE * (0.55 * arch_scale), Vector3(0.08, 0.4, -0.06), 165.0)
 		cry_l.reparent(arch_root, false)
-		var cry_r := _spawn_decor_model("crystal_spire", Vector3(half_w * 0.85, top_h * 0.38, -0.4), Vector3.ONE * (0.85 * arch_scale), Vector3(-0.22, -0.4, 0.25), 165.0)
+		var cry_r := _spawn_decor_model("crystal_spire", Vector3(pillar_x + 0.85 * arch_scale, -0.25 * arch_scale, -0.35), Vector3.ONE * (0.55 * arch_scale), Vector3(-0.08, -0.4, 0.06), 165.0)
 		cry_r.reparent(arch_root, false)
-		var top_sp := _spawn_decor_model("crystal_spire", Vector3(0.0, top_h * 0.92, 0), Vector3.ONE * (0.78 * arch_scale), Vector3(0, 1.2, 0), 175.0)
+		var top_sp := _spawn_decor_model("barrel_sponge", Vector3(pillar_x * 0.86, 0.42 * arch_scale, 0.28), Vector3.ONE * (0.52 * arch_scale), Vector3(0, 1.2, 0), 155.0, 0.10, 1.1)
 		top_sp.reparent(arch_root, false)
 	else:
-		var top_k := _spawn_decor_model("kelp", Vector3(half_w * 0.82, 0.4, -0.4), Vector3(0.85, 1.45, 0.85) * arch_scale, Vector3(0, 0.8, 0), 135.0, 0.40, 1.2)
+		var top_k := _spawn_decor_model("kelp", Vector3(pillar_x + 0.45 * arch_scale, -0.20 * arch_scale, -0.35), Vector3(0.82, 1.35, 0.82) * arch_scale, Vector3(0, 0.8, 0), 135.0, 0.40, 1.2)
 		top_k.reparent(arch_root, false)
-		var top_stg := _spawn_decor_model("staghorn_coral", Vector3(half_w * 0.72, top_h * 0.48, 0.2), Vector3.ONE * (0.75 * arch_scale), Vector3(0, 1.5, 0), 125.0, 0.18, 1.25)
+		var top_stg := _spawn_decor_model("staghorn_coral", Vector3(pillar_x, 0.48 * arch_scale, 0.24), Vector3.ONE * (0.58 * arch_scale), Vector3(0, 1.5, 0), 125.0, 0.18, 1.25)
 		top_stg.reparent(arch_root, false)
 
 	var arch_light := OmniLight3D.new()
 	arch_light.position = Vector3(0, top_h * 0.65, 0)
 	arch_light.light_color = light_col
-	arch_light.light_energy = 3.2 if not deep_arch else 4.8
-	arch_light.omni_range = 24.0 * arch_scale
+	arch_light.light_energy = 1.6 if not deep_arch else 2.2
+	arch_light.omni_range = minf(26.0, 15.0 * arch_scale)
+	arch_light.distance_fade_enabled = true
+	arch_light.distance_fade_begin = 55.0
+	arch_light.distance_fade_length = 24.0
 	arch_root.add_child(arch_light)
 	return arch_root
 
@@ -2523,7 +2523,7 @@ func _build_blue_hole_stone_arches_and_canyons(_dave_rng: RandomNumberGenerator)
 		# 失事科考潜艇后方峡谷石拱门 (`shipwreck` 视野背景)
 		{"pos": Vector3(45.0, floor_height(45.0, -70.0), -70.0), "scale": 1.85, "yaw": 0.05, "col": Color(0.22, 0.90, 1.0), "deep": true},
 		# 深海地热裂谷跨海沟巨型玄武岩拱桥 (`deep` & `deep-sea` 视野核心层)
-		{"pos": Vector3(15.0, floor_height(15.0, -162.0), -162.0), "scale": 2.15, "yaw": 0.05, "col": Color(1.0, 0.58, 0.22), "deep": true},
+		{"pos": Vector3(15.0, floor_height(15.0, -172.0), -172.0), "scale": 1.95, "yaw": 0.08, "col": Color(0.92, 0.56, 0.26), "deep": true},
 		{"pos": Vector3(14.5, floor_height(14.5, -178.0), -178.0), "scale": 2.45, "yaw": -0.10, "col": Color(0.22, 0.88, 1.0), "deep": true},
 		# 深渊海床远景玄武岩拱门 (`abyss-floor` 远景上半幅，保留近景地面净空)
 		{"pos": Vector3(-26.0, floor_height(-26.0, -162.0), -162.0), "scale": 1.55, "yaw": 0.25, "col": Color(0.25, 0.88, 1.0), "deep": true},
@@ -2556,11 +2556,13 @@ func _build_twilight_dropoff_and_shipwreck_layers(dave_rng: RandomNumberGenerato
 		var wxz: Vector2 = wp["xz"]
 		var wy: float = floor_height(wxz.x, wxz.y)
 		var sc: Vector3 = wp["scale"]
-		var p_node := _spawn_decor_model("rock", Vector3(wxz.x, wy + sc.y * 0.4, wxz.y), sc, Vector3(0.04, float(wp["yaw"]), -0.03), 175.0)
-		# 在岩柱中上部挂载水平桌形珊瑚、发光晶簇与海扇
-		_spawn_decor_model("table_coral", p_node.position + Vector3(0, sc.y * 0.55, 0.9), Vector3.ONE * 1.05, Vector3(0, float(wp["yaw"]), 0), 130.0, 0.08, 1.1)
-		_spawn_decor_model("crystal_spire", p_node.position + Vector3(0.6, sc.y * 0.75, 0.4), Vector3.ONE * 1.10, Vector3(0.12, float(wp["yaw"]), -0.10), 145.0)
-		_spawn_decor_model("sea_fan", p_node.position + Vector3(-0.7, sc.y * 0.45, 0.6), Vector3.ONE * 1.05, Vector3(0.2, float(wp["yaw"]), 0.25), 125.0, 0.35, 1.2)
+		var p_node := _spawn_decor_model("rock", Vector3(wxz.x, wy - 0.65, wxz.y), sc, Vector3(0.04, float(wp["yaw"]), -0.03), 175.0)
+		_spawn_decor_model("rock", Vector3(wxz.x + 0.16, wy + sc.y * 0.78, wxz.y - 0.12), sc * Vector3(0.74, 0.76, 0.74), Vector3(-0.03, float(wp["yaw"]) + 1.3, 0.04), 175.0)
+		# 在岩柱实心表面与柱脚海床布置桌形珊瑚、海扇与晶簇，避免悬空
+		_spawn_decor_model("table_coral", p_node.position + Vector3(0.0, sc.y * 0.72, 0.42 * sc.z), Vector3.ONE * 0.74, Vector3(0, float(wp["yaw"]), 0), 130.0, 0.08, 1.1)
+		var cry_xz := Vector2(wxz.x + 0.85 * sc.x, wxz.y + 0.45 * sc.z)
+		_spawn_decor_model("crystal_spire", Vector3(cry_xz.x, floor_height(cry_xz.x, cry_xz.y) - 0.30, cry_xz.y), Vector3.ONE * 0.72, Vector3(0.06, float(wp["yaw"]), -0.05), 145.0)
+		_spawn_decor_model("sea_fan", p_node.position + Vector3(-0.48 * sc.x, sc.y * 0.65, 0.38 * sc.z), Vector3.ONE * 0.82, Vector3(0.14, float(wp["yaw"]), 0.18), 125.0, 0.35, 1.2)
 
 	# 潜艇周边的多层珊瑚礁台
 	for w_mound in [Vector2(34.0, -52.5), Vector2(55.5, -52.5), Vector2(36.0, -61.5), Vector2(53.5, -61.0)]:
@@ -2587,28 +2589,32 @@ func _build_abyssal_trench_and_cathedral_pillars(dave_rng: RandomNumberGenerator
 		var w: float = float(sp["w"])
 		var tiers: int = int(sp["tiers"])
 		var col: Color = sp["col"]
-		var cur_y: float = base_y
+		var cur_y: float = base_y - 0.65
 		for t_idx in range(tiers):
 			var seg_w: float = w * (1.0 - float(t_idx) * 0.05)
-			var seg_h: float = 2.8
-			var seg_pos := Vector3(xz.x + sin(float(t_idx) * 1.1) * 0.45, cur_y + 2.0, xz.y + cos(float(t_idx) * 0.9) * 0.45)
+			var seg_h: float = 2.5
+			var seg_pos := Vector3(xz.x + sin(float(t_idx) * 1.1) * 0.24, cur_y, xz.y + cos(float(t_idx) * 0.9) * 0.24)
 			_spawn_decor_model("rock", seg_pos, Vector3(seg_w, seg_h, seg_w), Vector3(0.03, dave_rng.randf_range(0, TAU), -0.03), 220.0)
 			if t_idx >= 2 and t_idx % 2 == 0:
-				_spawn_decor_model("table_coral", seg_pos + Vector3(0, 1.2, 1.3), Vector3.ONE * 1.20, Vector3(0, dave_rng.randf_range(0, TAU), 0), 195.0, 0.08, 1.1)
-				_spawn_decor_model("crystal_spire", seg_pos + Vector3(0.8, 1.4, 0.8), Vector3.ONE * 1.35, Vector3(0.14, float(t_idx), -0.1), 205.0)
-				_spawn_decor_model("tube_coral", seg_pos + Vector3(-0.8, 1.3, 0.6), Vector3.ONE * 1.20, Vector3(0, 1.1, 0), 175.0, 0.28, 1.3)
-			cur_y += 3.8
+				_spawn_decor_model("table_coral", seg_pos + Vector3(0, 1.1, 0.55 * seg_w), Vector3.ONE * 0.78, Vector3(0, dave_rng.randf_range(0, TAU), 0), 195.0, 0.08, 1.1)
+				_spawn_decor_model("tube_coral", seg_pos + Vector3(-0.52 * seg_w, 1.25, 0.42 * seg_w), Vector3.ONE * 0.80, Vector3(0, 1.1, 0), 175.0, 0.28, 1.3)
+			cur_y += 2.95
+		var foot_xz := Vector2(xz.x + 0.85 * w, xz.y + 0.65 * w)
+		_spawn_decor_model("crystal_spire", Vector3(foot_xz.x, floor_height(foot_xz.x, foot_xz.y) - 0.35, foot_xz.y), Vector3.ONE * 0.92, Vector3(0.05, dave_rng.randf_range(0, TAU), -0.04), 205.0)
 
-		# 柱顶加冕远古石拱或巨型发光晶簇
-		var crown_pos := Vector3(xz.x, cur_y + 1.5, xz.y)
-		_spawn_decor_model("crystal_spire", crown_pos, Vector3.ONE * 1.85, Vector3(0, dave_rng.randf_range(0, TAU), 0), 215.0)
-		_spawn_decor_model("barrel_sponge", crown_pos + Vector3(1.2, -0.6, 0.6), Vector3.ONE * 1.35, Vector3(0, -0.8, 0), 180.0, 0.10, 1.1)
+		# 柱顶嵌入发光晶簇与海绵，无悬空缝隙
+		var crown_pos := Vector3(xz.x, cur_y - 0.85, xz.y)
+		_spawn_decor_model("crystal_spire", crown_pos, Vector3.ONE * 0.82, Vector3(0, dave_rng.randf_range(0, TAU), 0), 215.0)
+		_spawn_decor_model("barrel_sponge", crown_pos + Vector3(0.45 * w, -0.35, 0.32 * w), Vector3.ONE * 0.78, Vector3(0, -0.8, 0), 180.0, 0.10, 1.1)
 
 		var beacon := OmniLight3D.new()
-		beacon.position = crown_pos + Vector3(0, 2.5, 2.0)
+		beacon.position = crown_pos + Vector3(0, 2.2, 1.4)
 		beacon.light_color = col
-		beacon.light_energy = 5.2
-		beacon.omni_range = 48.0
+		beacon.light_energy = 2.4
+		beacon.omni_range = 28.0
+		beacon.distance_fade_enabled = true
+		beacon.distance_fade_begin = 60.0
+		beacon.distance_fade_length = 26.0
 		add_child(beacon)
 
 	# 深海地热区海床层叠珊瑚晶簇台 (`deep-sea` 视野近中景两侧，无浅海巨藻)
@@ -2636,7 +2642,9 @@ func _build_distant_seamount_silhouettes(dave_rng: RandomNumberGenerator) -> voi
 		{"pos": Vector3(44.0, -82.0, -194.0), "scale": Vector3(4.8, 6.5, 3.6)},
 	]
 	for sm in seamount_defs:
-		var node := _spawn_decor_model("rock", sm["pos"], sm["scale"], Vector3(0, dave_rng.randf_range(0, TAU), 0), 240.0)
+		var raw_pos: Vector3 = sm["pos"]
+		var grounded_pos := Vector3(raw_pos.x, floor_height(raw_pos.x, raw_pos.z) - 0.9, raw_pos.z)
+		var node := _spawn_decor_model("rock", grounded_pos, sm["scale"] * Vector3(1.0, 1.45, 1.0), Vector3(0, dave_rng.randf_range(0, TAU), 0), 240.0)
 		distant_seamounts.append(node)
 
 func _create_ambient_fish_shoals_and_bubbles(dave_rng: RandomNumberGenerator) -> void:
@@ -2676,7 +2684,10 @@ func _create_ambient_fish_shoals_and_bubbles(dave_rng: RandomNumberGenerator) ->
 		fallback.height = 0.65
 		base_fish_mesh = fallback
 
-	var shoal_tints := [Color(0.67, 0.65, 0.46), Color(0.34, 0.48, 0.52), Color(0.68, 0.62, 0.37), Color(0.54, 0.48, 0.43), Color(0.36, 0.50, 0.45), Color(0.64, 0.51, 0.32)]
+	var fish_orig_mat: BaseMaterial3D = null
+	if base_fish_mesh.get_surface_count() > 0 and base_fish_mesh.surface_get_material(0) is BaseMaterial3D:
+		fish_orig_mat = base_fish_mesh.surface_get_material(0) as BaseMaterial3D
+	var shoal_tints := [Color(1.0, 0.94, 0.80), Color(0.76, 0.94, 1.0), Color(1.0, 0.90, 0.72), Color(0.96, 0.84, 0.88), Color(0.80, 0.96, 0.90), Color(0.98, 0.86, 0.74)]
 	for shoal_index in range(shoal_specs.size()):
 		var spec: Dictionary = shoal_specs[shoal_index]
 		var mmi := MultiMeshInstance3D.new()
@@ -2685,8 +2696,12 @@ func _create_ambient_fish_shoals_and_bubbles(dave_rng: RandomNumberGenerator) ->
 		var mat := ShaderMaterial.new()
 		mat.shader = plant_shader
 		mat.set_shader_parameter("albedo", shoal_tints[shoal_index % shoal_tints.size()])
-		mat.set_shader_parameter("roughness", 0.64)
-		mat.set_shader_parameter("metallic", 0.12)
+		mat.set_shader_parameter("roughness", 0.58)
+		mat.set_shader_parameter("metallic", 0.06)
+		if fish_orig_mat != null:
+			mat.set_shader_parameter("albedo_texture", fish_orig_mat.albedo_texture)
+			mat.set_shader_parameter("normal_texture", fish_orig_mat.normal_texture)
+			mat.set_shader_parameter("orm_texture", fish_orig_mat.roughness_texture)
 		mat.set_shader_parameter("sway_strength", 0.0)
 		mat.set_shader_parameter("emission_energy", 0.0)
 		var mesh_copy: Mesh = base_fish_mesh.duplicate()
@@ -2702,6 +2717,7 @@ func _create_ambient_fish_shoals_and_bubbles(dave_rng: RandomNumberGenerator) ->
 			offsets.append(Vector3(dave_rng.randf_range(-2.6, 2.6), dave_rng.randf_range(-0.85, 0.85), dave_rng.randf_range(-2.6, 2.6)))
 			phases.append(float(i) * 0.24 + dave_rng.randf_range(0.0, 0.6))
 		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mmi.extra_cull_margin = 16.0
 		add_child(mmi)
 		var shoal_data := {
@@ -3319,23 +3335,24 @@ func _build_mother_tree_structure(awakened: bool) -> Node3D:
 	mother_tree_spawned_flag = awakened
 
 	var mat_bark := StandardMaterial3D.new()
-	mat_bark.albedo_color = Color(0.14, 0.46, 0.38)
-	mat_bark.roughness = 0.35
-	mat_bark.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	mat_bark.specular_mode = BaseMaterial3D.SPECULAR_TOON
-	mat_bark.rim_enabled = true
-	mat_bark.rim = 0.55
+	mat_bark.albedo_color = Color("46586e")
+	mat_bark.roughness = 0.78
+	mat_bark.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat_bark.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat_bark.rim_enabled = false
 	mat_bark.emission_enabled = true
-	mat_bark.emission = Color(0.22, 0.92, 0.72)
-	mat_bark.emission_energy_multiplier = 1.15
+	mat_bark.emission = Color("86b9cc")
+	mat_bark.emission_energy_multiplier = 0.16
 
 	var mat_canopy := StandardMaterial3D.new()
-	mat_canopy.albedo_color = Color(0.15, 0.85, 0.72)
+	mat_canopy.albedo_color = Color("7fb8c6")
 	mat_canopy.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat_canopy.albedo_color.a = 0.75
+	mat_canopy.albedo_color.a = 0.68
+	mat_canopy.roughness = 0.56
+	mat_canopy.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 	mat_canopy.emission_enabled = true
-	mat_canopy.emission = Color(0.2, 0.95, 0.85)
-	mat_canopy.emission_energy_multiplier = 2.4
+	mat_canopy.emission = Color("99cdd8")
+	mat_canopy.emission_energy_multiplier = 0.38
 
 	# 1. Colossal Ancient Trunk (Rising from seabed up 70 meters)
 	var trunk := MeshInstance3D.new()
@@ -3380,8 +3397,8 @@ func _build_mother_tree_structure(awakened: bool) -> Node3D:
 	# 3. Skyward Ascending Luminous Beacon Light Pillar
 	var beacon := OmniLight3D.new()
 	beacon.position = Vector3(0, 50.0, 0)
-	beacon.light_color = Color(0.2, 0.95, 0.85)
-	beacon.light_energy = 8.5
+	beacon.light_color = Color("92bdd2")
+	beacon.light_energy = 3.2
 	beacon.omni_range = 95.0
 	mother_tree.add_child(beacon)
 
@@ -3401,7 +3418,7 @@ func _build_mother_tree_structure(awakened: bool) -> Node3D:
 	var p_mat := StandardMaterial3D.new()
 	p_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	p_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	p_mat.albedo_color = Color(0.3, 1.0, 0.8, 0.85)
+	p_mat.albedo_color = Color(0.62, 0.84, 0.88, 0.65)
 	particles.material_override = p_mat
 	particles.position = Vector3(0, 45.0, 0)
 	mother_tree.add_child(particles)
@@ -3564,25 +3581,50 @@ func _populate_open_world_frontiers() -> void:
 	# 9. West — Leviathan Fossil Graveyard (-480, -90)
 	add_child(_create_marker("☠  LEVIATHAN GRAVEYARD  /  西洋巨兽龙骨荒原", Vector3(-480, floor_height(-480, -90) + 14.0, -90), Color(0.55, 0.95, 0.88)))
 	var bone_mat := StandardMaterial3D.new()
-	bone_mat.albedo_color = Color(0.82, 0.86, 0.78)
-	bone_mat.roughness = 0.55
-	bone_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	bone_mat.emission_enabled = true
-	bone_mat.emission = Color(0.16, 0.52, 0.58)
-	bone_mat.emission_energy_multiplier = 0.35
+	bone_mat.set_meta("painterly_finished", true)
+	bone_mat.albedo_color = Color("cec7ae")
+	bone_mat.roughness = 0.84
+	bone_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	bone_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	var bone_weathered_mat := StandardMaterial3D.new()
+	bone_weathered_mat.set_meta("painterly_finished", true)
+	bone_weathered_mat.albedo_color = Color("99937f")
+	bone_weathered_mat.roughness = 0.90
+	bone_weathered_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	var rib_meshes := {
+		"-full": _build_leviathan_rib_mesh(-1.0, false),
+		"+full": _build_leviathan_rib_mesh(1.0, false),
+		"-broken": _build_leviathan_rib_mesh(-1.0, true),
+		"+broken": _build_leviathan_rib_mesh(1.0, true),
+	}
+	var vertebra_mesh := CylinderMesh.new()
+	vertebra_mesh.bottom_radius = 1.65
+	vertebra_mesh.top_radius = 1.45
+	vertebra_mesh.height = 3.2
+	vertebra_mesh.radial_segments = 8
 	for r_idx in range(7):
 		var rz := -90.0 - 36.0 + float(r_idx) * 12.0
 		var ry := floor_height(-480.0, rz)
+		var spine := MeshInstance3D.new()
+		spine.mesh = vertebra_mesh
+		spine.material_override = bone_weathered_mat
+		spine.position = Vector3(-480.0 + sin(float(r_idx) * 0.7) * 1.2, ry + 0.65, rz)
+		spine.rotation = Vector3(PI * 0.5 + 0.06 * cos(float(r_idx)), sin(float(r_idx)) * 0.12, 0.0)
+		spine.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		spine.visibility_range_end = 160.0
+		spine.set_meta("base_visibility_range", 160.0)
+		scope_meshes.append(spine)
+		add_child(spine)
 		for side: float in [-1.0, 1.0]:
 			var rib := MeshInstance3D.new()
-			var rcyl := CylinderMesh.new()
-			rcyl.bottom_radius = 1.1
-			rcyl.top_radius = 0.45
-			rcyl.height = 22.0
-			rib.mesh = rcyl
+			var is_broken := (r_idx == 1 and side > 0.0) or (r_idx == 5 and side < 0.0)
+			var mesh_key := ("+" if side > 0.0 else "-") + ("broken" if is_broken else "full")
+			rib.mesh = rib_meshes[mesh_key]
 			rib.material_override = bone_mat
-			rib.position = Vector3(-480.0 + side * 12.0, ry + 9.0, rz)
-			rib.rotation.z = side * 0.52
+			rib.position = Vector3(-480.0 + side * 14.5, ry - 0.6, rz)
+			rib.scale = Vector3(1.0, 1.0 - absf(float(r_idx) - 3.0) * 0.05, 1.0)
+			rib.rotation.y = sin(float(r_idx) * 1.3 + side) * 0.08
+			rib.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			rib.visibility_range_end = 160.0
 			rib.set_meta("base_visibility_range", 160.0)
 			scope_meshes.append(rib)
@@ -3747,9 +3789,10 @@ func _spawn_research_outpost(spec: Dictionary) -> Node3D:
 	mast.mesh = mcyl
 	mast.position = Vector3(0, 6.2, 0)
 	var m_mat := StandardMaterial3D.new()
-	m_mat.albedo_color = Color(0.22, 0.45, 0.62)
-	m_mat.metallic = 0.5
-	m_mat.roughness = 0.25
+	m_mat.albedo_color = Color("496879")
+	m_mat.metallic = 0.45
+	m_mat.roughness = 0.44
+	m_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 	mast.material_override = m_mat
 	root_node.add_child(mast)
 
@@ -3761,19 +3804,21 @@ func _spawn_research_outpost(spec: Dictionary) -> Node3D:
 	core.mesh = sph
 	core.position = Vector3(0, 10.6, 0)
 	var b_mat := StandardMaterial3D.new()
-	b_mat.albedo_color = Color(1.0, 0.76, 0.22)
+	b_mat.albedo_color = ArtDirection.AMBER
+	b_mat.roughness = 0.35
+	b_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 	b_mat.emission_enabled = true
-	b_mat.emission = Color(1.0, 0.72, 0.18)
-	b_mat.emission_energy_multiplier = 3.4
+	b_mat.emission = ArtDirection.AMBER
+	b_mat.emission_energy_multiplier = 0.58
 	core.material_override = b_mat
 	root_node.add_child(core)
 
 	var light := OmniLight3D.new()
 	light.name = "OutpostLight"
 	light.position = Vector3(0, 7.5, 0)
-	light.light_color = Color(1.0, 0.78, 0.28)
-	light.light_energy = 4.6
-	light.omni_range = 28.0
+	light.light_color = ArtDirection.AMBER
+	light.light_energy = 1.8
+	light.omni_range = 24.0
 	root_node.add_child(light)
 
 	var lbl := Label3D.new()
@@ -3795,17 +3840,17 @@ func set_outpost_activated_visual(outpost: Node3D) -> void:
 		var core: MeshInstance3D = outpost.get_node("BeaconCore")
 		var mat := core.material_override as StandardMaterial3D
 		if mat:
-			mat.albedo_color = Color(0.25, 1.0, 0.78)
-			mat.emission = Color(0.22, 1.0, 0.82)
-			mat.emission_energy_multiplier = 4.2
+			mat.albedo_color = ArtDirection.CYAN
+			mat.emission = ArtDirection.CYAN
+			mat.emission_energy_multiplier = 0.65
 	if outpost.has_node("OutpostLight"):
 		var lgt: OmniLight3D = outpost.get_node("OutpostLight")
-		lgt.light_color = Color(0.25, 1.0, 0.82)
-		lgt.light_energy = 5.4
+		lgt.light_color = ArtDirection.CYAN
+		lgt.light_energy = 2.2
 	if outpost.has_node("OutpostLabel"):
 		var lbl: Label3D = outpost.get_node("OutpostLabel")
 		lbl.text = "⬡  %s  [已联网]\n[E 打开海图跃迁 · Tab 制造 · 自动补氧]" % str(outpost.get_meta("name", "科考前哨站"))
-		lbl.modulate = Color(0.38, 1.0, 0.84)
+		lbl.modulate = ArtDirection.CYAN
 
 func find_nearby_outpost(pos: Vector3, max_dist: float = 9.5) -> Node3D:
 	var best: Node3D = null
@@ -3846,29 +3891,33 @@ func _spawn_explorer_relic(spec: Dictionary) -> Node3D:
 	ped.mesh = pcyl
 	ped.position.y = 0.4
 	var p_mat := StandardMaterial3D.new()
-	p_mat.albedo_color = Color(0.18, 0.34, 0.46)
-	p_mat.roughness = 0.45
+	p_mat.albedo_color = Color("7b8982")
+	p_mat.roughness = 0.86
+	p_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 	ped.material_override = p_mat
 	body.add_child(ped)
 
 	var core := MeshInstance3D.new()
 	core.name = "RelicCore"
 	var prism := PrismMesh.new()
-	prism.size = Vector3(0.95, 1.3, 0.95)
+	prism.size = Vector3(0.82, 1.18, 0.82)
 	core.mesh = prism
 	core.position.y = 1.55
 	var c_mat := StandardMaterial3D.new()
-	c_mat.albedo_color = Color(1.0, 0.52, 0.92)
+	c_mat.albedo_color = ArtDirection.AMBER.lerp(ArtDirection.PAPER, 0.28)
+	c_mat.roughness = 0.34
+	c_mat.metallic = 0.25
+	c_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 	c_mat.emission_enabled = true
-	c_mat.emission = Color(0.95, 0.42, 1.0)
-	c_mat.emission_energy_multiplier = 3.2
+	c_mat.emission = ArtDirection.AMBER
+	c_mat.emission_energy_multiplier = 0.48
 	core.material_override = c_mat
 	body.add_child(core)
 
 	var lbl := Label3D.new()
 	lbl.text = "◆  [E] 收集遗珍：" + str(spec["name"])
 	lbl.position = Vector3(0, 2.65, 0)
-	lbl.modulate = Color(1.0, 0.68, 0.96)
+	lbl.modulate = ArtDirection.AMBER
 	_configure_label_3d(lbl, 30, 0.008)
 	body.add_child(lbl)
 
@@ -3919,3 +3968,90 @@ func get_map_submarine_snapshots() -> Array[Dictionary]:
 				"pos": sub.global_position
 			})
 	return arr
+
+func _build_faceted_basalt_spire_mesh(height: float, r_bottom: float, r_top: float, seed_val: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var sides := 7
+	var rings := 5
+	var ring_pts: Array = []
+	for r in range(rings + 1):
+		var t := float(r) / float(rings)
+		var y := t * height
+		var step_ledge := 1.0 + 0.08 * sin(t * PI * 3.0 + seed_val)
+		var base_r := lerpf(r_bottom, r_top, pow(t, 0.82)) * step_ledge
+		var pts: Array[Vector3] = []
+		for s in range(sides):
+			var ang := float(s) * TAU / float(sides) + t * 0.18
+			var flute := 1.0 + 0.16 * sin(ang * 3.0 + seed_val) + 0.09 * cos(ang * 2.0 - t * 4.0)
+			var jag_y := y + (0.22 * sin(ang * 2.0 + seed_val * 1.7) if r == rings else 0.0)
+			pts.append(Vector3(cos(ang) * base_r * flute, jag_y, sin(ang) * base_r * flute))
+		ring_pts.append(pts)
+	for r in range(rings):
+		var row0: Array = ring_pts[r]
+		var row1: Array = ring_pts[r + 1]
+		for s in range(sides):
+			var s_next := (s + 1) % sides
+			var p00: Vector3 = row0[s]
+			var p10: Vector3 = row0[s_next]
+			var p01: Vector3 = row1[s]
+			var p11: Vector3 = row1[s_next]
+			st.add_vertex(p00); st.add_vertex(p10); st.add_vertex(p01)
+			st.add_vertex(p10); st.add_vertex(p11); st.add_vertex(p01)
+	# Sloped inward crater rim instead of a flat top disc
+	var top_row: Array = ring_pts[rings]
+	var throat_center := Vector3(0.0, height - 0.55, 0.0)
+	for s in range(sides):
+		var s_next := (s + 1) % sides
+		st.add_vertex(top_row[s])
+		st.add_vertex(top_row[s_next])
+		st.add_vertex(throat_center)
+	st.generate_normals()
+	return st.commit()
+
+func _build_leviathan_rib_mesh(side: float, broken: bool) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var sides := 7
+	var segments := 5 if broken else 8
+	var max_t := 0.58 if broken else 1.0
+	var rings: Array = []
+	for i in range(segments + 1):
+		var u := (float(i) / float(segments)) * max_t
+		# Bow slightly outward near base, then arch smoothly inward over the spine
+		var x := side * (sin(u * PI) * 2.2 - pow(u, 1.35) * 12.2)
+		var y := sin(u * PI * 0.56) * 19.5
+		var center := Vector3(x, y, 0.0)
+		var du := 0.02
+		var u2 := minf(u + du, 1.0)
+		var next_c := Vector3(side * (sin(u2 * PI) * 2.2 - pow(u2, 1.35) * 12.2), sin(u2 * PI * 0.56) * 19.5, 0.0)
+		var tangent := (next_c - center).normalized()
+		if tangent.length_squared() < 0.01:
+			tangent = Vector3(-side * 0.7, 0.7, 0.0).normalized()
+		var normal_z := Vector3.FORWARD
+		var binormal := tangent.cross(normal_z).normalized()
+		var radius := lerpf(1.06, 0.30, pow(u, 0.85))
+		var pts: Array[Vector3] = []
+		for s in range(sides):
+			var ang := float(s) * TAU / float(sides)
+			var ridge := 1.0 + 0.10 * cos(ang * 2.0)
+			var local := binormal * (cos(ang) * radius * ridge) + normal_z * (sin(ang) * radius * 0.66)
+			pts.append(center + local)
+		rings.append(pts)
+	for i in range(segments):
+		var r0: Array = rings[i]
+		var r1: Array = rings[i + 1]
+		for s in range(sides):
+			var sn := (s + 1) % sides
+			st.add_vertex(r0[s]); st.add_vertex(r0[sn]); st.add_vertex(r1[s])
+			st.add_vertex(r0[sn]); st.add_vertex(r1[sn]); st.add_vertex(r1[s])
+	var tip_ring: Array = rings[segments]
+	var tip_center := Vector3.ZERO
+	for p: Vector3 in tip_ring:
+		tip_center += p
+	tip_center = tip_center / float(sides) + Vector3(-side * 0.35, 0.25 if broken else 0.45, 0.0)
+	for s in range(sides):
+		var sn := (s + 1) % sides
+		st.add_vertex(tip_ring[s]); st.add_vertex(tip_ring[sn]); st.add_vertex(tip_center)
+	st.generate_normals()
+	return st.commit()

@@ -2,6 +2,8 @@ extends Node3D
 
 signal detonated(at: Vector3, radius: float, duration: float)
 
+const ArtDirection = preload("res://scripts/art_direction.gd")
+
 const SPEED := 4.5
 const COLLISION_RADIUS := 0.85
 const MAX_LIFETIME := 18.0
@@ -27,11 +29,15 @@ func _ready() -> void:
 	sphere.rings = 12
 	core.mesh = sphere
 	var material := StandardMaterial3D.new()
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.albedo_color = Color(0.08, 0.35, 1.0)
+	material.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	material.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	material.rim_enabled = false
+	material.roughness = 0.24
+	material.metallic = 0.12
+	material.albedo_color = ArtDirection.CYAN.lerp(ArtDirection.PAPER, 0.28)
 	material.emission_enabled = true
-	material.emission = Color(0.03, 0.22, 0.8)
-	material.disable_fog = true
+	material.emission = Color("56a8be")
+	material.emission_energy_multiplier = 0.82
 	core.material_override = material
 	add_child(core)
 	shell = MeshInstance3D.new()
@@ -39,28 +45,45 @@ func _ready() -> void:
 	outer.radius = COLLISION_RADIUS
 	outer.height = COLLISION_RADIUS * 2.0
 	shell.mesh = outer
-	var glow := material.duplicate() as StandardMaterial3D
+	var glow := StandardMaterial3D.new()
+	glow.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	glow.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	glow.rim_enabled = false
+	glow.roughness = 0.18
 	glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	glow.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	glow.emission_enabled = false
-	glow.albedo_color = Color(0.04, 0.25, 1.0, 0.16)
+	glow.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+	glow.albedo_color = Color(ArtDirection.CYAN, 0.22)
+	glow.emission_enabled = true
+	glow.emission = ArtDirection.CYAN
+	glow.emission_energy_multiplier = 0.32
 	shell.material_override = glow
 	add_child(shell)
+	var ring_mat := StandardMaterial3D.new()
+	ring_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	ring_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	ring_mat.rim_enabled = false
+	ring_mat.roughness = 0.30
+	ring_mat.metallic = 0.25
+	ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ring_mat.albedo_color = Color(ArtDirection.PAPER.lerp(ArtDirection.CYAN, 0.45), 0.74)
+	ring_mat.emission_enabled = true
+	ring_mat.emission = ArtDirection.CYAN
+	ring_mat.emission_energy_multiplier = 0.42
 	for axis in range(3):
 		var ring := MeshInstance3D.new()
 		var torus := TorusMesh.new()
-		torus.inner_radius = 0.76
-		torus.outer_radius = 0.81
+		torus.inner_radius = 0.77
+		torus.outer_radius = 0.805
 		torus.rings = 24
 		torus.ring_segments = 6
 		ring.mesh = torus
-		ring.material_override = material
+		ring.material_override = ring_mat
 		ring.rotation = Vector3(PI * 0.5 * axis, 0.7 * axis, 0.3 * axis)
 		shell.add_child(ring)
 	var light := OmniLight3D.new()
-	light.light_color = Color(0.12, 0.5, 1.0)
-	light.light_energy = 4.0
-	light.omni_range = 9.0
+	light.light_color = ArtDirection.CYAN.lerp(Color("4fa3c4"), 0.38)
+	light.light_energy = 1.35
+	light.omni_range = 7.5
 	add_child(light)
 
 func _physics_process(delta: float) -> void:

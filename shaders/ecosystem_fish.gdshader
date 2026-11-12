@@ -40,21 +40,24 @@ void vertex() {
 void fragment() {
 	float back = smoothstep(-0.08, 0.12, body_position.y);
 	if (creature_kind == 0) {
-		ALBEDO = mix(vec3(0.62, 0.65, 0.62), vec3(0.22, 0.30, 0.31), back);
-		ROUGHNESS = 0.42;
+		ALBEDO = mix(vec3(0.80, 0.83, 0.71), vec3(0.12, 0.35, 0.40), back);
+		float stripe = (1.0 - smoothstep(0.018, 0.05, abs(body_position.y + 0.005)))
+			* smoothstep(-0.5, -0.20, body_position.z);
+		ALBEDO = mix(ALBEDO, vec3(0.77, 0.61, 0.30), stripe * 0.55);
+		ROUGHNESS = 0.56;
 		METALLIC = 0.08;
 	} else if (creature_kind == 1) {
-		ALBEDO = mix(vec3(0.27, 0.24, 0.20), vec3(0.11, 0.15, 0.15), back);
+		ALBEDO = mix(vec3(0.45, 0.42, 0.43), vec3(0.13, 0.19, 0.29), back);
 		float spots = pow(max(sin(body_position.z * 54.0), 0.0), 14.0);
 		float belly = (1.0 - smoothstep(0.025, 0.065, abs(body_position.y + 0.12)))
 			* (1.0 - smoothstep(0.30, 0.41, abs(body_position.z)));
 		EMISSION = vec3(0.22, 0.55, 0.48) * spots * belly * 0.12;
 		ROUGHNESS = 0.58;
 	} else if (creature_kind == 2) {
-		ALBEDO = mix(vec3(0.42, 0.34, 0.30), vec3(0.29, 0.24, 0.23), back);
+		ALBEDO = mix(vec3(0.67, 0.49, 0.46), vec3(0.37, 0.21, 0.28), back);
 		ROUGHNESS = 0.57;
 	} else {
-		ALBEDO = mix(vec3(0.43, 0.51, 0.50), vec3(0.29, 0.38, 0.41), back);
+		ALBEDO = mix(vec3(0.58, 0.67, 0.67), vec3(0.30, 0.44, 0.57), back);
 		float edge = (1.0 - smoothstep(0.04, 0.11, abs(body_position.y)))
 			* smoothstep(0.25, 0.44, length(body_position.xz));
 		float filaments = smoothstep(0.30, 0.75, -body_position.y)
@@ -62,6 +65,12 @@ void fragment() {
 		EMISSION = vec3(0.22, 0.49, 0.52) * (edge + filaments * 0.25)
 			* (creature_kind == 4 ? 0.12 : 0.045);
 		ROUGHNESS = 0.68;
+	}
+	ALBEDO *= COLOR.rgb;
+	if (creature_kind <= 1) {
+		vec3 eye_position = vec3(sign(body_position.x) * 0.077, 0.06, 0.285);
+		float eye = 1.0 - smoothstep(0.018, 0.035, length(body_position - eye_position));
+		ALBEDO = mix(ALBEDO, vec3(0.018, 0.035, 0.042), eye);
 	}
 	SPECULAR = 0.30;
 }

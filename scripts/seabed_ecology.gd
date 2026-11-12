@@ -10,6 +10,7 @@ const WORLD_SEED := 381193
 const MAX_INSTANCES_PER_CHUNK := 128
 const MAX_FISH_PER_CHUNK := 8
 const OceanDepths := preload("res://scripts/ocean_depths.gd")
+const ArtDirection := preload("res://scripts/art_direction.gd")
 const PLANT_SHADER := preload("res://shaders/plant_sway.gdshader")
 const FISH_SHADER := preload("res://shaders/ecosystem_fish.gdshader")
 
@@ -24,6 +25,7 @@ var _center := Vector2i(100000, 100000)
 var _exclusion_zones: Array[Vector3] = []
 var _patch_noise := FastNoiseLite.new()
 var _ambient_creature_meshes: Dictionary = {}
+var _material_cache: Dictionary = {}
 var _pending_ambient: Array[Vector2i] = []
 var _observer_depth_band := 0
 var _observer_water_zone := "sunlit_reef"
@@ -154,65 +156,74 @@ func sample_habitat(x: float, z: float) -> Dictionary:
 		biome = "vent_field"
 	elif depth <= 55.0 and (kelp_distance < 190.0 or patch > 0.34):
 		biome = "kelp_forest"
-	return {"biome": biome, "depth_zone": depth_zone, "depth": depth, "slope": slope}
+	return {"biome": biome, "depth_zone": depth_zone, "depth": depth, "slope": slope, "region": ArtDirection.region_id_at(x, z)}
+
+# A broad, world-continuous sand channel creates negative space across chunk
+# seams. It is scenery only: neither terrain nor gameplay collision is changed.
+func _is_sand_channel(xz: Vector2) -> bool:
+	var flow := xz.x * 0.021 + xz.y * 0.012 + sin(xz.y * 0.008) * 1.2
+	return absf(sin(flow)) < 0.16
 
 func build_chunk_plan(cell: Vector2i) -> Array[Dictionary]:
 	var plan: Array[Dictionary] = []
 	var local_rng := RandomNumberGenerator.new()
 	local_rng.seed = WORLD_SEED + cell.x * 73856093 + cell.y * 19349663
 	var origin := Vector2(cell) * CHUNK_SIZE
-	# Real volumes make reef ridges readable at swimming height; most imported
-	# rocks are thin plates, so reserve those for a little rubble between boulders.
-	for index in range(4):
-		var p := origin + Vector2(local_rng.randf_range(5, 43), local_rng.randf_range(5, 43))
-		var habitat := sample_habitat(p.x, p.y)
-		var kind := "limestone_boulder"
-		var size := local_rng.randf_range(1.35, 2.65)
-		var formation_scale := Vector3(size * 1.2, size * local_rng.randf_range(0.72, 1.2), size)
-		match str(habitat["depth_zone"]):
-			"shelf_garden":
-				kind = "shelf_ledge_boulder"
-				formation_scale = Vector3(size * 2.0, size * 0.55, size * 1.35)
-			"twilight_slope":
-				kind = "escarpment_boulder"
-				formation_scale = Vector3(size, size * 3.1, size * 0.9)
-			"bathyal_basin":
-				kind = "silt_boulder"
-				formation_scale = Vector3(size * 1.75, size * 1.2, size * 1.4)
-			"hadal_trench":
-				kind = "trench_spire_boulder"
-				formation_scale = Vector3(size * 0.8, size * 4.1, size * 0.85)
-		if str(habitat["biome"]) == "vent_field":
-			kind = "vent_chimney" if index % 2 == 0 else "basalt_boulder"
-			formation_scale = Vector3(size * 0.7, size * 1.1, size * 0.7) if kind == "vent_chimney" else Vector3(size * 1.3, size * 1.6, size)
-		_add_to_plan(plan, kind, p, formation_scale, local_rng.randf() * TAU)
-		var satellite := p + Vector2(local_rng.randf_range(-3, 3), local_rng.randf_range(-3, 3))
-		var rubble := "basalt_boulder" if str(habitat["biome"]) == "vent_field" else "silt_boulder"
-		if float(habitat["depth"]) < 90.0:
-			rubble = "limestone_boulder"
-		_add_to_plan(plan, rubble, satellite, Vector3(size * 0.64, size * 0.5, size * 0.8), local_rng.randf() * TAU)
-	for index in range(2):
-		var p := origin + Vector2(local_rng.randf_range(3, 45), local_rng.randf_range(3, 45))
-		var size := local_rng.randf_range(0.65, 1.1)
-		_add_to_plan(plan, "rock", p, Vector3(size, size * 0.65, size), local_rng.randf() * TAU)
-	# Separate colonies and bare sediment corridors instead of a uniform carpet.
+	# Each patch is a little composition: one strong geological form, a lower
+	# satellite and colonies attached to their shoulders. Hierarchy replaces the
+	# previous evenly scattered rocks and same-sized plants without more draws.
 	for cluster in range(3):
-		var center := origin + Vector2(local_rng.randf_range(8, 40), local_rng.randf_range(8, 40))
+		var center := origin + Vector2(12.0 + float(cluster % 2) * 21.0, 12.0 + floorf(float(cluster) * 0.5) * 22.0)
+		center += Vector2(local_rng.randf_range(-4, 4), local_rng.randf_range(-4, 4))
+		if _is_sand_channel(center):
+			center.x += 7.0
 		var center_habitat := sample_habitat(center.x, center.y)
-		var colony_count := 6 if float(center_habitat["depth"]) >= 35.0 and float(center_habitat["depth"]) < 200.0 else 4
-		if float(center_habitat["depth"]) >= 360.0:
-			colony_count = 2
+		var depth := float(center_habitat["depth"])
+		var yaw := local_rng.randf() * TAU
+		var direction := Vector2(cos(yaw), sin(yaw))
+		var size := local_rng.randf_range(1.5, 2.3) * (1.5 if cluster == 0 else 0.85)
+		var rock_kind := "limestone_boulder"
+		var rock_scale := Vector3(size * 1.7, size * 0.85, size * 1.2)
+		match str(center_habitat["depth_zone"]):
+			"shelf_garden":
+				rock_kind = "shelf_ledge_boulder"
+				rock_scale = Vector3(size * 2.0, size * 0.65, size * 1.25)
+			"twilight_slope":
+				rock_kind = "escarpment_boulder"
+				rock_scale = Vector3(size * 1.2, size * 2.2, size * 0.9)
+			"bathyal_basin":
+				rock_kind = "silt_boulder"
+				rock_scale = Vector3(size * 1.7, size * 0.85, size * 1.3)
+			"hadal_trench":
+				rock_kind = "trench_spire_boulder"
+				rock_scale = Vector3(size * 0.9, size * 2.9, size * 0.8)
+		if str(center_habitat["biome"]) == "vent_field":
+			rock_kind = "vent_chimney" if cluster == 0 else "basalt_boulder"
+			rock_scale = Vector3(size * 0.65, size * 0.85, size * 0.65)
+		if not _is_sand_channel(center):
+			_add_to_plan(plan, rock_kind, center, rock_scale, yaw)
+		var satellite := center + direction * size * 1.6
+		if not _is_sand_channel(satellite):
+			_add_to_plan(plan, "limestone_boulder" if depth < 90.0 else "silt_boulder", satellite, rock_scale * Vector3(0.42, 0.45, 0.65), yaw + 0.35)
+		var colony_count := 7 if depth < 200.0 else (4 if depth < 360.0 else 2)
+		if str(center_habitat["biome"]) == "kelp_forest":
+			colony_count = 11
+		var dominant := _choose_colony(str(center_habitat["biome"]), local_rng)
+		if str(center_habitat["biome"]) == "kelp_forest":
+			dominant = "kelp"
 		for index in range(colony_count):
-			var angle := local_rng.randf() * TAU
-			var offset := Vector2(cos(angle), sin(angle)) * sqrt(local_rng.randf()) * 6.5
+			var angle := yaw + float(index) * 0.68 - 1.7 + local_rng.randf_range(-0.15, 0.15)
+			var offset := Vector2(cos(angle), sin(angle)) * (size * 1.7 + local_rng.randf_range(0.8, 2.6))
 			var p := center + offset
+			if _is_sand_channel(p):
+				continue
 			var habitat := sample_habitat(p.x, p.y)
-			var asset := _choose_colony(str(habitat["biome"]), local_rng)
+			var asset := dominant if index % 3 != 2 and str(habitat["biome"]) == str(center_habitat["biome"]) else _choose_colony(str(habitat["biome"]), local_rng)
 			var max_slope := 0.78 if asset == "cold_water_coral" else 0.50
 			if float(habitat["slope"]) > max_slope:
 				continue
-			var size := local_rng.randf_range(0.55, 1.15)
-			var shape := Vector3.ONE * size
+			var colony_size := local_rng.randf_range(0.8, 1.1) * (1.6 if index < 2 else (0.85 if index < 4 else 0.48))
+			var shape := Vector3.ONE * colony_size
 			if asset == "cold_water_coral":
 				shape *= local_rng.randf_range(1.15, 1.65)
 			elif asset == "glass_sponge":
@@ -220,22 +231,24 @@ func build_chunk_plan(cell: Vector2i) -> Array[Dictionary]:
 			elif asset == "sea_pen":
 				shape *= local_rng.randf_range(0.85, 1.6)
 			if asset == "kelp":
-				shape = Vector3(size * 0.75, size * local_rng.randf_range(1.1, 1.8), size * 0.75)
+				shape = Vector3(colony_size * 1.08, colony_size * local_rng.randf_range(1.75, 2.55), colony_size * 1.08)
 				# Kelp never pierces the water surface.
 				shape.y = minf(shape.y, (float(habitat["depth"]) - 1.5) / 5.2)
-			_add_to_plan(plan, asset, p, shape, local_rng.randf() * TAU)
+			_add_to_plan(plan, asset, p, shape, yaw + local_rng.randf_range(-0.5, 0.5))
 		# Low-cost blades form the understory only where photosynthesis is possible.
-		for index in range(20):
+		for index in range(14):
 			var p := center + Vector2(local_rng.randf_range(-10, 10), local_rng.randf_range(-10, 10))
 			var habitat := sample_habitat(p.x, p.y)
-			if float(habitat["depth"]) > 35.0 or float(habitat["slope"]) > 0.32:
+			if float(habitat["depth"]) > 35.0 or float(habitat["slope"]) > 0.32 or _is_sand_channel(p):
 				continue
-			var size := local_rng.randf_range(0.8, 1.45)
-			_add_to_plan(plan, "seagrass", p, Vector3(size, size * local_rng.randf_range(0.85, 1.3), size), local_rng.randf() * TAU)
+			var blade_scale := local_rng.randf_range(0.8, 1.45)
+			_add_to_plan(plan, "seagrass", p, Vector3(blade_scale, blade_scale * local_rng.randf_range(0.85, 1.3), blade_scale), local_rng.randf() * TAU)
 	# Pebble drifts and shell hash remain visible across all depth bands, including
 	# map edges. Drift noise leaves rippled sand exposed between the patches.
-	for index in range(36):
+	for index in range(25):
 		var p := origin + Vector2(local_rng.randf_range(1.0, 47.0), local_rng.randf_range(1.0, 47.0))
+		if _is_sand_channel(p) and index % 4 != 0:
+			continue
 		var drift := _patch_noise.get_noise_2d(p.x * 2.1, p.y * 2.1)
 		if drift < -0.22 and index > 23:
 			continue
@@ -274,7 +287,7 @@ func _add_to_plan(plan: Array[Dictionary], asset: String, xz: Vector2, size: Vec
 	var habitat := sample_habitat(xz.x, xz.y)
 	plan.append({
 		"asset": asset, "position": Vector3(xz.x, sample_floor_height(xz.x, xz.y), xz.y),
-		"scale": size, "yaw": yaw, "normal": _floor_normal(xz.x, xz.y), "biome": str(habitat["biome"]), "depth_zone": str(habitat["depth_zone"])
+		"scale": size, "yaw": yaw, "normal": _floor_normal(xz.x, xz.y), "biome": str(habitat["biome"]), "depth_zone": str(habitat["depth_zone"]), "region": str(habitat["region"])
 	})
 
 func _build_chunk(cell: Vector2i) -> void:
@@ -307,9 +320,11 @@ func _build_chunk(cell: Vector2i) -> void:
 			batch.name = asset
 			var mm := MultiMesh.new()
 			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.use_colors = true
 			mm.mesh = part["mesh"]
 			mm.instance_count = records.size()
 			var bounds: AABB = _asset_bounds[asset]
+			var animated_bounds := AABB()
 			for index in range(records.size()):
 				var record: Dictionary = records[index]
 				var normal: Vector3 = record["normal"]
@@ -339,7 +354,16 @@ func _build_chunk(cell: Vector2i) -> void:
 						exposed_base = maxf(exposed_base, world_support.y - sample_floor_height(world_support.x, world_support.z))
 					if exposed_base > 0.0:
 						position.y -= exposed_base + 0.06
-				mm.set_instance_transform(index, Transform3D(basis, position) * part["transform"])
+				var instance_transform: Transform3D = Transform3D(basis, position) * part["transform"]
+				mm.set_instance_transform(index, instance_transform)
+				var profile := ArtDirection.region_profile(str(record["region"]))
+				var variation := 0.94 + 0.10 * (0.5 + 0.5 * sin(float(record["position"].x) * 1.37 + float(record["position"].z) * 0.73))
+				var tint := Color.WHITE.lerp(profile["flora"], 0.07 if asset in ["kelp", "seagrass", "sea_lily"] else 0.025)
+				mm.set_instance_color(index, Color(tint.r * variation, tint.g * variation, tint.b * variation, 1.0))
+				var part_mesh: Mesh = part["mesh"]
+				var envelope := (instance_transform * part_mesh.get_aabb()).grow(2.5)
+				animated_bounds = envelope if index == 0 else animated_bounds.merge(envelope)
+			mm.custom_aabb = animated_bounds
 			batch.multimesh = mm
 			batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			batch.visibility_range_end = 130.0 if asset == "rock" or asset.ends_with("_boulder") or asset == "vent_chimney" else (64.0 if asset in ["seagrass", "shell", "pebble"] else 88.0)
@@ -405,15 +429,20 @@ func _cache_rock_support_points(asset: String) -> void:
 	_rock_support_points[asset] = unique.keys()
 
 func _natural_material(source: Material, asset: String) -> ShaderMaterial:
+	var cache_key := asset + ":" + str(source.get_instance_id() if source != null else 0)
+	if _material_cache.has(cache_key):
+		return _material_cache[cache_key]
 	var material := ShaderMaterial.new()
 	material.shader = PLANT_SHADER
+	var profile := ArtDirection.material_profile(asset)
 	material.set_shader_parameter("sway_strength", 0.22 if asset in ["kelp", "sea_fan", "sea_lily", "seagrass", "sea_pen"] else 0.0)
 	material.set_shader_parameter("sway_frequency", 0.72)
 	material.set_shader_parameter("emission_energy", 0.0)
+	material.set_shader_parameter("roughness", float(profile["roughness"]))
 	if source is BaseMaterial3D:
 		var base: BaseMaterial3D = source
 		material.set_shader_parameter("albedo", base.albedo_color)
-		material.set_shader_parameter("roughness", maxf(0.72, base.roughness))
+		material.set_shader_parameter("roughness", float(profile["roughness"]))
 		material.set_shader_parameter("metallic", 0.0)
 		material.set_shader_parameter("albedo_texture", base.albedo_texture)
 		material.set_shader_parameter("normal_texture", base.normal_texture)
@@ -423,6 +452,7 @@ func _natural_material(source: Material, asset: String) -> ShaderMaterial:
 		material.set_shader_parameter("uv_offset", base.uv1_offset)
 		if _ocean.has_method("configure_natural_palette"):
 			_ocean.call("configure_natural_palette", material, asset)
+	_material_cache[cache_key] = material
 	return material
 
 func _create_groundcover_asset(asset: String) -> void:
@@ -437,31 +467,33 @@ func _create_groundcover_asset(asset: String) -> void:
 			var angle := float(blade) * 2.39996
 			var spread := sqrt((float(blade) + 0.5) / 40.0) * 1.35
 			var offset := Vector3(cos(angle) * spread, 0, sin(angle) * spread)
-			var sideways := Vector3(cos(angle), 0, sin(angle)) * 0.045
+			var sideways := Vector3(cos(angle), 0, sin(angle)) * (0.055 + float(blade % 3) * 0.012)
 			var height := 0.58 + float(blade % 5) * 0.12
 			for segment in range(3):
 				var t0 := float(segment) / 3.0
 				var t1 := float(segment + 1) / 3.0
-				var a := offset + Vector3(0.12 * t0 * t0, height * t0, 0.06 * t0 * t0)
-				var b := offset + Vector3(0.12 * t1 * t1, height * t1, 0.06 * t1 * t1)
+				var bend := Vector3(cos(angle + 0.8), 0, sin(angle + 0.8)) * 0.28
+				var a := offset + bend * t0 * t0 + Vector3.UP * height * t0
+				var b := offset + bend * t1 * t1 + Vector3.UP * height * t1
 				var points := [a - sideways * (1.0 - t0 * 0.7), a + sideways * (1.0 - t0 * 0.7), b - sideways * (1.0 - t1 * 0.7), b + sideways * (1.0 - t1 * 0.7)]
 				for index in [0, 1, 2, 1, 3, 2]:
+					surface.set_color(Color(0.64, 0.72, 0.48).lerp(Color(1.0, 1.0, 0.90), t0 if index < 2 else t1))
 					surface.add_vertex(points[index])
 		surface.generate_normals()
 		mesh = surface.commit()
-		color = Color(0.30, 0.34, 0.16)
+		color = Color("899d60")
 	elif asset == "cold_water_coral":
 		mesh = _create_cold_water_coral_mesh()
-		color = Color(0.65, 0.59, 0.48)
+		color = Color("d6bdad")
 	elif asset == "glass_sponge":
 		mesh = _create_glass_sponge_mesh()
-		color = Color(0.58, 0.60, 0.54)
+		color = Color("a3bec1")
 	elif asset == "sea_pen":
 		mesh = _create_sea_pen_mesh()
-		color = Color(0.54, 0.46, 0.36)
+		color = Color("b48b8b")
 	elif asset == "sea_cucumber":
 		mesh = _create_ellipsoid_mesh(Vector3(0.18, 0.12, 0.75))
-		color = Color(0.28, 0.22, 0.17)
+		color = Color("736d65")
 	elif asset == "vent_chimney":
 		var surface := SurfaceTool.new()
 		surface.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -636,6 +668,7 @@ func _build_ambient_shoal(chunk: Node3D, cell: Vector2i) -> void:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_custom_data = true
+		mm.use_colors = true
 		mm.mesh = _ambient_creature_meshes[species]
 		mm.instance_count = records.size()
 		var bounds := AABB()
@@ -646,6 +679,11 @@ func _build_ambient_shoal(chunk: Node3D, cell: Vector2i) -> void:
 			var basis := Basis(Vector3.UP, float(record["yaw"])).scaled(Vector3.ONE * size)
 			mm.set_instance_transform(index, Transform3D(basis, at))
 			mm.set_instance_custom_data(index, Color(float(record["phase"]), 0.43, float(index) * 0.17, 1.0))
+			var tint := Color.WHITE
+			if species == "silverside":
+				var profile := ArtDirection.region_profile(ArtDirection.region_id_at(float(record["position"].x), float(record["position"].z)))
+				tint = tint.lerp(profile["accent"], 0.12)
+			mm.set_instance_color(index, tint)
 			var envelope := AABB(at - Vector3(8, 5, 8), Vector3(16, 10, 16))
 			bounds = bounds.merge(envelope) if index > 0 else envelope
 		mm.custom_aabb = bounds

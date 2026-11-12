@@ -16,9 +16,9 @@ void fragment() {
 	float vertical_fade = pow(clamp(1.0 - UV.y, 0.0, 1.0), 1.35) * smoothstep(0.0, 0.12, UV.y);
 	float depth = max(-world_v.y, 0.0);
 	vec3 transmission = exp(-vec3(0.055, 0.024, 0.014) * depth);
-	ALBEDO = vec3(0.78, 0.86, 0.82) * transmission;
+	ALBEDO = vec3(0.90, 0.92, 0.77) * transmission;
 	float depth_fade = 1.0 - smoothstep(30.0, 120.0, depth);
 	float camera_depth = max(-CAMERA_POSITION_WORLD.y, 0.0);
 	float column_visibility = 1.0 - smoothstep(85.0, 190.0, camera_depth);
-	ALPHA = edge * rays * vertical_fade * depth_fade * column_visibility * 0.046;
+	ALPHA = edge * rays * vertical_fade * depth_fade * column_visibility * 0.058;
 }

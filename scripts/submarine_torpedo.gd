@@ -3,6 +3,8 @@ class_name SubmarineTorpedo
 
 signal impacted(at: Vector3, normal: Vector3)
 
+const ArtDirection = preload("res://scripts/art_direction.gd")
+
 var direction := Vector3.FORWARD
 var speed := 48.0
 var damage := 120.0
@@ -40,13 +42,12 @@ func _build_mesh() -> void:
 	body.mesh = cyl
 	body.rotation.x = PI * 0.5
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.16, 0.56, 0.92) if not has_shockwave else Color(0.95, 0.42, 0.14)
-	mat.metallic = 0.35
-	mat.roughness = 0.22
-	mat.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	mat.specular_mode = BaseMaterial3D.SPECULAR_TOON
-	mat.rim_enabled = true
-	mat.rim = 0.52
+	mat.albedo_color = Color("436878") if not has_shockwave else Color("b86b49")
+	mat.metallic = 0.48
+	mat.roughness = 0.36
+	mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat.rim_enabled = false
 	body.material_override = mat
 	add_child(body)
 
@@ -56,17 +57,25 @@ func _build_mesh() -> void:
 	sphere.height = sphere.radius * 2.2
 	nose_mesh.mesh = sphere
 	nose_mesh.position = Vector3(0, 0, -cyl.height * 0.5)
+	var beacon_col := ArtDirection.CYAN if not has_shockwave else ArtDirection.AMBER.lerp(ArtDirection.DANGER, 0.42)
 	var glow_mat := StandardMaterial3D.new()
-	glow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	glow_mat.albedo_color = Color(0.2, 0.9, 1.0) if not has_shockwave else Color(1.0, 0.45, 0.12)
+	glow_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	glow_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	glow_mat.rim_enabled = false
+	glow_mat.roughness = 0.22
+	glow_mat.metallic = 0.16
+	glow_mat.albedo_color = beacon_col.lightened(0.14)
+	glow_mat.emission_enabled = true
+	glow_mat.emission = beacon_col
+	glow_mat.emission_energy_multiplier = 0.82
 	nose_mesh.material_override = glow_mat
 	add_child(nose_mesh)
 
 	var glow_light := OmniLight3D.new()
 	glow_light.position = nose_mesh.position
-	glow_light.light_color = glow_mat.albedo_color
-	glow_light.light_energy = 4.2
-	glow_light.omni_range = 10.0
+	glow_light.light_color = beacon_col
+	glow_light.light_energy = 1.35
+	glow_light.omni_range = 7.5
 	add_child(glow_light)
 
 	# Pitot tube needle on nose
@@ -121,9 +130,12 @@ func _build_trail() -> void:
 	p_mesh.radial_segments = 6
 	p_mesh.rings = 3
 	var p_mat := StandardMaterial3D.new()
-	p_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	p_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	p_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	p_mat.rim_enabled = false
+	p_mat.roughness = 0.28
 	p_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	p_mat.albedo_color = Color(0.8, 0.96, 1.0, 0.65)
+	p_mat.albedo_color = Color(ArtDirection.PAPER.lerp(ArtDirection.CYAN, 0.36), 0.48)
 	p_mesh.material = p_mat
 	trail_particles.mesh = p_mesh
 	add_child(trail_particles)
@@ -196,7 +208,7 @@ func _detonate(at: Vector3, normal: Vector3, collider: Node = null) -> void:
 		if CombatVFXCls:
 			CombatVFXCls.spawn_hit_burst(parent, at, normal, "axe" if has_shockwave else "sonic", true, false)
 			if has_shockwave:
-				CombatVFXCls.spawn_stasis_burst(parent, at, explosion_radius, 0.85, Color(1.0, 0.45, 0.15))
+				CombatVFXCls.spawn_stasis_burst(parent, at, explosion_radius, 0.85, ArtDirection.DANGER.lerp(ArtDirection.AMBER, 0.45))
 
 		var AudioCls = load("res://scripts/underwater_audio.gd")
 		if AudioCls:

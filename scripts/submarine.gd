@@ -2,6 +2,7 @@ extends CharacterBody3D
 class_name Submarine
 
 const OceanDepths = preload("res://scripts/ocean_depths.gd")
+const ModelFinish = preload("res://scripts/presentation/model_finish.gd")
 
 signal fired_torpedo(data: Dictionary)
 
@@ -52,6 +53,11 @@ func configure(type: String) -> void:
 		_build_titan()
 	else:
 		_build_mini()
+	ModelFinish.apply(self, "submarine")
+	for index in headlights.size():
+		headlights[index].visible = is_piloted
+		headlights[index].shadow_enabled = is_piloted and index == 0
+		headlights[index].light_color = Color(1.0, 0.96, 0.87)
 
 func _build_scout() -> void:
 	sub_name = "深海斥候号"
@@ -234,8 +240,11 @@ func _build_titan() -> void:
 	var beacon := OmniLight3D.new()
 	beacon.position = Vector3(0, 7.8, 0.5)
 	beacon.light_color = Color(1.0, 0.35, 0.1)
-	beacon.light_energy = 4.5
-	beacon.omni_range = 35.0
+	beacon.light_energy = 2.4
+	beacon.omni_range = 10.0
+	beacon.distance_fade_enabled = true
+	beacon.distance_fade_begin = 30.0
+	beacon.distance_fade_length = 12.0
 	add_child(beacon)
 
 	_setup_wake_particles(Vector3(0, 0, 13.5), 1.6)
@@ -343,24 +352,31 @@ func _build_escape_pod(at: Vector3, size: Vector3, pod_label: String, side: floa
 	var strobe := OmniLight3D.new()
 	strobe.position = Vector3(side * size.x * 0.35, size.y * 0.55, 0)
 	strobe.light_color = Color(1.0, 0.6, 0.15) if sub_type == "titan" else Color(0.2, 0.9, 1.0)
-	strobe.light_energy = 2.8
-	strobe.omni_range = 14.0
+	strobe.light_energy = 1.4
+	strobe.omni_range = 4.5
+	strobe.distance_fade_enabled = true
+	strobe.distance_fade_begin = 20.0
+	strobe.distance_fade_length = 8.0
 	pod_root.add_child(strobe)
 
 	# Pod Stencil Label (救生舱标识)
 	var label := Label3D.new()
+	label.name = "PodLabel"
 	label.font = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 	label.text = "◈ " + pod_label
 	label.position = Vector3(side * size.x * 0.55, size.y * 0.4, 0)
-	var old_font_size := 28
-	var old_pixel_size := 0.007
-	var old_outline_size := label.outline_size
-	label.font_size = 40
-	label.pixel_size = old_pixel_size * (float(old_font_size) / 40.0)
-	label.outline_size = roundi(float(old_outline_size) * 40.0 / float(old_font_size))
-	label.modulate = Color(1.0, 0.85, 0.3)
+	label.font_size = 32
+	label.pixel_size = 0.0026
+	label.outline_size = 8
+	label.outline_modulate = Color(0.015, 0.04, 0.06, 0.88)
+	label.modulate = Color(0.88, 0.72, 0.44, 0.85)
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.no_depth_test = true
+	label.no_depth_test = false
+	label.visibility_range_begin = 2.8
+	label.visibility_range_begin_margin = 0.8
+	label.visibility_range_end = 8.5
+	label.visibility_range_end_margin = 1.5
+	label.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	pod_root.add_child(label)
 
 	escape_pods.append(pod_root)
@@ -393,11 +409,21 @@ func _setup_wake_particles(at: Vector3, radius: float) -> void:
 	p_mat.albedo_color = Color(0.65, 0.92, 1.0, 0.45)
 	p_mesh.material = p_mat
 	wake_particles.mesh = p_mesh
+	wake_particles.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(wake_particles)
 
 func board(diver: Node3D) -> void:
 	is_piloted = true
 	pilot_diver = diver
+	for index in headlights.size():
+		if is_instance_valid(headlights[index]):
+			headlights[index].visible = true
+			headlights[index].shadow_enabled = index == 0
+	for pod in escape_pods:
+		if is_instance_valid(pod):
+			var pod_lbl := pod.get_node_or_null("PodLabel") as Label3D
+			if pod_lbl != null:
+				pod_lbl.visible = false
 	rotation.x = 0.0
 	rotation.z = 0.0
 	if is_instance_valid(diver):
@@ -410,6 +436,15 @@ func disembark() -> Vector3:
 		remove_collision_exception_with(pilot_diver)
 	is_piloted = false
 	pilot_diver = null
+	for index in headlights.size():
+		if is_instance_valid(headlights[index]):
+			headlights[index].visible = false
+			headlights[index].shadow_enabled = false
+	for pod in escape_pods:
+		if is_instance_valid(pod):
+			var pod_lbl := pod.get_node_or_null("PodLabel") as Label3D
+			if pod_lbl != null:
+				pod_lbl.visible = true
 	current_speed = 0.0
 	velocity = Vector3.ZERO
 	rotation.x = 0.0
@@ -556,8 +591,8 @@ func _mat(color: Color, metallic: float = 0.0, roughness: float = 0.5) -> Standa
 	m.albedo_color = color
 	m.metallic = metallic * 0.65
 	m.roughness = minf(roughness, 0.34)
-	m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	m.specular_mode = BaseMaterial3D.SPECULAR_TOON
+	m.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	m.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
 	m.rim_enabled = true
 	m.rim = 0.52
 	m.rim_tint = 0.35

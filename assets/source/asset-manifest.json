@@ -11,18 +11,25 @@
       2.355,
       2.065
     ],
-    "triangles": 9492,
+    "triangles": 1420,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/coral.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1442,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/coral_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/coral_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/coral_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/coral_emission.png"
+      "albedo": "embedded://coral_albedo.png",
+      "normal": "embedded://coral_normal.png",
+      "orm": "embedded://coral_orm.png",
+      "emission": "embedded://coral_emission.png"
     }
   },
   "tube_coral": {
@@ -37,18 +44,25 @@
       2.635,
       1.392
     ],
-    "triangles": 7004,
+    "triangles": 1420,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/tube_coral.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1969,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/tube_coral_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/tube_coral_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/tube_coral_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/tube_coral_emission.png"
+      "albedo": "embedded://tube_coral_albedo.png",
+      "normal": "embedded://tube_coral_normal.png",
+      "orm": "embedded://tube_coral_orm.png",
+      "emission": "embedded://tube_coral_emission.png"
     }
   },
   "kelp": {
@@ -63,18 +77,25 @@
       5.114,
       2.304
     ],
-    "triangles": 4666,
+    "triangles": 1420,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/kelp.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1341,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/kelp_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/kelp_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/kelp_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/kelp_emission.png"
+      "albedo": "embedded://kelp_albedo.png",
+      "normal": "embedded://kelp_normal.png",
+      "orm": "embedded://kelp_orm.png",
+      "emission": "embedded://kelp_emission.png"
     }
   },
   "rock": {
@@ -89,18 +110,25 @@
       1.784,
       2.16
     ],
-    "triangles": 2520,
+    "triangles": 560,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/rock.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1344,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 590,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/rock_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/rock_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/rock_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/rock_emission.png"
+      "albedo": "embedded://rock_albedo.png",
+      "normal": "embedded://rock_normal.png",
+      "orm": "embedded://rock_orm.png",
+      "emission": "embedded://rock_emission.png"
     }
   },
   "fish": {
@@ -115,20 +143,27 @@
       0.54,
       0.84
     ],
-    "triangles": 2064,
+    "triangles": 1870,
     "bones": 6,
     "animations": [
       "swim"
     ],
-    "reference": "assets/source/alien-ocean-v2/references/fish.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1339,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1900,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/fish_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/fish_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/fish_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/fish_emission.png"
+      "albedo": "embedded://fish_albedo.png",
+      "normal": "embedded://fish_normal.png",
+      "orm": "embedded://fish_orm.png",
+      "emission": "embedded://fish_emission.png"
     }
   },
   "pod": {
@@ -146,15 +181,22 @@
     "triangles": 5828,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/pod.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1236,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 11000,
+    "external_sources": [],
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/pod_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/pod_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/pod_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/pod_emission.png"
+      "albedo": "embedded://pod_albedo.png",
+      "normal": "embedded://pod_normal.png",
+      "orm": "embedded://pod_orm.png",
+      "emission": "embedded://pod_emission.png"
     }
   },
   "ruins": {
@@ -172,15 +214,22 @@
     "triangles": 2268,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/ruins.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1474,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 10000,
+    "external_sources": [],
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/ruins_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/ruins_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/ruins_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/ruins_emission.png"
+      "albedo": "embedded://ruins_albedo.png",
+      "normal": "embedded://ruins_normal.png",
+      "orm": "embedded://ruins_orm.png",
+      "emission": "embedded://ruins_emission.png"
     }
   },
   "shipwreck": {
@@ -198,15 +247,22 @@
     "triangles": 7100,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/shipwreck.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1889,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 11000,
+    "external_sources": [],
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/shipwreck_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/shipwreck_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/shipwreck_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/shipwreck_emission.png"
+      "albedo": "embedded://shipwreck_albedo.png",
+      "normal": "embedded://shipwreck_normal.png",
+      "orm": "embedded://shipwreck_orm.png",
+      "emission": "embedded://shipwreck_emission.png"
     }
   },
   "anemone": {
@@ -221,18 +277,25 @@
       2.01,
       2.982
     ],
-    "triangles": 5108,
+    "triangles": 1419,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/anemone.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1652,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/anemone_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/anemone_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/anemone_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/anemone_emission.png"
+      "albedo": "embedded://anemone_albedo.png",
+      "normal": "embedded://anemone_normal.png",
+      "orm": "embedded://anemone_orm.png",
+      "emission": "embedded://anemone_emission.png"
     }
   },
   "crystal_spire": {
@@ -247,18 +310,25 @@
       5.5,
       2.915
     ],
-    "triangles": 2364,
+    "triangles": 1469,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/crystal_spire.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2325,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1500,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/crystal_spire_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/crystal_spire_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/crystal_spire_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/crystal_spire_emission.png"
+      "albedo": "embedded://crystal_spire_albedo.png",
+      "normal": "embedded://crystal_spire_normal.png",
+      "orm": "embedded://crystal_spire_orm.png",
+      "emission": "embedded://crystal_spire_emission.png"
     }
   },
   "jellyfish": {
@@ -273,20 +343,27 @@
       2.935,
       1.57
     ],
-    "triangles": 5208,
+    "triangles": 4469,
     "bones": 38,
     "animations": [
       "pulse"
     ],
-    "reference": "assets/source/alien-ocean-v2/references/jellyfish.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1883,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 4500,
+    "external_sources": [],
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/jellyfish_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/jellyfish_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/jellyfish_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/jellyfish_emission.png"
+      "albedo": "embedded://jellyfish_albedo.png",
+      "normal": "embedded://jellyfish_normal.png",
+      "orm": "embedded://jellyfish_orm.png",
+      "emission": "embedded://jellyfish_emission.png"
     }
   },
   "resource_titanium": {
@@ -301,18 +378,25 @@
       0.593,
       0.476
     ],
-    "triangles": 1136,
+    "triangles": 870,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/resource_titanium.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2755,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 900,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/resource_titanium_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/resource_titanium_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/resource_titanium_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/resource_titanium_emission.png"
+      "albedo": "embedded://resource_titanium_albedo.png",
+      "normal": "embedded://resource_titanium_normal.png",
+      "orm": "embedded://resource_titanium_orm.png",
+      "emission": "embedded://resource_titanium_emission.png"
     }
   },
   "resource_copper": {
@@ -327,18 +411,25 @@
       0.593,
       0.476
     ],
-    "triangles": 1152,
+    "triangles": 869,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/resource_copper.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2529,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 900,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/resource_copper_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/resource_copper_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/resource_copper_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/resource_copper_emission.png"
+      "albedo": "embedded://resource_copper_albedo.png",
+      "normal": "embedded://resource_copper_normal.png",
+      "orm": "embedded://resource_copper_orm.png",
+      "emission": "embedded://resource_copper_emission.png"
     }
   },
   "resource_quartz": {
@@ -353,18 +444,25 @@
       0.74,
       0.408
     ],
-    "triangles": 476,
+    "triangles": 380,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/resource_quartz.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2559,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 600,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/resource_quartz_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/resource_quartz_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/resource_quartz_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/resource_quartz_emission.png"
+      "albedo": "embedded://resource_quartz_albedo.png",
+      "normal": "embedded://resource_quartz_normal.png",
+      "orm": "embedded://resource_quartz_orm.png",
+      "emission": "embedded://resource_quartz_emission.png"
     }
   },
   "resource_kelp": {
@@ -379,18 +477,25 @@
       0.7,
       0.353
     ],
-    "triangles": 944,
+    "triangles": 888,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/resource_kelp.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2308,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 900,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/resource_kelp_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/resource_kelp_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/resource_kelp_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/resource_kelp_emission.png"
+      "albedo": "embedded://resource_kelp_albedo.png",
+      "normal": "embedded://resource_kelp_normal.png",
+      "orm": "embedded://resource_kelp_orm.png",
+      "emission": "embedded://resource_kelp_emission.png"
     }
   },
   "fish_small": {
@@ -405,20 +510,27 @@
       0.43,
       0.61
     ],
-    "triangles": 2216,
+    "triangles": 1469,
     "bones": 6,
     "animations": [
       "swim"
     ],
-    "reference": "assets/source/alien-ocean-v2/references/fish_small.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1971,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1500,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/fish_small_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/fish_small_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/fish_small_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/fish_small_emission.png"
+      "albedo": "embedded://fish_small_albedo.png",
+      "normal": "embedded://fish_small_normal.png",
+      "orm": "embedded://fish_small_orm.png",
+      "emission": "embedded://fish_small_emission.png"
     }
   },
   "fish_predator": {
@@ -433,21 +545,28 @@
       1.75,
       4.08
     ],
-    "triangles": 10164,
+    "triangles": 4869,
     "bones": 7,
     "animations": [
       "swim",
       "bite"
     ],
-    "reference": "assets/source/alien-ocean-v2/references/fish_predator.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2299,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 4900,
+    "external_sources": [],
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/fish_predator_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/fish_predator_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/fish_predator_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/fish_predator_emission.png"
+      "albedo": "embedded://fish_predator_albedo.png",
+      "normal": "embedded://fish_predator_normal.png",
+      "orm": "embedded://fish_predator_orm.png",
+      "emission": "embedded://fish_predator_emission.png"
     }
   },
   "fish_abyss": {
@@ -462,21 +581,28 @@
       1.716,
       3.214
     ],
-    "triangles": 10920,
+    "triangles": 4869,
     "bones": 7,
     "animations": [
       "swim",
       "bite"
     ],
-    "reference": "assets/source/alien-ocean-v2/references/fish_abyss.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1980,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 4900,
+    "external_sources": [],
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/fish_abyss_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/fish_abyss_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/fish_abyss_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/fish_abyss_emission.png"
+      "albedo": "embedded://fish_abyss_albedo.png",
+      "normal": "embedded://fish_abyss_normal.png",
+      "orm": "embedded://fish_abyss_orm.png",
+      "emission": "embedded://fish_abyss_emission.png"
     }
   },
   "weapon_knife": {
@@ -494,15 +620,22 @@
     "triangles": 2296,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/weapon_knife.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2183,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 3500,
+    "external_sources": [],
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/weapon_knife_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/weapon_knife_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/weapon_knife_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/weapon_knife_emission.png"
+      "albedo": "embedded://weapon_knife_albedo.png",
+      "normal": "embedded://weapon_knife_normal.png",
+      "orm": "embedded://weapon_knife_orm.png",
+      "emission": "embedded://weapon_knife_emission.png"
     }
   },
   "weapon_axe": {
@@ -520,15 +653,22 @@
     "triangles": 1390,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/weapon_axe.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1976,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 3500,
+    "external_sources": [],
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/weapon_axe_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/weapon_axe_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/weapon_axe_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/weapon_axe_emission.png"
+      "albedo": "embedded://weapon_axe_albedo.png",
+      "normal": "embedded://weapon_axe_normal.png",
+      "orm": "embedded://weapon_axe_orm.png",
+      "emission": "embedded://weapon_axe_emission.png"
     }
   },
   "weapon_sonic": {
@@ -546,15 +686,22 @@
     "triangles": 3060,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/weapon_sonic.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2198,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 3800,
+    "external_sources": [],
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/weapon_sonic_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/weapon_sonic_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/weapon_sonic_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/weapon_sonic_emission.png"
+      "albedo": "embedded://weapon_sonic_albedo.png",
+      "normal": "embedded://weapon_sonic_normal.png",
+      "orm": "embedded://weapon_sonic_orm.png",
+      "emission": "embedded://weapon_sonic_emission.png"
     }
   },
   "manta_ray": {
@@ -574,15 +721,22 @@
     "animations": [
       "swim"
     ],
-    "reference": "assets/source/alien-ocean-v2/references/manta_ray.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1869,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 4500,
+    "external_sources": [],
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/manta_ray_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/manta_ray_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/manta_ray_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/manta_ray_emission.png"
+      "albedo": "embedded://manta_ray_albedo.png",
+      "normal": "embedded://manta_ray_normal.png",
+      "orm": "embedded://manta_ray_orm.png",
+      "emission": "embedded://manta_ray_emission.png"
     }
   },
   "sea_turtle": {
@@ -602,15 +756,22 @@
     "animations": [
       "swim"
     ],
-    "reference": "assets/source/alien-ocean-v2/references/sea_turtle.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1993,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 4500,
+    "external_sources": [],
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/sea_turtle_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/sea_turtle_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/sea_turtle_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/sea_turtle_emission.png"
+      "albedo": "embedded://sea_turtle_albedo.png",
+      "normal": "embedded://sea_turtle_normal.png",
+      "orm": "embedded://sea_turtle_orm.png",
+      "emission": "embedded://sea_turtle_emission.png"
     }
   },
   "squid": {
@@ -625,20 +786,27 @@
       0.775,
       4.39
     ],
-    "triangles": 8136,
+    "triangles": 4470,
     "bones": 33,
     "animations": [
       "swim"
     ],
-    "reference": "assets/source/alien-ocean-v2/references/squid.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1463,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 4500,
+    "external_sources": [],
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/squid_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/squid_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/squid_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/squid_emission.png"
+      "albedo": "embedded://squid_albedo.png",
+      "normal": "embedded://squid_normal.png",
+      "orm": "embedded://squid_orm.png",
+      "emission": "embedded://squid_emission.png"
     }
   },
   "crab": {
@@ -653,21 +821,28 @@
       0.509,
       1.683
     ],
-    "triangles": 6182,
+    "triangles": 3970,
     "bones": 27,
     "animations": [
       "walk",
       "defend"
     ],
-    "reference": "assets/source/alien-ocean-v2/references/crab.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 2048,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1321,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 4000,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/crab_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/crab_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/crab_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/crab_emission.png"
+      "albedo": "embedded://crab_albedo.png",
+      "normal": "embedded://crab_normal.png",
+      "orm": "embedded://crab_orm.png",
+      "emission": "embedded://crab_emission.png"
     }
   },
   "sea_fan": {
@@ -682,18 +857,25 @@
       2.652,
       0.84
     ],
-    "triangles": 2516,
+    "triangles": 1419,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/sea_fan.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1630,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/sea_fan_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/sea_fan_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/sea_fan_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/sea_fan_emission.png"
+      "albedo": "embedded://sea_fan_albedo.png",
+      "normal": "embedded://sea_fan_normal.png",
+      "orm": "embedded://sea_fan_orm.png",
+      "emission": "embedded://sea_fan_emission.png"
     }
   },
   "tubeworms": {
@@ -708,18 +890,25 @@
       2.376,
       1.478
     ],
-    "triangles": 8224,
+    "triangles": 1419,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/tubeworms.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1913,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/tubeworms_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/tubeworms_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/tubeworms_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/tubeworms_emission.png"
+      "albedo": "embedded://tubeworms_albedo.png",
+      "normal": "embedded://tubeworms_normal.png",
+      "orm": "embedded://tubeworms_orm.png",
+      "emission": "embedded://tubeworms_emission.png"
     }
   },
   "starfish_urchin": {
@@ -734,18 +923,25 @@
       0.607,
       1.24
     ],
-    "triangles": 5936,
+    "triangles": 1418,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/starfish_urchin.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2525,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/starfish_urchin_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/starfish_urchin_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/starfish_urchin_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/starfish_urchin_emission.png"
+      "albedo": "embedded://starfish_urchin_albedo.png",
+      "normal": "embedded://starfish_urchin_normal.png",
+      "orm": "embedded://starfish_urchin_orm.png",
+      "emission": "embedded://starfish_urchin_emission.png"
     }
   },
   "brain_coral": {
@@ -760,18 +956,25 @@
       1.56,
       2.22
     ],
-    "triangles": 12552,
+    "triangles": 1419,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/brain_coral.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2061,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/brain_coral_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/brain_coral_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/brain_coral_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/brain_coral_emission.png"
+      "albedo": "embedded://brain_coral_albedo.png",
+      "normal": "embedded://brain_coral_normal.png",
+      "orm": "embedded://brain_coral_orm.png",
+      "emission": "embedded://brain_coral_emission.png"
     }
   },
   "staghorn_coral": {
@@ -786,18 +989,25 @@
       2.32,
       2.38
     ],
-    "triangles": 13456,
+    "triangles": 1419,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/staghorn_coral.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2407,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/staghorn_coral_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/staghorn_coral_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/staghorn_coral_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/staghorn_coral_emission.png"
+      "albedo": "embedded://staghorn_coral_albedo.png",
+      "normal": "embedded://staghorn_coral_normal.png",
+      "orm": "embedded://staghorn_coral_orm.png",
+      "emission": "embedded://staghorn_coral_emission.png"
     }
   },
   "table_coral": {
@@ -812,18 +1022,25 @@
       1.74,
       2.72
     ],
-    "triangles": 25344,
+    "triangles": 1420,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/table_coral.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2057,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/table_coral_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/table_coral_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/table_coral_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/table_coral_emission.png"
+      "albedo": "embedded://table_coral_albedo.png",
+      "normal": "embedded://table_coral_normal.png",
+      "orm": "embedded://table_coral_orm.png",
+      "emission": "embedded://table_coral_emission.png"
     }
   },
   "barrel_sponge": {
@@ -838,18 +1055,25 @@
       2.52,
       2.12
     ],
-    "triangles": 16992,
+    "triangles": 1420,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/barrel_sponge.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 2292,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/barrel_sponge_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/barrel_sponge_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/barrel_sponge_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/barrel_sponge_emission.png"
+      "albedo": "embedded://barrel_sponge_albedo.png",
+      "normal": "embedded://barrel_sponge_normal.png",
+      "orm": "embedded://barrel_sponge_orm.png",
+      "emission": "embedded://barrel_sponge_emission.png"
     }
   },
   "giant_clam": {
@@ -864,18 +1088,25 @@
       1.44,
       1.84
     ],
-    "triangles": 11448,
+    "triangles": 1420,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/giant_clam.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1952,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/giant_clam_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/giant_clam_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/giant_clam_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/giant_clam_emission.png"
+      "albedo": "embedded://giant_clam_albedo.png",
+      "normal": "embedded://giant_clam_normal.png",
+      "orm": "embedded://giant_clam_orm.png",
+      "emission": "embedded://giant_clam_emission.png"
     }
   },
   "sea_lily": {
@@ -890,18 +1121,25 @@
       2.64,
       2.08
     ],
-    "triangles": 16824,
+    "triangles": 1419,
     "bones": 0,
     "animations": [],
-    "reference": "assets/source/alien-ocean-v2/references/sea_lily.png",
-    "source": "assets/source/alien-ocean-v2/alien-ocean.blend",
-    "texture_resolution": 1024,
+    "source": "tools/create_assets.py",
+    "generator_version": "painterly-ocean-1",
+    "seed": 1763,
+    "license": "MIT",
+    "author": "Abyssal Echo Contributors",
+    "forward": "-Y (Blender) / +Z (Godot)",
+    "up": "+Z (Blender) / +Y (Godot)",
+    "triangle_budget": 1450,
+    "external_sources": [],
+    "texture_resolution": 512,
     "materials": 1,
     "textures": {
-      "albedo": "assets/source/alien-ocean-v2/textures/sea_lily_albedo.png",
-      "normal": "assets/source/alien-ocean-v2/textures/sea_lily_normal.png",
-      "orm": "assets/source/alien-ocean-v2/textures/sea_lily_orm.png",
-      "emission": "assets/source/alien-ocean-v2/textures/sea_lily_emission.png"
+      "albedo": "embedded://sea_lily_albedo.png",
+      "normal": "embedded://sea_lily_normal.png",
+      "orm": "embedded://sea_lily_orm.png",
+      "emission": "embedded://sea_lily_emission.png"
     }
   }
 }

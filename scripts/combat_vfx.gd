@@ -3,6 +3,7 @@
 class_name CombatVFX
 
 const COMBAT_FONT = preload("res://assets/fonts/NotoSansSC-Subset.otf")
+const ArtDirection = preload("res://scripts/art_direction.gd")
 
 static var _stasis_shell_mesh: SphereMesh = null
 static var _blood_particle_meshes: Dictionary = {}
@@ -35,13 +36,22 @@ static func _get_blood_particle_mesh(weapon_type: String, is_predator: bool) -> 
 	p_mesh.radial_segments = 6
 	p_mesh.rings = 3
 	var p_mat := StandardMaterial3D.new()
-	p_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	p_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	p_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	p_mat.rim_enabled = false
+	p_mat.roughness = 0.58
 	p_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	p_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	p_mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+	p_mat.emission_enabled = true
 	if is_predator:
-		p_mat.albedo_color = Color(1.0, 0.32, 0.28, 0.85) if not is_sonic else Color(0.85, 0.42, 1.0, 0.9)
+		var pred_col := ArtDirection.DANGER.darkened(0.08) if not is_sonic else Color("b56a68")
+		p_mat.albedo_color = Color(pred_col, 0.78)
+		p_mat.emission = pred_col
+		p_mat.emission_energy_multiplier = 0.26
 	else:
-		p_mat.albedo_color = Color(0.35, 0.95, 0.9, 0.8)
+		p_mat.albedo_color = Color(ArtDirection.CYAN, 0.72)
+		p_mat.emission = ArtDirection.CYAN
+		p_mat.emission_energy_multiplier = 0.24
 	p_mesh.material = p_mat
 	_blood_particle_meshes[key] = p_mesh
 	return p_mesh
@@ -54,9 +64,12 @@ static func _get_hit_bubble_mesh() -> SphereMesh:
 		b_mesh.radial_segments = 6
 		b_mesh.rings = 3
 		var b_mat := StandardMaterial3D.new()
-		b_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		b_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+		b_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+		b_mat.rim_enabled = false
+		b_mat.roughness = 0.22
 		b_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		b_mat.albedo_color = Color(0.82, 0.96, 1.0, 0.6)
+		b_mat.albedo_color = Color(ArtDirection.PAPER.lerp(ArtDirection.CYAN, 0.38), 0.52)
 		b_mesh.material = b_mat
 		_hit_bubble_mesh = b_mesh
 	return _hit_bubble_mesh
@@ -95,19 +108,26 @@ static func _get_salvage_bag_sphere_mesh() -> SphereMesh:
 static func _get_clam_bubble_mesh() -> SphereMesh:
 	if _clam_bubble_mesh == null:
 		var bubble_mesh := SphereMesh.new()
-		bubble_mesh.radius = 0.09
-		bubble_mesh.height = 0.18
-		bubble_mesh.radial_segments = 6
-		bubble_mesh.rings = 3
+		bubble_mesh.radius = 0.072
+		bubble_mesh.height = 0.144
+		bubble_mesh.radial_segments = 8
+		bubble_mesh.rings = 4
 		var b_mat := StandardMaterial3D.new()
-		b_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		b_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+		b_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+		b_mat.rim_enabled = false
+		b_mat.roughness = 0.18
+		b_mat.metallic = 0.08
 		b_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		b_mat.albedo_color = Color(0.45, 0.98, 1.0, 0.85)
+		b_mat.albedo_color = Color(ArtDirection.PAPER.lerp(ArtDirection.CYAN, 0.42), 0.64)
+		b_mat.emission_enabled = true
+		b_mat.emission = ArtDirection.CYAN
+		b_mat.emission_energy_multiplier = 0.18
 		bubble_mesh.material = b_mat
 		_clam_bubble_mesh = bubble_mesh
 	return _clam_bubble_mesh
 
-static func spawn_laser(root_node: Node, from: Vector3, to: Vector3, color := Color(0.08, 0.6, 1.0)) -> Node3D:
+static func spawn_laser(root_node: Node, from: Vector3, to: Vector3, color := Color(0.18, 0.72, 0.92)) -> Node3D:
 	if not root_node or not root_node.is_inside_tree():
 		return null
 	var beam := Node3D.new()
@@ -119,11 +139,19 @@ static func spawn_laser(root_node: Node, from: Vector3, to: Vector3, color := Co
 	if direction.length_squared() < 0.00001:
 		beam.queue_free()
 		return beam
+	var is_crimson := color.r > color.b + 0.15
+	var inner_col := Color(0.92, 0.18, 0.16) if is_crimson else Color(
+		clampf(color.r * 0.65 + 0.10, 0.0, 1.0),
+		clampf(maxf(color.g * 0.85, 0.68), 0.0, 1.0),
+		clampf(maxf(color.b, 0.86), 0.0, 1.0)
+	)
+	var core_col := Color(0.98, 0.80, 0.76, 0.94) if is_crimson else Color(0.86, 0.96, 0.99, 0.96)
+	var halo_col := Color(0.84, 0.24, 0.20, 0.16) if is_crimson else Color(0.34, 0.74, 0.86, 0.17)
 	for layer in range(3):
 		var line := MeshInstance3D.new()
 		line.name = "LaserCore" if layer == 0 else ("LaserInner" if layer == 1 else "LaserHalo")
 		var cylinder := CylinderMesh.new()
-		cylinder.top_radius = 0.016 if layer == 0 else (0.038 if layer == 1 else 0.075)
+		cylinder.top_radius = 0.015 if layer == 0 else (0.034 if layer == 1 else 0.066)
 		cylinder.bottom_radius = cylinder.top_radius
 		cylinder.height = direction.length()
 		cylinder.radial_segments = 10
@@ -133,42 +161,45 @@ static func spawn_laser(root_node: Node, from: Vector3, to: Vector3, color := Co
 		var material := StandardMaterial3D.new()
 		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		material.blend_mode = BaseMaterial3D.BLEND_MODE_MIX if layer == 0 else BaseMaterial3D.BLEND_MODE_ADD
-		material.disable_fog = true
+		material.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+		material.disable_fog = layer < 2
 		if layer == 0:
-			material.albedo_color = Color(0.92, 0.98, 1.0, 1.0)
+			material.albedo_color = core_col
 		elif layer == 1:
-			material.albedo_color = Color(color.r, color.g, color.b, 0.65)
+			material.albedo_color = Color(inner_col.r, inner_col.g, inner_col.b, 0.56)
 		else:
-			material.albedo_color = Color(color.r * 0.4, color.g * 0.65, color.b, 0.22)
+			material.albedo_color = halo_col
 		line.material_override = material
 		beam.add_child(line)
 		var tween := line.create_tween()
 		tween.tween_property(material, "albedo_color:a", 0.0, 0.24)
-	# Muzzle pulse ring at origin for third-person visual punch
 	var muzzle_ring := MeshInstance3D.new()
 	var m_torus := TorusMesh.new()
-	m_torus.inner_radius = 0.08
-	m_torus.outer_radius = 0.15
+	m_torus.inner_radius = 0.075
+	m_torus.outer_radius = 0.125
 	m_torus.rings = 16
 	m_torus.ring_segments = 8
 	muzzle_ring.mesh = m_torus
 	muzzle_ring.quaternion = Quaternion(Vector3.UP, direction.normalized())
 	var m_mat := StandardMaterial3D.new()
-	m_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	m_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	m_mat.rim_enabled = false
 	m_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	m_mat.disable_fog = true
-	m_mat.albedo_color = Color(0.55, 0.95, 1.0, 0.9)
+	m_mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+	m_mat.albedo_color = Color(inner_col, 0.64)
+	m_mat.emission_enabled = true
+	m_mat.emission = inner_col
+	m_mat.emission_energy_multiplier = 0.55
 	muzzle_ring.material_override = m_mat
 	beam.add_child(muzzle_ring)
 	var m_tween := muzzle_ring.create_tween()
-	m_tween.tween_property(muzzle_ring, "scale", Vector3.ONE * 3.2, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	m_tween.tween_property(muzzle_ring, "scale", Vector3.ONE * 2.4, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	m_tween.parallel().tween_property(m_mat, "albedo_color:a", 0.0, 0.22)
 	_auto_free(beam, 0.26)
 	return beam
 
-static func spawn_stasis_burst(root_node: Node, at: Vector3, radius: float, duration: float, color := Color(0.08, 0.4, 1.0)) -> Node3D:
+static func spawn_stasis_burst(root_node: Node, at: Vector3, radius: float, duration: float, color := Color("6bb8c4")) -> Node3D:
 	var field := Node3D.new()
 	field.name = "StasisField"
 	field.process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -180,30 +211,39 @@ static func spawn_stasis_burst(root_node: Node, at: Vector3, radius: float, dura
 	var material := ShaderMaterial.new()
 	material.shader = preload("res://shaders/stasis.gdshader")
 	material.set_shader_parameter("field_color", color)
-	material.set_shader_parameter("opacity", 0.35)
+	material.set_shader_parameter("opacity", 0.32)
 	shell.material_override = material
 	field.add_child(shell)
-	for axis in range(3):
+	var ring_materials: Array[StandardMaterial3D] = []
+	for axis in range(2):
 		var ring := MeshInstance3D.new()
 		var torus := TorusMesh.new()
-		torus.inner_radius = maxf(0.1, radius - 0.08)
+		torus.inner_radius = maxf(0.1, radius - 0.045)
 		torus.outer_radius = radius
 		torus.rings = 48
 		torus.ring_segments = 6
 		ring.mesh = torus
-		ring.rotation_degrees = Vector3(90.0 * axis, 40.0 * axis, 0)
+		ring.rotation_degrees = Vector3(0.0 if axis == 0 else 72.0, 28.0 * axis, 18.0 * axis)
 		var glow := StandardMaterial3D.new()
-		glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		glow.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+		glow.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+		glow.rim_enabled = false
 		glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		glow.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-		glow.albedo_color = Color(color, 0.45)
+		glow.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+		glow.albedo_color = Color(color.lerp(ArtDirection.PAPER, 0.25), 0.34)
+		glow.emission_enabled = true
+		glow.emission = color
+		glow.emission_energy_multiplier = 0.35
 		ring.material_override = glow
+		ring_materials.append(glow)
 		field.add_child(ring)
 	field.scale = Vector3.ONE * 0.05
 	var tween := field.create_tween()
 	tween.tween_property(field, "scale", Vector3.ONE, 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_interval(maxf(0.0, duration - 0.6))
-	tween.tween_method(func(alpha: float): material.set_shader_parameter("opacity", alpha), 0.35, 0.0, 0.3)
+	tween.tween_method(func(alpha: float): material.set_shader_parameter("opacity", alpha), 0.32, 0.0, 0.3)
+	for rm in ring_materials:
+		tween.parallel().tween_property(rm, "albedo_color:a", 0.0, 0.3)
 	tween.parallel().tween_property(field, "scale", Vector3.ONE * 1.03, 0.3)
 	tween.tween_callback(field.queue_free)
 	return field
@@ -265,24 +305,29 @@ static func spawn_hit_burst(root_node: Node, pos: Vector3, normal: Vector3, weap
 	var shock := MeshInstance3D.new()
 	shock.process_mode = Node.PROCESS_MODE_PAUSABLE
 	var t_mesh := TorusMesh.new()
-	t_mesh.inner_radius = 0.2
-	t_mesh.outer_radius = 0.35
+	t_mesh.inner_radius = 0.22
+	t_mesh.outer_radius = 0.31
 	t_mesh.rings = 16
 	t_mesh.ring_segments = 8
 	shock.mesh = t_mesh
 	var s_mat := StandardMaterial3D.new()
-	s_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	s_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	s_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	s_mat.rim_enabled = false
 	s_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	s_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	s_mat.albedo_color = Color(0.5, 0.95, 1.0, 0.85) if weapon_type != "axe" else Color(1.0, 0.75, 0.25, 0.9)
+	s_mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+	var shock_hue := ArtDirection.AMBER if weapon_type == "axe" else ArtDirection.CYAN
+	s_mat.albedo_color = Color(shock_hue, 0.66 if weapon_type == "axe" else 0.58)
+	s_mat.emission_enabled = true
+	s_mat.emission = shock_hue
+	s_mat.emission_energy_multiplier = 0.42
 	shock.material_override = s_mat
 	shock.position = pos
 	root_node.add_child(shock)
 	if normal.length_squared() > 0.01:
 		shock.look_at(pos + normal, Vector3.UP if absf(normal.y) < 0.9 else Vector3.FORWARD)
-	_animate_shockwave(shock, 0.32, 2.8 if weapon_type == "axe" else 1.8)
+	_animate_shockwave(shock, 0.32, 2.4 if weapon_type == "axe" else 1.65)
 
-	# 4. 近战命中十字斩光痕与瞬态爆点闪光 (3D Crossed Slash Flash & Impact Light)
 	if weapon_type == "knife" or weapon_type == "axe":
 		var slash_cross := Node3D.new()
 		slash_cross.process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -292,30 +337,34 @@ static func spawn_hit_burst(root_node: Node, pos: Vector3, normal: Vector3, weap
 		if normal.length_squared() > 0.01:
 			slash_cross.look_at(pos + normal, Vector3.UP if absf(normal.y) < 0.9 else Vector3.FORWARD)
 		var streak_mesh := _get_slash_box_mesh(weapon_type == "axe")
-		var fin_col := Color(1.0, 0.78, 0.28, 0.95) if weapon_type == "axe" else Color(0.45, 0.98, 1.0, 0.95)
+		var streak_hue := ArtDirection.AMBER if weapon_type == "axe" else ArtDirection.PAPER.lerp(ArtDirection.CYAN, 0.55)
 		for idx in range(2):
 			var streak := MeshInstance3D.new()
 			streak.mesh = streak_mesh
 			streak.rotation_degrees = Vector3(0.0, 0.0, 38.0 if idx == 0 else -42.0)
 			var st_mat := StandardMaterial3D.new()
-			st_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			st_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+			st_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+			st_mat.rim_enabled = false
 			st_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			st_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-			st_mat.disable_fog = true
-			st_mat.albedo_color = fin_col
+			st_mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+			st_mat.albedo_color = Color(streak_hue, 0.80)
+			st_mat.emission_enabled = true
+			st_mat.emission = streak_hue
+			st_mat.emission_energy_multiplier = 0.48
 			streak.material_override = st_mat
 			slash_cross.add_child(streak)
 			var st_tween := streak.create_tween()
-			st_tween.tween_property(streak, "scale", Vector3(1.55, 0.15, 1.0), 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			st_tween.tween_property(streak, "scale", Vector3(1.4, 0.15, 1.0), 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 			st_tween.parallel().tween_property(st_mat, "albedo_color:a", 0.0, 0.22)
 		_auto_free(slash_cross, 0.25)
 
 	var hit_light := OmniLight3D.new()
 	hit_light.process_mode = Node.PROCESS_MODE_PAUSABLE
 	hit_light.position = pos
-	hit_light.light_color = Color(1.0, 0.72, 0.25) if weapon_type == "axe" else Color(0.35, 0.95, 1.0)
-	hit_light.light_energy = 5.5 if (weapon_type == "axe" or is_kill) else 3.2
-	hit_light.omni_range = 6.5 if weapon_type == "axe" else 4.2
+	hit_light.light_color = ArtDirection.AMBER if weapon_type == "axe" else ArtDirection.CYAN
+	hit_light.light_energy = 1.55 if (weapon_type == "axe" or is_kill) else 1.0
+	hit_light.omni_range = 4.8 if weapon_type == "axe" else 3.4
 	root_node.add_child(hit_light)
 	_auto_free(hit_light, 0.22)
 
@@ -331,27 +380,25 @@ static func spawn_damage_number(root_node: Node, pos: Vector3, damage: float, we
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.fixed_size = true
-	var old_font_size := 28 if is_crit or weapon_type == "axe" else 22
+	var old_font_size := 24 if is_crit or weapon_type == "axe" else 19
 	var old_pixel_size := label.pixel_size
 	label.font_size = 28
 	label.pixel_size = old_pixel_size * (float(old_font_size) / 28.0)
 
-	# 伤害数字配色
-	var col := Color(0.42, 0.96, 1.0)
+	var col := ArtDirection.PAPER
 	if weapon_type == "axe":
-		col = Color(1.0, 0.78, 0.25)
+		col = ArtDirection.AMBER
 	elif weapon_type == "sonic":
-		col = Color(0.25, 0.65, 1.0)
+		col = ArtDirection.CYAN.lightened(0.12)
 	if is_crit:
-		col = Color(1.0, 0.35, 0.3)
+		col = ArtDirection.DANGER.lightened(0.10)
 	label.modulate = col
-	label.outline_modulate = Color(0.01, 0.05, 0.08, 0.95)
+	label.outline_modulate = Color(ArtDirection.INK, 0.94)
 	label.outline_size = roundi(4.0 * 28.0 / float(old_font_size))
 
-	var prefix := "💥 " if is_crit else ""
+	var prefix := "✦ " if is_crit else ""
 	label.text = "%s-%d" % [prefix, int(damage)]
-	# 随机轻微错位防重叠
-	var offset := Vector3(randf_range(-0.35, 0.35), randf_range(0.2, 0.6), randf_range(-0.35, 0.35))
+	var offset := Vector3(randf_range(-0.28, 0.28), randf_range(0.18, 0.5), randf_range(-0.28, 0.28))
 	label.position = pos + offset
 	label.scale = Vector3.ONE * 0.4
 	root_node.add_child(label)
@@ -382,25 +429,28 @@ static func _animate_damage_number(label: Label3D, duration: float) -> void:
 		label.queue_free()
 		return
 	var tween := label.create_tween()
-	# 弹性弹出 (Pop-in)
-	tween.tween_property(label, "scale", Vector3.ONE * 1.25, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "scale", Vector3.ONE * 1.12, 0.11).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(label, "scale", Vector3.ONE * 1.0, 0.10)
-	# 缓缓浮起并淡出
-	tween.parallel().tween_property(label, "position:y", label.position.y + 1.2, duration)
+	tween.parallel().tween_property(label, "position:y", label.position.y + 1.0, duration)
 	tween.parallel().tween_property(label, "modulate:a", 0.0, duration).set_delay(0.25)
 	tween.tween_callback(label.queue_free)
 
 static func spawn_tame_ring(root_node: Node, pos: Vector3, radius: float = 3.5) -> void:
 	var ring := MeshInstance3D.new()
 	var tor := TorusMesh.new()
-	tor.inner_radius = radius * 0.8
+	tor.inner_radius = radius * 0.88
 	tor.outer_radius = radius
 	ring.mesh = tor
 	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat.rim_enabled = false
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	mat.albedo_color = Color(0.2, 0.95, 1.0, 0.85)
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+	mat.albedo_color = Color(ArtDirection.CYAN, 0.56)
+	mat.emission_enabled = true
+	mat.emission = ArtDirection.CYAN
+	mat.emission_energy_multiplier = 0.42
 	ring.material_override = mat
 	ring.position = pos
 	ring.rotation.x = PI * 0.5
@@ -415,9 +465,9 @@ static func spawn_tame_ring(root_node: Node, pos: Vector3, radius: float = 3.5) 
 		ring.queue_free()
 	var light := OmniLight3D.new()
 	light.position = pos
-	light.light_color = Color(0.25, 0.95, 1.0)
-	light.light_energy = 5.0
-	light.omni_range = radius * 4.0
+	light.light_color = ArtDirection.CYAN
+	light.light_energy = 1.35
+	light.omni_range = radius * 2.5
 	root_node.add_child(light)
 	_auto_free(light, 1.2)
 
@@ -427,28 +477,40 @@ static func spawn_persistent_red_dot(pos: Vector3, parent_node: Node = null) -> 
 	var dot_mesh := MeshInstance3D.new()
 	dot_mesh.mesh = _get_red_dot_sphere_mesh()
 	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(1.0, 0.05, 0.05)
+	mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat.rim_enabled = false
+	mat.roughness = 0.25
+	mat.albedo_color = Color(0.94, 0.14, 0.14)
+	mat.emission_enabled = true
+	mat.emission = Color(0.96, 0.12, 0.12)
+	mat.emission_energy_multiplier = 1.15
 	mat.disable_fog = true
 	dot_mesh.material_override = mat
 	dot_root.add_child(dot_mesh)
 	var halo := MeshInstance3D.new()
 	var tor := TorusMesh.new()
-	tor.inner_radius = 0.12
-	tor.outer_radius = 0.18
+	tor.inner_radius = 0.125
+	tor.outer_radius = 0.168
 	halo.mesh = tor
 	var h_mat := StandardMaterial3D.new()
-	h_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	h_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	h_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	h_mat.rim_enabled = false
 	h_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	h_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	h_mat.albedo_color = Color(1.0, 0.15, 0.15, 0.85)
+	h_mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+	h_mat.albedo_color = Color(0.95, 0.22, 0.20, 0.78)
+	h_mat.emission_enabled = true
+	h_mat.emission = Color(0.94, 0.16, 0.16)
+	h_mat.emission_energy_multiplier = 0.75
+	h_mat.disable_fog = true
 	halo.material_override = h_mat
 	halo.rotation.x = PI * 0.5
 	dot_root.add_child(halo)
 	var light := OmniLight3D.new()
-	light.light_color = Color(1.0, 0.1, 0.1)
-	light.light_energy = 3.5
-	light.omni_range = 4.0
+	light.light_color = Color(0.95, 0.16, 0.15)
+	light.light_energy = 1.65
+	light.omni_range = 3.2
 	dot_root.add_child(light)
 	if parent_node != null:
 		parent_node.add_child(dot_root)
@@ -466,11 +528,16 @@ static func spawn_shield_deflect(root_node: Node, pos: Vector3, normal: Vector3)
 	cyl.radial_segments = 6
 	barrier.mesh = cyl
 	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat.rim_enabled = false
+	mat.roughness = 0.2
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	mat.albedo_color = Color(0.25, 0.95, 1.0, 0.9)
-	mat.disable_fog = true
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+	mat.albedo_color = Color(ArtDirection.CYAN.lerp(ArtDirection.PAPER, 0.25), 0.64)
+	mat.emission_enabled = true
+	mat.emission = ArtDirection.CYAN
+	mat.emission_energy_multiplier = 0.48
 	barrier.material_override = mat
 	barrier.position = pos
 	if normal.length_squared() > 0.001:
@@ -481,16 +548,16 @@ static func spawn_shield_deflect(root_node: Node, pos: Vector3, normal: Vector3)
 	var tree := barrier.get_tree()
 	if tree:
 		var tween := barrier.create_tween()
-		tween.tween_property(barrier, "scale", Vector3.ONE * 1.5, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tween.tween_property(barrier, "scale", Vector3.ONE * 1.35, 0.28).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		tween.parallel().tween_property(mat, "albedo_color:a", 0.0, 0.28)
 		tween.tween_callback(barrier.queue_free)
 	else:
 		barrier.queue_free()
 	var light := OmniLight3D.new()
 	light.position = pos
-	light.light_color = Color(0.3, 0.95, 1.0)
-	light.light_energy = 4.0
-	light.omni_range = 6.0
+	light.light_color = ArtDirection.CYAN
+	light.light_energy = 1.35
+	light.omni_range = 4.5
 	root_node.add_child(light)
 	_auto_free(light, 0.3)
 
@@ -507,16 +574,16 @@ static func spawn_star_rating(root_node: Node, pos: Vector3, stars: int, species
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.fixed_size = true
-	var old_font_size := 26 if clamped_stars == 3 else 21
+	var old_font_size := 23 if clamped_stars == 3 else 19
 	var old_pixel_size := label.pixel_size
 	label.font_size = 28
 	label.pixel_size = old_pixel_size * (float(old_font_size) / 28.0)
-	label.modulate = Color(1.0, 0.86, 0.22) if clamped_stars == 3 else (Color(0.35, 0.96, 1.0) if clamped_stars == 2 else Color(0.82, 0.86, 0.9))
-	label.outline_modulate = Color(0.01, 0.05, 0.09, 0.95)
-	label.outline_size = roundi(5.0 * 28.0 / float(old_font_size))
+	label.modulate = ArtDirection.AMBER.lightened(0.08) if clamped_stars == 3 else (ArtDirection.CYAN.lightened(0.08) if clamped_stars == 2 else ArtDirection.MUTED.lightened(0.12))
+	label.outline_modulate = Color(ArtDirection.INK, 0.95)
+	label.outline_size = roundi(4.0 * 28.0 / float(old_font_size))
 	label.text = "%s %s %s" % [star_str, species_name, quality_tag] if not species_name.is_empty() else "%s %s" % [star_str, quality_tag]
-	label.position = pos + Vector3(0.0, 1.15, 0.0)
-	label.scale = Vector3.ONE * 0.45
+	label.position = pos + Vector3(0.0, 1.05, 0.0)
+	label.scale = Vector3.ONE * 0.42
 	root_node.add_child(label)
 	_animate_damage_number(label, 1.35)
 
@@ -528,36 +595,43 @@ static func spawn_salvage_balloon(root_node: Node, pos: Vector3) -> void:
 	rig.position = pos
 	root_node.add_child(rig)
 
-	# 柯布拉橙黄充气浮力袋
 	var bag := MeshInstance3D.new()
 	bag.mesh = _get_salvage_bag_sphere_mesh()
 	var bag_mat := StandardMaterial3D.new()
-	bag_mat.albedo_color = Color(1.0, 0.48, 0.12)
+	bag_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	bag_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	bag_mat.rim_enabled = false
+	bag_mat.roughness = 0.62
+	bag_mat.metallic = 0.05
+	bag_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bag_mat.albedo_color = Color("d47a45")
 	bag_mat.emission_enabled = true
-	bag_mat.emission = Color(1.0, 0.42, 0.08)
-	bag_mat.emission_energy_multiplier = 1.4
+	bag_mat.emission = Color("c96f36")
+	bag_mat.emission_energy_multiplier = 0.22
 	bag.material_override = bag_mat
 	bag.position = Vector3(0.0, 1.35, 0.0)
 	rig.add_child(bag)
 
-	# 吊索连接杆
 	var rope := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.04
-	cyl.bottom_radius = 0.04
+	cyl.top_radius = 0.028
+	cyl.bottom_radius = 0.028
 	cyl.height = 1.1
 	rope.mesh = cyl
 	var rope_mat := StandardMaterial3D.new()
-	rope_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	rope_mat.albedo_color = Color(0.35, 0.95, 1.0)
+	rope_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	rope_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	rope_mat.rim_enabled = false
+	rope_mat.roughness = 0.78
+	rope_mat.albedo_color = ArtDirection.PAPER.darkened(0.26)
 	rope.material_override = rope_mat
 	rope.position = Vector3(0.0, 0.6, 0.0)
 	rig.add_child(rope)
 
 	var light := OmniLight3D.new()
-	light.light_color = Color(1.0, 0.65, 0.2)
-	light.light_energy = 4.5
-	light.omni_range = 7.5
+	light.light_color = ArtDirection.AMBER
+	light.light_energy = 1.2
+	light.omni_range = 5.0
 	light.position = Vector3(0.0, 1.4, 0.0)
 	rig.add_child(light)
 
@@ -565,7 +639,7 @@ static func spawn_salvage_balloon(root_node: Node, pos: Vector3) -> void:
 	var tree := rig.get_tree()
 	if tree:
 		var tw := rig.create_tween()
-		tw.tween_property(rig, "scale", Vector3.ONE * 1.15, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(rig, "scale", Vector3.ONE * 1.0, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		tw.tween_property(rig, "position:y", pos.y + 18.0, 1.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		tw.parallel().tween_property(bag_mat, "albedo_color:a", 0.0, 0.5).set_delay(0.95)
 		tw.tween_callback(rig.queue_free)
@@ -580,7 +654,7 @@ static func spawn_clam_bubbles(root_node: Node, pos: Vector3) -> void:
 	particles.emitting = true
 	particles.one_shot = true
 	particles.explosiveness = 0.45
-	particles.amount = 28
+	particles.amount = 22
 	particles.lifetime = 1.35
 	particles.mesh = _get_clam_bubble_mesh()
 	particles.direction = Vector3.UP

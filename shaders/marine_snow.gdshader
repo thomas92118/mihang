@@ -25,9 +25,9 @@ void fragment() {
 	// and trench. Opacity stays low; darkness must not create glowing particles.
 	float basin = smoothstep(180.0, 260.0, depth);
 	float hadal = smoothstep(350.0, 470.0, depth);
-	float density = 0.13 + smoothstep(30.0, 95.0, depth) * 0.02 + basin * 0.025 + hadal * 0.02;
+	float density = 0.065 + smoothstep(30.0, 95.0, depth) * 0.015 + basin * 0.02 + hadal * 0.015;
 	// Muted detritus scatters available light; it has no emission or glowing rim.
-	ALBEDO = mix(vec3(0.43, 0.47, 0.40), vec3(0.39, 0.40, 0.36), basin);
+	ALBEDO = mix(vec3(0.58, 0.65, 0.58), vec3(0.49, 0.53, 0.52), basin);
 	ROUGHNESS = 0.96;
 	SPECULAR = 0.08;
 	EMISSION = vec3(0.0);

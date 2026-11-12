@@ -1,5 +1,18 @@
 extends RefCounted
 
+const ArtDirection := preload("res://scripts/art_direction.gd")
+
+static func region_palette_texture() -> ImageTexture:
+	# One tiny shared atlas supplies terrain pigments, including boundary blends.
+	# This remains ordinary texture sampling on the Compatibility/Web renderer.
+	var image := Image.create(9, 2, false, Image.FORMAT_RGBA8)
+	var ids := ["core", "atoll", "kelp", "ridge", "citadel", "wreck", "bones", "caldera", "hadal"]
+	for index in range(ids.size()):
+		var profile := ArtDirection.region_profile(ids[index])
+		image.set_pixel(index, 0, profile["sand"])
+		image.set_pixel(index, 1, profile["rock"])
+	return ImageTexture.create_from_image(image)
+
 # Shared physical limits and ecological layers for terrain, movement and charts.
 const MAX_SEAFLOOR_DEPTH := 600.0
 const MAX_DIVE_DEPTH := 660.0
@@ -40,21 +53,23 @@ static func light_profile(depth: float) -> Dictionary:
 	var twilight := smoothstep(75.0, 220.0, water_depth)
 	var basin := smoothstep(180.0, 390.0, water_depth)
 	var hadal := smoothstep(340.0, MAX_SEAFLOOR_DEPTH, water_depth)
-	var fog_color := Color(0.10, 0.29, 0.32).lerp(Color(0.030, 0.15, 0.20), shelf)
-	fog_color = fog_color.lerp(Color(0.012, 0.055, 0.10), twilight)
-	fog_color = fog_color.lerp(Color(0.004, 0.017, 0.038), basin)
-	fog_color = fog_color.lerp(Color(0.0015, 0.006, 0.014), hadal)
-	var ambient_color := Color(0.68, 0.80, 0.81).lerp(Color(0.38, 0.59, 0.68), shelf)
-	ambient_color = ambient_color.lerp(Color(0.22, 0.39, 0.56), twilight)
-	ambient_color = ambient_color.lerp(Color(0.14, 0.24, 0.37), basin)
-	var fog_energy := 0.64 * exp(-water_depth * 0.006) + 0.08
+	# A luminous turquoise horizon separates the sunlit colonies from their
+	# background. The same continuous curve reaches a nearly black blue trench.
+	var fog_color := Color(0.058, 0.34, 0.40).lerp(Color(0.028, 0.17, 0.24), shelf)
+	fog_color = fog_color.lerp(Color(0.014, 0.062, 0.12), twilight)
+	fog_color = fog_color.lerp(Color(0.006, 0.021, 0.052), basin)
+	fog_color = fog_color.lerp(Color(0.002, 0.007, 0.019), hadal)
+	var ambient_color := Color(0.60, 0.80, 0.86).lerp(Color(0.36, 0.60, 0.72), shelf)
+	ambient_color = ambient_color.lerp(Color(0.22, 0.39, 0.60), twilight)
+	ambient_color = ambient_color.lerp(Color(0.16, 0.26, 0.43), basin)
+	var fog_energy := 0.67 * exp(-water_depth * 0.006) + 0.075
 	return {
-		"sun_energy": 1.25 * exp(-water_depth * SUNLIGHT_FALLOFF),
-		"sun_color": Color(1.0, 0.97, 0.89),
-		"ambient_energy": 0.38 * exp(-water_depth * 0.009) + 0.008,
+		"sun_energy": 1.18 * exp(-water_depth * SUNLIGHT_FALLOFF),
+		"sun_color": Color(1.0, 0.955, 0.86),
+		"ambient_energy": 0.29 * exp(-water_depth * 0.009) + 0.009,
 		"ambient_color": ambient_color,
 		"fog_energy": fog_energy,
-		"fog_density": 0.0065 + (1.0 - exp(-water_depth * 0.005)) * 0.009,
+		"fog_density": 0.0054 + (1.0 - exp(-water_depth * 0.005)) * 0.010,
 		"fog_color": fog_color,
 		"background_color": Color(fog_color.r * fog_energy, fog_color.g * fog_energy, fog_color.b * fog_energy)
 	}

@@ -1,6 +1,8 @@
 extends CanvasLayer
 
 const WorldMap = preload("res://scripts/world_map.gd")
+const Art = preload("res://scripts/art_direction.gd")
+const OceanUiTheme = preload("res://scripts/presentation/ocean_ui_theme.gd")
 
 signal start_requested(mode: String)
 signal resume_requested
@@ -20,13 +22,13 @@ signal map_waypoint_cleared
 signal fast_travel_requested(target_id: String, world_pos: Vector3, target_name: String)
 signal sonar_ping_requested
 
-const INK := Color("f4fcff")
-const MUTED := Color("9ce0f4")
-const CYAN := Color("38f6e8")
-const ORANGE := Color("ff9e38")
-const AMBER_GOLD := Color("ffbe42")
-const PANEL := Color(0.035, 0.14, 0.26, 0.86)
-const WARM_PANEL := Color(0.11, 0.09, 0.07, 0.90)
+const INK := Art.PAPER
+const MUTED := Art.MUTED
+const CYAN := Art.CYAN
+const ORANGE := Art.AMBER
+const AMBER_GOLD := Art.AMBER
+const PANEL := Art.PANEL
+const WARM_PANEL := Color(0.075, 0.10, 0.12, 0.97)
 
 var root: Control
 var instruments: Control
@@ -124,11 +126,7 @@ func _ready() -> void:
 	if not font.fallbacks.has(sym_font):
 		font.fallbacks = [sym_font]
 	ThemeDB.fallback_font = font
-	var theme := Theme.new()
-	theme.default_font = font
-	theme.default_font_size = 16
-	theme.set_color("font_color", "Label", INK)
-	root.theme = theme
+	root.theme = OceanUiTheme.build(font)
 	bathy_texture = WorldMap.build_bathymetry_texture(128)
 	_build_instruments()
 	_build_main()
@@ -147,6 +145,11 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if toast_time > 0.0:
 		toast_time = maxf(0.0, toast_time - delta)
+		if is_instance_valid(boss_panel):
+			var toast_top := 206.0 if boss_panel.visible else 130.0
+			if toast_label.offset_top != toast_top:
+				toast_label.offset_top = toast_top
+				toast_label.offset_bottom = toast_top + 44.0
 		toast_label.modulate.a = minf(toast_time * 2.0, 1.0)
 		toast_label.visible = toast_time > 0.0 and active_screen == "play"
 	if hit_marker_timer > 0.0:
@@ -162,69 +165,58 @@ func trigger_hit_marker(is_kill: bool = false) -> void:
 	if not is_instance_valid(hit_marker):
 		return
 	hit_marker_timer = 0.22
-	hit_marker.modulate = Color(1.0, 0.28, 0.28, 1.0) if is_kill else Color(1.0, 1.0, 1.0, 1.0)
+	hit_marker.modulate = Art.DANGER if is_kill else Art.PAPER
 	hit_marker.scale = Vector2(1.35, 1.35)
 	hit_marker.visible = true
 
 func _build_instruments() -> void:
 	instruments = _full(root)
-
-	# 潜水头盔内壁曲面暗角与呼吸凝雾 Shader
+	instruments.name = "FlightInstruments"
 	var visor_rect := ColorRect.new()
 	_place(visor_rect, instruments, Rect2())
 	visor_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	visor_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var v_shader := Shader.new()
-	v_shader.code = """shader_type canvas_item;
-	uniform float breath : hint_range(0.0, 1.0) = 0.0;
-	uniform float frost : hint_range(0.0, 1.0) = 0.0;
+	var shader := Shader.new()
+	shader.code = """shader_type canvas_item;
+	uniform float breath = 0.0;
+	uniform float frost = 0.0;
 	void fragment() {
-		vec2 uv = (UV - 0.5) * 2.0;
-		float dist = dot(uv, uv);
-		float mask = smoothstep(1.05, 1.75, dist) * 0.16;
-		float mist = smoothstep(0.82, 1.58, dist) * (breath * 0.18 + frost * 0.55);
-		vec3 tint = mix(vec3(0.01, 0.04, 0.06), vec3(0.78, 0.95, 1.0), mist / max(mask + mist, 0.001));
-		COLOR = vec4(tint, clamp(mask + mist, 0.0, 0.45));
+		vec2 p = (UV - 0.5) * 2.0;
+		float edge = smoothstep(0.85, 1.9, dot(p,p));
+		COLOR = vec4(mix(vec3(0.015,0.045,0.065), vec3(0.72,0.85,0.85), frost * 0.45), edge * (0.12 + breath * 0.06 + frost * 0.16));
 	}"""
 	visor_material = ShaderMaterial.new()
-	visor_material.shader = v_shader
+	visor_material.shader = shader
 	visor_rect.material = visor_material
-	_label(instruments, "◈  ABYSSAL ECHO", Rect2(42, 28, 250, 28), 18, INK)
-	_label(instruments, "深蓝回声  /  开放海域探索协议", Rect2(43, 58, 290, 24), 12, MUTED)
-	_line(instruments, Rect2(43, 93, 38, 2), CYAN)
-	_label(instruments, "开放海域勘测日志  [M 海图 · N 声呐]", Rect2(43, 106, 310, 20), 11, CYAN)
-	mission_title = _label(instruments, "全域自由漫游 · 勘测未知海域", Rect2(43, 129, 360, 26), 15, INK)
-	mission_detail = _label(instruments, "按 M 打开海图设置标点或跃迁传送", Rect2(43, 158, 360, 24), 12, MUTED)
-
+	_line(instruments, Rect2(28, 27, 3, 22), AMBER_GOLD)
+	_label(instruments, "深蓝回声 / 潜航日志", Rect2(42, 26, 282, 20), 12, MUTED)
+	mission_title = _label(instruments, "探索未知海域", Rect2(28, 60, 300, 24), 14, INK)
+	mission_detail = _label(instruments, "M 勘测海图  /  N 声呐", Rect2(28, 90, 300, 38), 11, MUTED)
+	mission_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	compass_strip = WorldMap.CompassStrip.new()
-	_place(compass_strip, instruments, Rect2(-195, 16, 390, 28), Vector2(0.5, 0))
+	_place(compass_strip, instruments, Rect2(-180, 17, 360, 28), Vector2(0.5, 0))
 	compass_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	depth_value = _label(instruments, "012 m", Rect2(-150, 46, 300, 54), 38, INK, Vector2(0.5, 0))
+	depth_value = _label(instruments, "012 m", Rect2(-120, 49, 240, 36), 26, INK, Vector2(0.5, 0))
 	depth_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	status_value = _label(instruments, "浅海珊瑚礁区  /  水下", Rect2(-240, 101, 480, 24), 12, CYAN, Vector2(0.5, 0))
+	status_value = _label(instruments, "阳光浅礁带", Rect2(-210, 88, 420, 20), 11, MUTED, Vector2(0.5, 0))
 	status_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-
-	_label(instruments, "⌂  母港信标", Rect2(-416, 26, 192, 22), 12, CYAN, Vector2(1, 0)).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	home_value = _label(instruments, "18 m", Rect2(-416, 48, 192, 32), 22, INK, Vector2(1, 0))
-	home_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	explore_summary_label = _label(instruments, "勘测 0% · 地标 0/24\n前哨 0/6 · 遗珍 0/12", Rect2(-426, 82, 202, 40), 11, MUTED, Vector2(1, 0))
-	explore_summary_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-
 	minimap_radar = WorldMap.MinimapRadar.new()
 	minimap_radar.set_bathymetry(bathy_texture)
-	_place(minimap_radar, instruments, Rect2(-214, 22, 180, 198), Vector2(1, 0))
-
-	# 右上角配方置顶追踪面板 (Recipe Pinning HUD)
-	pinned_panel = _panel(instruments, Rect2(-279, 228, 245, 54), Vector2(1, 0))
+	_place(minimap_radar, instruments, Rect2(-188, 22, 160, 176), Vector2(1, 0))
+	minimap_radar.name = "RadarInstrument"
+	home_value = _label(instruments, "母港 18 m", Rect2(-230, 207, 202, 20), 12, INK, Vector2(1, 0))
+	home_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	explore_summary_label = _label(instruments, "勘测 0%", Rect2(-230, 233, 202, 38), 11, MUTED, Vector2(1, 0))
+	explore_summary_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	pinned_panel = _panel(instruments, Rect2(-280, 285, 252, 62), Vector2(1, 0))
+	pinned_title = _label(pinned_panel, "配方追踪", Rect2(14, 9, 224, 20), 11, AMBER_GOLD)
+	pinned_progress = _label(pinned_panel, "", Rect2(14, 32, 224, 20), 11, INK)
 	pinned_panel.hide()
-	pinned_title = _label(pinned_panel, "【配方追踪】", Rect2(12, 6, 225, 20), 11, CYAN)
-	pinned_progress = _label(pinned_panel, "", Rect2(12, 27, 225, 20), 11, INK)
-
-	reticle = _label(instruments, "+", Rect2(-12, -16, 24, 32), 22, Color(0.83, 1, 0.98, 0.8), Vector2(0.5, 0.5))
+	reticle = _label(instruments, "+", Rect2(-12, -16, 24, 32), 20, Color(CYAN, 0.75), Vector2(0.5, 0.5))
 	reticle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	aim_frame = _panel(instruments, Rect2(-165, -110, 330, 220), Vector2(0.5, 0.5))
-	aim_frame.add_theme_stylebox_override("panel", _style(Color.TRANSPARENT, Color(0.2, 0.6, 1.0, 0.35), 12))
-	_label(aim_frame, "精密瞄准  /  T 退出", Rect2(12, 9, 250, 20), 11, CYAN)
+	aim_frame.add_theme_stylebox_override("panel", _style(Color.TRANSPARENT, Color(CYAN, 0.2), 2))
+	_label(aim_frame, "精密瞄准 / T", Rect2(12, 9, 250, 20), 10, CYAN)
 	aim_frame.hide()
 	scope_overlay = ColorRect.new()
 	_place(scope_overlay, instruments, Rect2())
@@ -234,111 +226,91 @@ func _build_instruments() -> void:
 	scope_material.shader = preload("res://shaders/scope.gdshader")
 	scope_overlay.material = scope_material
 	scope_overlay.hide()
-	scope_label = _label(instruments, "", Rect2(-240, 180, 480, 24), 13, CYAN, Vector2(0.5, 0.5))
+	scope_label = _label(instruments, "", Rect2(-240, 180, 480, 24), 12, CYAN, Vector2(0.5, 0.5))
 	scope_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	scope_label.hide()
-	charge_label = _label(instruments, "", Rect2(-160, 35, 320, 24), 14, CYAN, Vector2(0.5, 0.5))
+	charge_label = _label(instruments, "", Rect2(-160, 40, 320, 24), 12, CYAN, Vector2(0.5, 0.5))
 	charge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	charge_label.add_theme_stylebox_override("normal", _style(Color(0.015, 0.055, 0.09, 0.92), Color(0.1, 0.4, 0.8, 0.8)))
 	charge_bar = ProgressBar.new()
-	_place(charge_bar, instruments, Rect2(-90, 65, 180, 5), Vector2(0.5, 0.5))
+	_place(charge_bar, instruments, Rect2(-80, 70, 160, 3), Vector2(0.5, 0.5))
 	charge_bar.show_percentage = false
 	charge_bar.max_value = 1.0
-	charge_bar.add_theme_stylebox_override("background", _style(Color(0.08, 0.2, 0.3, 0.8)))
-	charge_bar.add_theme_stylebox_override("fill", _style(Color(0.15, 0.55, 1.0)))
+	charge_bar.add_theme_stylebox_override("background", _style(Color(Art.INK, 0.7)))
+	charge_bar.add_theme_stylebox_override("fill", _style(CYAN))
 	charge_bar.hide()
-	boss_panel = _panel(instruments, Rect2(-270, 192, 540, 80), Vector2(0.5, 0))
-	boss_name = _label(boss_panel, "深渊水龙 · 潮汐君主", Rect2(16, 8, 508, 25), 16, INK)
+	boss_panel = _panel(instruments, Rect2(-260, 131, 520, 66), Vector2(0.5, 0))
+	boss_name = _label(boss_panel, "深渊领主", Rect2(16, 8, 488, 22), 14, INK)
 	boss_bar = ProgressBar.new()
-	_place(boss_bar, boss_panel, Rect2(16, 38, 508, 7))
+	_place(boss_bar, boss_panel, Rect2(16, 34, 488, 4))
 	boss_bar.show_percentage = false
-	boss_bar.add_theme_stylebox_override("background", _style(Color(0.08, 0.19, 0.27)))
-	boss_bar.add_theme_stylebox_override("fill", _style(Color(0.12, 0.55, 1.0)))
-	boss_warning = _label(boss_panel, "", Rect2(16, 51, 508, 21), 12, ORANGE)
+	boss_bar.add_theme_stylebox_override("background", _style(Color(Art.DANGER, 0.15)))
+	boss_bar.add_theme_stylebox_override("fill", _style(Art.DANGER))
+	boss_warning = _label(boss_panel, "", Rect2(16, 42, 488, 18), 11, AMBER_GOLD)
 	boss_warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	boss_panel.hide()
-
-	hit_marker = _label(instruments, "✕", Rect2(-14, -18, 28, 36), 22, Color(1, 1, 1, 0), Vector2(0.5, 0.5))
+	hit_marker = _label(instruments, "×", Rect2(-14, -18, 28, 36), 22, Color(1, 1, 1, 0), Vector2(0.5, 0.5))
 	hit_marker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hit_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hit_marker.visible = false
-
-	# 左侧生命支持面板
-	var life := _panel(instruments, Rect2(42, -175, 260, 117), Vector2(0, 1))
-	_label(life, "O₂", Rect2(17, 12, 55, 41), 26, CYAN)
-	oxygen_value = _label(life, "90", Rect2(78, 8, 100, 48), 35, INK)
-	oxygen_unit = _label(life, "秒  /  氧气", Rect2(166, 25, 87, 23), 11, MUTED)
+	var life := _panel(instruments, Rect2(28, -148, 246, 100), Vector2(0, 1))
+	life.name = "LifeSupportInstrument"
+	_label(life, "O₂", Rect2(15, 12, 48, 30), 23, CYAN)
+	oxygen_value = _label(life, "90", Rect2(68, 8, 86, 38), 30, INK)
+	oxygen_unit = _label(life, "秒 / 氧气", Rect2(153, 22, 78, 20), 10, MUTED)
 	oxygen_bar = ProgressBar.new()
-	_place(oxygen_bar, life, Rect2(19, 62, 222, 5))
+	_place(oxygen_bar, life, Rect2(15, 52, 216, 3))
 	oxygen_bar.show_percentage = false
 	oxygen_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	oxygen_bar.add_theme_stylebox_override("background", _style(Color(0.3, 0.6, 0.65, 0.14), Color.TRANSPARENT, 2))
-	oxygen_bar.add_theme_stylebox_override("fill", _style(CYAN, Color.TRANSPARENT, 2))
-	health_value = _label(life, "＋  生命 100", Rect2(18, 82, 150, 21), 12, MUTED)
-	_label(life, "生命支持", Rect2(174, 82, 78, 21), 10, MUTED)
-
-	# 右侧样本储存面板 (包含小鱼与海兽碎片采集统计)
-	var supplies := _panel(instruments, Rect2(-490, -198, 450, 140), Vector2(1, 1))
-	_label(supplies, "样本与战利品储存", Rect2(17, 11, 160, 24), 12, CYAN)
-	_label(supplies, "INVENTORY", Rect2(320, 12, 110, 22), 10, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	var kinds := ["titanium", "copper", "quartz", "kelp", "fish_small", "shark_fragment", "abyss_fragment"]
-	var names := ["钛", "铜", "石英", "海藻", "鲜鱼", "鲨齿", "晶核"]
-	for index in range(kinds.size()):
-		var x := 12.0 + float(index) * 61.0
-		resource_labels[kinds[index]] = _label(supplies, "0", Rect2(x, 40, 54, 35), 22, INK)
-		_label(supplies, names[index], Rect2(x, 79, 56, 21), 11, MUTED)
-	dave_status_label = _label(supplies, "⚖ 负重 0.0/40kg  ·  💰 0 金币  ·  🎈 无人机 3 [V打捞]  ·  ★ 图鉴 0/13 [B寿司吧]", Rect2(14, 108, 424, 22), 11, CYAN)
-
-	# 底部中央装备与武器栏
-	equipment_value = _label(instruments, "基础潜水装备", Rect2(-235, -162, 470, 22), 11, MUTED, Vector2(0.5, 1))
-	equipment_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-
-	var weapon_panel := _panel(instruments, Rect2(-240, -136, 480, 42), Vector2(0.5, 1))
-	weapon_bar_label = _label(weapon_panel, "[1 潜水刀]    2 破拆斧    3 蓝光静滞枪", Rect2(10, 10, 460, 24), 13, CYAN)
+	oxygen_bar.add_theme_stylebox_override("background", _style(Color(CYAN, 0.13), Color.TRANSPARENT, 1))
+	oxygen_bar.add_theme_stylebox_override("fill", _style(CYAN, Color.TRANSPARENT, 1))
+	health_value = _label(life, "生命 100", Rect2(15, 69, 138, 18), 11, INK)
+	_label(life, "生命支持", Rect2(161, 69, 70, 18), 10, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var supplies := _panel(instruments, Rect2(-280, -148, 252, 100), Vector2(1, 1))
+	supplies.name = "CargoInstrument"
+	_label(supplies, "采集与补给", Rect2(15, 12, 160, 20), 11, MUTED)
+	_label(supplies, "B / 料理与图鉴", Rect2(15, 72, 222, 18), 10, MUTED)
+	dave_status_label = _label(supplies, "", Rect2(15, 38, 222, 34), 11, INK)
+	var resource_store := _full(supplies)
+	resource_store.hide()
+	for kind: String in ["titanium", "copper", "quartz", "kelp", "fish_small", "shark_fragment", "abyss_fragment"]:
+		resource_labels[kind] = _label(resource_store, "0", Rect2(0, 0, 20, 20), 10, MUTED)
+	var weapon_panel := _panel(instruments, Rect2(-220, -115, 440, 38), Vector2(0.5, 1))
+	weapon_panel.name = "WeaponInstrument"
+	weapon_bar_label = _label(weapon_panel, "潜水刀", Rect2(12, 9, 416, 22), 12, INK)
 	weapon_bar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	weapon_hint = _label(instruments, "", Rect2(-370, -208, 740, 24), 13, CYAN, Vector2(0.5, 1))
+	equipment_value = _label(instruments, "基础潜水装备", Rect2(-220, -70, 440, 18), 10, MUTED, Vector2(0.5, 1))
+	equipment_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	weapon_hint = _label(instruments, "", Rect2(-290, -147, 580, 22), 11, CYAN, Vector2(0.5, 1))
 	weapon_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-
-	target_value = _label(instruments, "", Rect2(-300, -88, 600, 33), 17, INK, Vector2(0.5, 1))
+	target_value = _label(instruments, "", Rect2(-280, -188, 560, 30), 14, INK, Vector2(0.5, 1))
 	target_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-
-	# 潜水艇驾驶舱 HUD 面板
-	sub_panel = _panel(instruments, Rect2(-320, -150, 640, 72), Vector2(0.5, 1))
-	sub_name_label = _label(sub_panel, "【深海斥候号】巡航潜艇", Rect2(15, 8, 260, 22), 14, CYAN)
-	sub_speed_label = _label(sub_panel, "航速: 0.0 m/s", Rect2(280, 8, 160, 22), 13, INK)
-	sub_weapon_label = _label(sub_panel, "车载鱼雷 [就绪]", Rect2(445, 8, 180, 22), 13, CYAN)
+	sub_panel = _panel(instruments, Rect2(-310, -140, 620, 92), Vector2(0.5, 1))
+	sub_panel.name = "SubmarineInstrument"
+	sub_name_label = _label(sub_panel, "深海斥候号", Rect2(15, 10, 230, 22), 13, INK)
+	sub_speed_label = _label(sub_panel, "航速 0.0 m/s", Rect2(250, 10, 156, 22), 11, CYAN)
+	sub_weapon_label = _label(sub_panel, "鱼雷就绪", Rect2(408, 10, 197, 22), 11, AMBER_GOLD)
 	sub_hull_bar = ProgressBar.new()
-	_place(sub_hull_bar, sub_panel, Rect2(15, 34, 420, 16))
+	_place(sub_hull_bar, sub_panel, Rect2(15, 41, 300, 4))
 	sub_hull_bar.max_value = 1.0
 	sub_hull_bar.value = 1.0
 	sub_hull_bar.show_percentage = false
-	sub_hull_bar.add_theme_stylebox_override("fill", _style(Color(0.12, 0.75, 0.85)))
-	sub_hull_bar.add_theme_stylebox_override("background", _style(Color(0.04, 0.1, 0.15, 0.9)))
-	sub_hull_label = _label(sub_panel, "耐压装甲 100%", Rect2(15, 34, 420, 16), 11, INK)
-	sub_hull_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var sub_ctrl := _label(sub_panel, "WASD 航行  ·  空格/C 升降  ·  Shift 加速  ·  R/左键 鱼雷火炮  ·  E 离开潜艇", Rect2(15, 52, 610, 16), 11, MUTED)
-	sub_ctrl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub_hull_bar.add_theme_stylebox_override("fill", _style(CYAN))
+	sub_hull_bar.add_theme_stylebox_override("background", _style(Color(CYAN, 0.13)))
+	sub_hull_label = _label(sub_panel, "耐压装甲 100%", Rect2(330, 33, 275, 20), 11, MUTED)
+	_label(sub_panel, "W/S 推进  A/D 转向  空格/Ctrl 升降  Shift 加速  R 攻击  E 离舱", Rect2(15, 62, 590, 20), 10, MUTED)
 	sub_panel.hide()
-
-	# 手持迷你助推器状态指示
-	booster_indicator = _label(instruments, "⚡ 水下迷你助推器巡航中 [按 H 收起 · 移速翻倍]", Rect2(-240, -136, 480, 42), 13, CYAN, Vector2(0.5, 1))
+	booster_indicator = _label(instruments, "助推巡航 / H 收起", Rect2(-220, -115, 440, 38), 12, CYAN, Vector2(0.5, 1))
 	booster_indicator.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	booster_indicator.add_theme_stylebox_override("normal", _style(PANEL, Color(0.12, 0.72, 0.95, 0.6)))
+	booster_indicator.add_theme_stylebox_override("normal", _style(PANEL, Color(CYAN, 0.22)))
 	booster_indicator.hide()
-
-	# 导引鱼雷机载前视摄像机 HUD
-
-	# 契约坐骑与战宠随从面板 (Tamed Beasts / Mounts HUD)
-	tame_panel = _panel(instruments, Rect2(42, -188, 480, 102), Vector2(0, 1))
-	tame_title = _label(tame_panel, "◈ 契约坐骑与应援 (0/20) · 按 O 一键收纳 / 坐骑应援板", Rect2(12, 6, 456, 18), 11, CYAN)
-	tame_slots_label = _label(tame_panel, "方舟防卫模式：生物先攻击时坐骑自动反击；未攻击时按兵不动", Rect2(12, 28, 456, 42), 11, MUTED)
-	tame_mount_label = _label(tame_panel, "按 O 键可将坐骑收入囊中；再按 O 键打开【坐骑应援板】点击召唤或全选", Rect2(12, 72, 456, 18), 11, INK)
-
-	# 单手能量护盾状态指示标签
-	shield_label = _label(instruments, "[C] 单手能量盾: [收起]", Rect2(42, -225, 260, 24), 12, MUTED, Vector2(0, 1))
-	shield_label.add_theme_stylebox_override("normal", _style(PANEL, Color(0.12, 0.72, 0.95, 0.4)))
-
-	var hints := _label(instruments, "WASD 移动  空格/Ctrl 升降  M 全域海图/跃迁  N 声呐扫描  C 护盾  O 坐骑板  G 骑乘  V 打捞  B 寿司吧  1-4 武器  R 攻击  E 交互  Tab 制造", Rect2(-640, -36, 1280, 22), 11, MUTED, Vector2(0.5, 1))
+	tame_panel = _panel(instruments, Rect2(28, -252, 246, 64), Vector2(0, 1))
+	tame_panel.name = "CompanionInstrument"
+	tame_title = _label(tame_panel, "契约生物 0/20", Rect2(15, 9, 216, 20), 11, CYAN)
+	tame_slots_label = _label(tame_panel, "", Rect2(15, 9, 216, 20), 10, MUTED)
+	tame_slots_label.hide()
+	tame_mount_label = _label(tame_panel, "O 生物应援板", Rect2(15, 34, 216, 20), 10, MUTED)
+	tame_panel.hide()
+	shield_label = _label(instruments, "C / 能量盾收起", Rect2(28, -178, 246, 20), 10, MUTED, Vector2(0, 1))
+	var hints := _label(instruments, "E 交互   Tab 制造   M 海图   N 声呐   O 生物   Esc 暂停", Rect2(-340, -27, 680, 18), 10, MUTED, Vector2(0.5, 1))
 	hints.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 func _build_main() -> void:
@@ -348,204 +320,169 @@ func _build_main() -> void:
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var shader := Shader.new()
-	shader.code = "shader_type canvas_item; void fragment(){ COLOR = vec4(0.005,0.035,0.055,0.90 * (1.0-smoothstep(0.28,1.05,UV.x))); }"
+	shader.code = "shader_type canvas_item; void fragment(){ COLOR=vec4(0.018,0.052,0.07,mix(0.97,0.10,smoothstep(0.28,0.92,UV.x))); }"
 	var material := ShaderMaterial.new()
 	material.shader = shader
 	shade.material = material
-	_label(menu, "◈   OPEN OCEAN EXPEDITION  /  无缝开放海域探索", Rect2(68, 37, 550, 28), 12, MUTED)
-	_label(menu, "01  /  1800m × 1800m 开放地图探索游戏", Rect2(72, 168, 580, 27), 14, CYAN)
-	_label(menu, "深蓝回声", Rect2(64, 203, 620, 108), 76, INK)
-	_label(menu, "A B Y S S A L   E C H O", Rect2(73, 323, 650, 31), 21, CYAN)
-	_line(menu, Rect2(74, 380, 44, 2), CYAN)
-	_label(menu, "晴空环礁 · 巨藻海峡 · 星象古都 · 龙骨荒原 · 极渊圣域", Rect2(74, 400, 680, 39), 20, INK)
-	_label(menu, "无缝开放立体海洋世界：按 M 展开迷雾勘测海图、自由标点与科考前哨跃迁传送；\n按 N 释放广域声呐寻找远古遗珍，驾驭潜艇与契约海兽自由漫游九大海域。", Rect2(74, 448, 660, 56), 14, MUTED)
-	_label(menu, "M 全域交互海图     N 广域声呐脉冲     6 大前哨跃迁站     24 大生态地标", Rect2(74, 526, 680, 30), 13, INK)
-
-	_button(menu, "开放海域探索     ✦", Rect2(74, 580, 270, 54), func() -> void: start_requested.emit("explore"), true)
-	_label(menu, "无限氧气 · 全域自由漫游 · 海图跃迁与收集", Rect2(76, 642, 275, 22), 12, CYAN)
-
-	var survival_btn := _button(menu, "生存探索沙盒     →", Rect2(364, 580, 270, 54), func() -> void: start_requested.emit("survival"), false)
-	survival_btn.add_theme_color_override("font_color", INK)
-	_label(menu, "完整开放海图 · 氧气装备制造 · 前哨建站成长", Rect2(366, 642, 285, 22), 12, MUTED)
-
-	_label(menu, "M 打开海图/标点/快速传送 · N 声呐扫描 · E 激活前哨站与搜集遗珍 · B 深海寿司吧", Rect2(75, 686, 760, 26), 12, MUTED)
-	_label(menu, "原创海域生存与探险  /  GODOT × BLENDER", Rect2(73, -49, 650, 23), 10, MUTED, Vector2(0, 1))
-	_label(menu, "OPEN WORLD READY\n九大无缝海域已开放", Rect2(-280, -101, 230, 61), 14, INK, Vector2(1, 1)).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var plate := OceanUiTheme.ExpeditionPlate.new()
+	_place(plate, menu, Rect2(-570, -300, 540, 600), Vector2(1, 0.5))
+	_line(menu, Rect2(72, 58, 32, 2), AMBER_GOLD)
+	_label(menu, "一场始于浅礁的远行", Rect2(117, 48, 380, 24), 13, MUTED)
+	_label(menu, "深蓝回声", Rect2(66, 198, 610, 94), 68, INK)
+	_label(menu, "A B Y S S A L   E C H O", Rect2(74, 304, 560, 30), 18, CYAN)
+	_line(menu, Rect2(74, 368, 56, 2), AMBER_GOLD)
+	_label(menu, "循着微光，游向未知。", Rect2(74, 393, 540, 38), 23, INK)
+	_label(menu, "穿过珊瑚浅礁与巨藻森林，\n探访沉没古都，倾听深渊的回声。", Rect2(76, 446, 520, 60), 15, MUTED)
+	_button(menu, "自由探险", Rect2(74, 550, 230, 52), func() -> void: start_requested.emit("explore"), true)
+	_button(menu, "生存航程", Rect2(320, 550, 230, 52), func() -> void: start_requested.emit("survival"))
+	_label(menu, "无限氧气 · 自由漫游", Rect2(76, 617, 228, 20), 11, MUTED)
+	_label(menu, "管理氧气 · 采集与制造", Rect2(322, 617, 244, 20), 11, MUTED)
+	_label(menu, "九片海域 / 一段属于你的潜航记录", Rect2(74, -58, 500, 22), 11, MUTED, Vector2(0, 1))
+	_label(menu, "海洋勘测档案\n00 — 600 m", Rect2(-294, -90, 220, 48), 12, CYAN, Vector2(1, 1)).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
 func _build_pause() -> void:
 	var menu := _menu("pause")
-	var card := _panel(menu, Rect2(-260, -205, 520, 410), Vector2(0.5, 0.5))
-	_label(card, "DIVE LOG  /  潜航暂停", Rect2(36, 29, 450, 24), 12, CYAN)
-	_label(card, "在此稍作停留", Rect2(35, 77, 450, 57), 34, INK)
-	_label(card, "生命支持已暂停。可随时按 M 查看开放海图与前哨跃迁点。", Rect2(37, 142, 445, 30), 14, MUTED)
-	_button(card, "继续潜航     →", Rect2(36, 192, 448, 48), func() -> void: resume_requested.emit(), true)
-	_button(card, "打开全域勘测海图 [M]", Rect2(36, 250, 448, 44), func() -> void: open_map_requested.emit())
-	_button(card, "重新开始", Rect2(36, 304, 448, 44), func() -> void: restart_requested.emit())
-	_label(card, "ESC 返回海底", Rect2(36, 353, 448, 23), 11, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var card := _panel(menu, Rect2(-250, -215, 500, 430), Vector2(0.5, 0.5))
+	_line(card, Rect2(32, 31, 28, 2), AMBER_GOLD)
+	_label(card, "潜航日志 / 暂停", Rect2(75, 20, 380, 24), 11, MUTED)
+	_label(card, "在此稍作停留", Rect2(31, 78, 438, 54), 31, INK)
+	_label(card, "生命支持已暂停。准备好后，继续你的航程。", Rect2(33, 140, 434, 42), 13, MUTED)
+	_button(card, "继续潜航", Rect2(32, 205, 436, 46), func() -> void: resume_requested.emit(), true)
+	var map_button := _button(card, "M / 勘测海图", Rect2(32, 263, 436, 42), func() -> void: open_map_requested.emit())
+	map_button.name = "OpenSeaChartButton"
+	_button(card, "重新开始", Rect2(32, 317, 436, 42), func() -> void: restart_requested.emit())
+	_label(card, "Esc 返回海底", Rect2(32, 382, 436, 20), 10, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 func _build_craft() -> void:
 	var menu := _menu("craft")
-	var card := _panel(menu, Rect2(-380, -360, 760, 720), Vector2(0.5, 0.5))
-	_label(card, "POD FABRICATOR  /  逃生舱制造台", Rect2(32, 18, 600, 24), 12, CYAN)
-	_label(card, "为更深处做好准备", Rect2(30, 48, 620, 42), 28, INK)
-	craft_inventory = _label(card, "钛 0  /  铜 0  /  石英 0  /  海藻 0  /  食用小鱼 0", Rect2(33, 90, 690, 26), 12, MUTED)
-	_line(card, Rect2(32, 120, 696, 1), Color(0.47, 0.82, 0.81, 0.2))
-
-	_recipe(card, "tank", "01", "高容量氧气瓶", "延长单次潜水时间至 150 秒", "2 钛 + 2 海藻", 128)
-	_recipe(card, "fins", "02", "轻量脚蹼", "提升水下游动速度 50%", "1 钛 + 2 海藻", 188)
-	_recipe(card, "rebreather", "03", "深海循环呼吸器", "抵消深水压强耗氧惩罚 · 百米深渊必需", "2 钛 + 1 铜 + 2 海藻", 248)
-	_recipe(card, "axe", "04", "破拆战斧", "近战重型劈砍 · 165° 范围横扫群伤 · 70 基础伤害", "2 钛 + 1 铜", 308)
-	_recipe(card, "sonic", "05", "蓝光静滞枪", "环境自适应蓝色激光 · 蓄力 3 秒静滞球 · Y 远距镜", "2 钛 + 2 石英 + 1 铜", 368)
-	_recipe(card, "biomod_dash", "06", "生体模组·涡流突进", "按 Q 爆发突进 16 米紧急避咬 · 强化武装等级", "1 鲨齿碎片 + 2 钛", 428)
-	_recipe(card, "reinforce_sharp", "07", "深铸武器·锋锐硬化", "精研近战刃口 · 全武器攻击力额外 +20", "1 鲨齿碎片 + 1 钛", 488)
-	_recipe(card, "reinforce_sonic", "08", "深铸武器·晶体共鸣", "聚焦渊底脉冲 · 全武器攻击力额外 +35", "1 晶核碎片 + 1 石英", 548)
-	_recipe(card, "beacon", "09", "修复求救信标", "完成返航通信准备 · 最终击败水龙通关", "3 钛 + 2 铜 + 2 石英", 608)
-
-	_button(card, "返回潜航", Rect2(32, 668, 145, 38), func() -> void: resume_requested.emit())
-	_button(card, "🍣 班乔寿司吧 & 玛琳卡 [B]", Rect2(188, 668, 228, 38), func() -> void: open_sushi_requested.emit(), true)
-	_label(card, "点击【追踪】监视材料 · 按 B 进入寿司吧与图鉴", Rect2(424, 674, 304, 25), 11, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var card := _panel(menu, Rect2(-450, -350, 900, 700), Vector2(0.5, 0.5))
+	_label(card, "装备制造 / 逃生舱工作台", Rect2(28, 20, 844, 22), 11, CYAN)
+	_label(card, "为更深处做好准备", Rect2(27, 50, 844, 40), 28, INK)
+	craft_inventory = _label(card, "", Rect2(28, 101, 844, 22), 11, MUTED)
+	_line(card, Rect2(28, 130, 844, 1), Color(CYAN, 0.15))
+	_recipe(card, "tank", "01", "高容量氧气瓶", "单次潜水时间延长至 150 秒", "2 钛 + 2 海藻", 145)
+	_recipe(card, "fins", "02", "轻量脚蹼", "水下游动速度提升 50%", "1 钛 + 2 海藻", 198)
+	_recipe(card, "rebreather", "03", "深海循环呼吸器", "抵消深水压强带来的额外耗氧", "2 钛 + 1 铜 + 2 海藻", 251)
+	_recipe(card, "axe", "04", "破拆战斧", "165° 范围横扫 · 基础伤害 70", "2 钛 + 1 铜", 304)
+	_recipe(card, "sonic", "05", "蓝光静滞枪", "蓝色激光 · 蓄力静滞 · 远距瞄准", "2 钛 + 2 石英 + 1 铜", 357)
+	_recipe(card, "biomod_dash", "06", "生体模组 · 涡流突进", "Q 突进 16 米，紧急躲避攻击", "1 鲨齿碎片 + 2 钛", 410)
+	_recipe(card, "reinforce_sharp", "07", "深铸武器 · 锋锐硬化", "全武器攻击力永久增加 20", "1 鲨齿碎片 + 1 钛", 463)
+	_recipe(card, "reinforce_sonic", "08", "深铸武器 · 晶体共鸣", "全武器攻击力永久增加 35", "1 晶核碎片 + 1 石英", 516)
+	_recipe(card, "beacon", "09", "修复求救信标", "建立返航通信，继续探索深海主线", "3 钛 + 2 铜 + 2 石英", 569)
+	_button(card, "返回潜航", Rect2(28, 643, 136, 38), func() -> void: resume_requested.emit())
+	_button(card, "料理与图鉴 / B", Rect2(176, 643, 174, 38), func() -> void: open_sushi_requested.emit())
+	_label(card, "追踪配方，便可在潜航时查看所需材料。", Rect2(368, 651, 504, 20), 11, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
 func _build_sushi() -> void:
 	var menu := _menu("sushi")
-	var card := _panel(menu, Rect2(-460, -365, 920, 730), Vector2(0.5, 0.5))
-	card.add_theme_stylebox_override("panel", _style(WARM_PANEL, Color(0.96, 0.68, 0.28, 0.42)))
-	_label(card, "BANCHO ABYSSAL SUSHI & MARINCA  /  班乔深海料理吧 · 柯布拉商店 · 玛琳卡图鉴", Rect2(28, 16, 860, 22), 12, AMBER_GOLD)
-	sushi_header_label = _label(card, "💰 深海金币: 0    ·    🍣 餐厅声望 Lv.1 (已售 0 份)    ·    ⚖ 背包负重: 0.0 / 40.0 kg", Rect2(28, 42, 860, 28), 18, INK)
-	sushi_ingredients_label = _label(card, "食材库存：鲜活小金鱼 0  /  海兽生肉 0  /  海藻 0  /  骨齿 0  /  韧性兽皮 0  /  甲壳 0", Rect2(28, 72, 860, 22), 12, MUTED)
-	_line(card, Rect2(28, 98, 864, 1), Color(0.98, 0.72, 0.32, 0.32))
-
-	# 左栏：班乔深海料理台 (Bancho Sushi Bar)
-	_label(card, "🍣 班乔深海料理研发与售卖（烹饪即获金币 + 永久/即时主厨强化）", Rect2(28, 108, 520, 22), 14, AMBER_GOLD)
-	_sushi_row(card, "goldfish_nigiri", "荧光金鱼握寿司", "食材: 1 鲜活小鱼  ·  售价 65G", "恢复 35 生命/30 氧气 · 氧气上限 +10s", 136)
-	_sushi_row(card, "kelp_roll", "深海海藻鲜肉卷", "食材: 2 海兽生肉 + 1 海藻  ·  售价 150G", "生命上限永久 +20 并立即回满生命", 198)
-	_sushi_row(card, "shark_sashimi", "暗礁巨鲨厚切刺身", "食材: 2 海兽生肉 + 1 骨齿  ·  售价 260G", "激发猎食潜能 · 全武器攻击力永久 +18", 260)
-	_sushi_row(card, "abyss_kaiseki", "深渊海王黄金怀石", "食材: 3 海兽生肉 + 1 兽皮 + 1 甲壳  ·  售价 420G", "全武器攻击 +30 · 无人机配额 +1 · 负重上限 +15kg", 322)
-
-	_button(card, "🏮 夜间挂牌营业 · 一键料理售出全部富余鲜鱼与生肉", Rect2(28, 390, 510, 40), func() -> void: sushi_serve_all_requested.emit(), true)
-
-	# 左下栏：柯布拉深海补给商店 (Cobra Shop)
-	_line(card, Rect2(28, 442, 510, 1), Color(0.47, 0.82, 0.81, 0.22))
-	_label(card, "🛒 柯布拉深海战术商店（使用料理金币升级潜航装备）", Rect2(28, 450, 510, 22), 14, ORANGE)
-	_cobra_row(card, "cargo_box", "柯布拉扩容生态箱 (120 金币)", "负重上限永久 +25 kg · 无人机打捞配额 +1 并补满", 478)
-	_cobra_row(card, "oxygen_capsule", "高能浓缩氧气胶囊 (80 金币)", "氧气上限永久 +25 秒 · 立即补满氧气与生命", 534)
-	_cobra_row(card, "duff_coating", "达夫特制超导涂层 (180 金币)", "达夫军工强化 · 全武器攻击力永久 +25", 590)
-
-	# 右栏：玛琳卡海洋生物三星图鉴 (Marinca Collection)
-	var marinca_box := _panel(card, Rect2(556, 108, 336, 536))
-	_label(marinca_box, "🃏 玛琳卡海洋生物图鉴 (MARINCA)", Rect2(14, 10, 308, 22), 14, CYAN)
-	marinca_summary_label = _label(marinca_box, "已收集物种: 0 / 13   ·   ★★★ 完美图鉴: 0\n三星料理售价加成: +0%", Rect2(14, 34, 308, 38), 11, ORANGE)
-	_line(marinca_box, Rect2(14, 76, 308, 1), Color(0.47, 0.82, 0.81, 0.2))
-	marinca_grid_label = _label(marinca_box, "", Rect2(14, 84, 308, 400), 12, INK)
-	_label(marinca_box, "提示：按 V 无人机气球活捕或静滞冻结下捕获\n必定获得 ★★★ 完美星级与双倍食材产出！", Rect2(14, 490, 308, 38), 10, MUTED)
-
-	_button(card, "返回潜航 (B / Esc)", Rect2(28, 668, 180, 40), func() -> void: resume_requested.emit())
-	_label(card, "水下按 V 召唤无人机气球打捞 (★★★) · 靠近发光巨砗磲按 E 气泡补氧 · 按 B 随时开关此面板", Rect2(224, 676, 668, 24), 11, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var card := _panel(menu, Rect2(-500, -358, 1000, 716), Vector2(0.5, 0.5))
+	_label(card, "班乔料理吧 / 柯布拉商店 / 玛琳卡图鉴", Rect2(28, 18, 944, 22), 11, AMBER_GOLD)
+	_label(card, "来自海洋的馈赠", Rect2(27, 47, 944, 38), 28, INK)
+	sushi_header_label = _label(card, "", Rect2(28, 93, 944, 24), 13, INK)
+	sushi_ingredients_label = _label(card, "", Rect2(28, 123, 944, 20), 11, MUTED)
+	_line(card, Rect2(28, 152, 944, 1), Color(CYAN, 0.15))
+	_sushi_row(card, "goldfish_nigiri", "荧光金鱼握寿司", "1 鲜鱼 · 65 金币", "恢复生命 35 / 氧气 30 · 氧气上限 +10s", 166)
+	_sushi_row(card, "kelp_roll", "深海海藻鲜肉卷", "2 生肉 + 1 海藻 · 150 金币", "生命上限永久 +20，并立即回满生命", 228)
+	_sushi_row(card, "shark_sashimi", "暗礁巨鲨厚切刺身", "2 生肉 + 1 骨齿 · 260 金币", "全武器攻击力永久 +18", 290)
+	_sushi_row(card, "abyss_kaiseki", "深渊海王黄金怀石", "3 生肉 + 1 兽皮 + 1 甲壳 · 420 金币", "全武器攻击 +30 · 无人机 +1 · 负重 +15kg", 352)
+	_button(card, "挂牌营业 / 售出富余鲜鱼与生肉", Rect2(28, 420, 540, 38), func() -> void: sushi_serve_all_requested.emit(), true)
+	_line(card, Rect2(28, 477, 540, 1), Color(CYAN, 0.15))
+	_label(card, "柯布拉潜航补给", Rect2(28, 484, 540, 20), 12, CYAN)
+	_cobra_row(card, "cargo_box", "扩容生态箱 / 120 金币", "负重上限 +25kg · 无人机配额 +1，并补满", 512)
+	_cobra_row(card, "oxygen_capsule", "浓缩氧气胶囊 / 80 金币", "氧气上限 +25 秒，立即补满氧气与生命", 560)
+	_cobra_row(card, "duff_coating", "达夫超导涂层 / 180 金币", "全武器攻击力永久 +25", 608)
+	var marinca_box := _panel(card, Rect2(592, 166, 380, 480))
+	_label(marinca_box, "玛琳卡 / 海洋生物图鉴", Rect2(18, 16, 344, 22), 14, INK)
+	marinca_summary_label = _label(marinca_box, "", Rect2(18, 48, 344, 42), 11, AMBER_GOLD)
+	_line(marinca_box, Rect2(18, 100, 344, 1), Color(CYAN, 0.15))
+	marinca_grid_label = _label(marinca_box, "", Rect2(18, 112, 344, 300), 11, INK)
+	_label(marinca_box, "静滞活捕或无人机打捞可获得三星品质。\n每张三星图鉴使料理售价增加 12%。", Rect2(18, 427, 344, 36), 10, MUTED)
+	_button(card, "返回潜航 / B", Rect2(28, 665, 156, 34), func() -> void: resume_requested.emit())
+	_label(card, "V 无人机打捞 / E 采集与交互", Rect2(204, 673, 768, 18), 10, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
 func _sushi_row(parent: Control, dish_id: String, title: String, cost_str: String, desc_str: String, y: float) -> void:
-	_label(parent, title, Rect2(28, y, 220, 22), 15, INK)
-	_label(parent, cost_str, Rect2(240, y + 2, 185, 20), 11, ORANGE)
-	_label(parent, desc_str, Rect2(28, y + 23, 395, 20), 11, MUTED)
-	sushi_cook_buttons[dish_id] = _button(parent, "烹饪售出", Rect2(432, y + 4, 106, 36), func() -> void: sushi_cook_requested.emit(dish_id))
+	_label(parent, title, Rect2(28, y, 416, 21), 14, INK)
+	_label(parent, cost_str, Rect2(28, y + 22, 416, 17), 10, AMBER_GOLD)
+	_label(parent, desc_str, Rect2(28, y + 40, 416, 17), 10, MUTED)
+	sushi_cook_buttons[dish_id] = _button(parent, "烹饪售出", Rect2(460, y + 12, 108, 34), func() -> void: sushi_cook_requested.emit(dish_id))
 
 func _cobra_row(parent: Control, item_id: String, title: String, desc_str: String, y: float) -> void:
-	_label(parent, title, Rect2(28, y, 380, 20), 14, INK)
-	_label(parent, desc_str, Rect2(28, y + 21, 395, 18), 11, MUTED)
-	cobra_buy_buttons[item_id] = _button(parent, "购买升级", Rect2(432, y + 2, 106, 34), func() -> void: cobra_buy_requested.emit(item_id))
+	_label(parent, title, Rect2(28, y, 416, 20), 13, INK)
+	_label(parent, desc_str, Rect2(28, y + 23, 416, 18), 10, MUTED)
+	cobra_buy_buttons[item_id] = _button(parent, "购买升级", Rect2(460, y + 3, 108, 34), func() -> void: cobra_buy_requested.emit(item_id))
 
 func _recipe(parent: Control, key: String, number: String, title: String, detail: String, cost: String, y: float) -> void:
-	_label(parent, number, Rect2(33, y + 4, 45, 32), 15, CYAN)
-	_label(parent, title, Rect2(82, y, 320, 24), 16, INK)
-	_label(parent, detail, Rect2(82, y + 24, 420, 18), 11, MUTED)
-	_label(parent, cost, Rect2(82, y + 42, 420, 18), 10, CYAN)
-	pin_buttons[key] = _button(parent, "追踪", Rect2(518, y + 8, 86, 36), func() -> void: pin_requested.emit(key))
-	craft_buttons[key] = _button(parent, "制作", Rect2(612, y + 8, 102, 36), func() -> void: craft_requested.emit(key), key == "beacon")
+	_label(parent, number, Rect2(28, y + 3, 36, 26), 12, CYAN)
+	_label(parent, title, Rect2(72, y, 330, 23), 14, INK)
+	_label(parent, detail, Rect2(72, y + 24, 560, 18), 10, MUTED)
+	_label(parent, cost, Rect2(410, y + 3, 248, 20), 11, CYAN)
+	pin_buttons[key] = _button(parent, "追踪", Rect2(674, y + 2, 76, 34), func() -> void: pin_requested.emit(key))
+	craft_buttons[key] = _button(parent, "制作", Rect2(762, y + 2, 110, 34), func() -> void: craft_requested.emit(key), key == "beacon")
+	_line(parent, Rect2(72, y + 47, 800, 1), Color(CYAN, 0.07))
 
 func _build_mount_board() -> void:
 	var menu := _menu("mount_board")
-	var card := _panel(menu, Rect2(-460, -355, 920, 710), Vector2(0.5, 0.5))
-	_label(card, "ARK MOUNT SUPPORT BOARD  /  方舟坐骑应援板 · 契约生物收纳与召唤中心", Rect2(28, 16, 860, 22), 12, AMBER_GOLD)
-	_label(card, "契约生物应援板", Rect2(28, 40, 420, 34), 26, INK)
-	mount_board_summary_label = _label(card, "已驯服生物: 0 / 20   ·   当前出战: 0 只   ·   防卫姿态: 方舟中立反击（野生生物先手攻击时自动迎击，未攻击时按兵不动）", Rect2(28, 76, 864, 22), 12, CYAN)
-	_line(card, Rect2(28, 104, 864, 1), Color(0.28, 0.92, 1.0, 0.30))
-
-	# 顶部操作栏：全选出战 & 全部收回
-	mount_board_select_all_btn = _button(card, "☑ 全选出战 · 一键召唤全部契约生物", Rect2(28, 116, 320, 42), func() -> void: mount_board_select_all_requested.emit(), true)
-	mount_board_store_all_btn = _button(card, "📥 全部收回囊中", Rect2(362, 116, 200, 42), func() -> void: mount_board_store_all_requested.emit(), false)
-	_label(card, "点击下方应援板上的已驯服生物，即可将其立即召唤出来！", Rect2(576, 126, 316, 24), 12, AMBER_GOLD).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-
-	mount_board_empty_label = _label(card, "当前尚未驯服任何海洋生物。\n在水下使用 3号【蓝光静滞枪】蓄力冻结残血巨兽后，靠近按 E 键即可契约驯服并载入应援板！", Rect2(60, 310, 800, 64), 15, MUTED)
+	var card := _panel(menu, Rect2(-470, -350, 940, 700), Vector2(0.5, 0.5))
+	_label(card, "生物契约 / 护卫与骑乘", Rect2(28, 18, 884, 22), 11, CYAN)
+	_label(card, "与你同行的伙伴", Rect2(27, 47, 884, 38), 28, INK)
+	mount_board_summary_label = _label(card, "", Rect2(28, 96, 884, 22), 11, MUTED)
+	mount_board_select_all_btn = _button(card, "全选出战", Rect2(28, 132, 160, 36), func() -> void: mount_board_select_all_requested.emit(), true)
+	mount_board_store_all_btn = _button(card, "全部收回", Rect2(200, 132, 160, 36), func() -> void: mount_board_store_all_requested.emit())
+	_label(card, "选择生物即可召唤；护卫会在遭到攻击时迎击。", Rect2(382, 141, 530, 20), 11, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	mount_board_empty_label = _label(card, "尚未缔结生物契约。\n使用蓝光枪静滞受伤巨兽，再靠近按 E 驯服。", Rect2(90, 326, 760, 60), 15, MUTED)
 	mount_board_empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-
 	mount_board_slot_buttons.clear()
 	for i in range(20):
 		var col: int = i % 4
 		var row: int = int(i / 4)
-		var bx: float = 28.0 + float(col) * 219.0
-		var by: float = 172.0 + float(row) * 92.0
 		var slot_idx: int = i
-		var btn := _button(card, "槽位 #%02d\n[待驯服]" % (i + 1), Rect2(bx, by, 207, 80), func() -> void: mount_board_select_requested.emit(slot_idx), false)
-		btn.add_theme_font_size_override("font_size", 13)
+		var btn := _button(card, "%02d / 尚未契约" % (i + 1), Rect2(28 + col * 224, 189 + row * 87, 212, 73), func() -> void: mount_board_select_requested.emit(slot_idx))
+		btn.add_theme_font_size_override("font_size", 12)
 		btn.disabled = true
 		mount_board_slot_buttons.append(btn)
-
-	_button(card, "返回潜航 (O / Esc)", Rect2(28, 650, 190, 42), func() -> void: resume_requested.emit())
-	_label(card, "操作说明：水下按一下 O 键将坐骑收入里面；再按一下 O 键弹出此应援板，点选单个生物或点击【全选出战】即可召唤！", Rect2(230, 660, 662, 24), 11, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_button(card, "返回潜航 / O", Rect2(28, 647, 170, 34), func() -> void: resume_requested.emit())
+	_label(card, "G 骑乘或离鞍 / Z 召回 / O 收纳与管理", Rect2(222, 655, 690, 18), 10, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
 func _build_map() -> void:
 	var menu := _menu("map")
-	var card := _panel(menu, Rect2(-485, -370, 970, 740), Vector2(0.5, 0.5))
-	_label(card, "OPEN OCEAN SEA CHART  /  深蓝回声 · 全域开放勘测海图 & 洋流跃迁系统", Rect2(24, 14, 720, 22), 12, CYAN)
-	map_rank_label = _label(card, "探索家头衔：浅礁见习潜航员   ·   全域探索度 0%", Rect2(24, 36, 620, 26), 19, INK)
-
+	var card := _panel(menu, Rect2(-530, -364, 1060, 728), Vector2(0.5, 0.5))
+	_label(card, "潜航档案 / 海域勘测与洋流跃迁", Rect2(24, 16, 1012, 20), 11, CYAN)
+	map_rank_label = _label(card, "勘测海图", Rect2(24, 43, 1012, 28), 20, INK)
 	sea_chart = WorldMap.SeaChartCanvas.new()
 	sea_chart.set_bathymetry(bathy_texture)
-	_place(sea_chart, card, Rect2(24, 68, 616, 616))
+	_place(sea_chart, card, Rect2(24, 84, 600, 600))
 	sea_chart.waypoint_set.connect(func(xz: Vector2) -> void: map_waypoint_set.emit(xz))
 	sea_chart.waypoint_cleared.connect(func() -> void: map_waypoint_cleared.emit())
-	sea_chart.fast_travel_requested.connect(func(tid: String, wpos: Vector3, tname: String) -> void:
-		fast_travel_requested.emit(tid, wpos, tname)
-	)
+	sea_chart.fast_travel_requested.connect(func(tid: String, wpos: Vector3, tname: String) -> void: fast_travel_requested.emit(tid, wpos, tname))
 	sea_chart.selection_changed.connect(_on_sea_chart_selection)
-
-	_label(card, "左键海面/右键：放置或取消导航标点  ·  左键图标：查看情报  ·  双击已解锁前哨/地标：立即跃迁  ·  滚轮/中键：缩放平移", Rect2(24, 694, 624, 22), 11, MUTED)
-
-	# 右侧勘测仪表与传送控制栏
-	var side := _panel(card, Rect2(656, 68, 290, 560))
-	_label(side, "🗺️ 开放海域勘测总览", Rect2(14, 12, 260, 22), 14, AMBER_GOLD)
-	map_stats_label = _label(side, "海图迷雾揭开: 0%\n已发现生态地标: 0 / 24\n已联网科考前哨: 0 / 6\n已收集远古遗珍: 0 / 12", Rect2(14, 38, 262, 82), 12, INK)
-	_line(side, Rect2(14, 126, 262, 1), Color(0.28, 0.92, 1.0, 0.25))
-
-	_label(side, "◈ 当前选中海图坐标", Rect2(14, 136, 260, 20), 12, CYAN)
-	map_sel_title = _label(side, "点击左侧海图选择地标或标点", Rect2(14, 158, 262, 24), 15, INK)
-	map_sel_coords = _label(side, "坐标: --   ·   水深: --", Rect2(14, 184, 262, 20), 11, AMBER_GOLD)
-	map_sel_desc = _label(side, "在海图上点击任意已发现的地标、已激活的科考前哨站或逃生舱母港，即可启动洋流跃迁瞬间抵达。", Rect2(14, 208, 262, 68), 11, MUTED)
+	_label(card, "左键选择 / 右键标点 / 双击跃迁 / 滚轮缩放 / 中键平移", Rect2(24, 697, 600, 18), 10, MUTED)
+	var side := _panel(card, Rect2(648, 84, 388, 550))
+	_label(side, "海域勘测记录", Rect2(18, 16, 352, 22), 14, INK)
+	map_stats_label = _label(side, "", Rect2(18, 48, 352, 82), 12, MUTED)
+	_line(side, Rect2(18, 140, 352, 1), Color(CYAN, 0.15))
+	_label(side, "当前位置情报", Rect2(18, 155, 352, 20), 11, CYAN)
+	map_sel_title = _label(side, "选择地标或海域坐标", Rect2(18, 184, 352, 24), 16, INK)
+	map_sel_coords = _label(side, "坐标 -- / 水深 --", Rect2(18, 215, 352, 20), 11, AMBER_GOLD)
+	map_sel_desc = _label(side, "探索并激活前哨，建立你的远洋航线。", Rect2(18, 245, 352, 56), 12, MUTED)
 	map_sel_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-
-	map_travel_btn = _button(side, "⚡ 洋流跃迁传送至此", Rect2(14, 284, 262, 42), func() -> void:
+	map_travel_btn = _button(side, "洋流跃迁至此", Rect2(18, 312, 352, 38), func() -> void:
 		if not map_selected_info.is_empty() and bool(map_selected_info.get("can_travel", false)):
 			fast_travel_requested.emit(str(map_selected_info["id"]), map_selected_info["pos"], str(map_selected_info["name"]))
 	, true)
 	map_travel_btn.disabled = true
-
-	map_waypoint_btn = _button(side, "✦ 将选中处设为导航标点", Rect2(14, 334, 262, 36), func() -> void:
+	map_waypoint_btn = _button(side, "设为导航标点", Rect2(18, 360, 352, 34), func() -> void:
 		if not map_selected_info.is_empty() and map_selected_info.has("pos"):
 			var p3: Vector3 = map_selected_info["pos"]
 			map_waypoint_set.emit(Vector2(p3.x, p3.z))
 	)
 	map_waypoint_btn.disabled = true
-
-	map_clear_wp_btn = _button(side, "✕ 清除自定义导航标点", Rect2(14, 376, 262, 34), func() -> void:
-		map_waypoint_cleared.emit()
-	)
-
-	_line(side, Rect2(14, 420, 262, 1), Color(0.28, 0.92, 1.0, 0.22))
-	_button(side, "⊕ 居中我", Rect2(14, 430, 102, 34), func() -> void: sea_chart.center_on_player())
-	_button(side, "＋ 放大", Rect2(122, 430, 74, 34), func() -> void: sea_chart.adjust_zoom(1.25))
-	_button(side, "－ 缩小", Rect2(202, 430, 74, 34), func() -> void: sea_chart.adjust_zoom(0.8))
-	_button(side, "📡 释放广域声呐勘测脉冲 [N]", Rect2(14, 470, 262, 36), func() -> void: sonar_ping_requested.emit())
-	_label(side, "⌂ 母港   ⬡ 科考前哨   ◈ 地标   ⚓ 潜艇   ◆ 遗珍   ✦ 标点", Rect2(14, 516, 262, 34), 11, MUTED)
-
-	_button(card, "返回潜航 (M / Esc)", Rect2(656, 642, 290, 44), func() -> void: resume_requested.emit())
+	map_clear_wp_btn = _button(side, "清除导航标点", Rect2(18, 404, 352, 32), func() -> void: map_waypoint_cleared.emit())
+	_button(side, "居中", Rect2(18, 450, 104, 32), func() -> void: sea_chart.center_on_player())
+	_button(side, "+ 放大", Rect2(134, 450, 112, 32), func() -> void: sea_chart.adjust_zoom(1.25))
+	_button(side, "− 缩小", Rect2(258, 450, 112, 32), func() -> void: sea_chart.adjust_zoom(0.8))
+	_button(side, "N / 声呐勘测脉冲", Rect2(18, 496, 352, 34), func() -> void: sonar_ping_requested.emit())
+	_label(card, "○ 母港  □ 前哨  ◇ 标点  △ 潜艇  · 遗珍", Rect2(648, 643, 388, 18), 10, MUTED)
+	_button(card, "返回潜航 / M", Rect2(648, 674, 388, 38), func() -> void: resume_requested.emit())
 
 func _on_sea_chart_selection(info: Dictionary) -> void:
 	map_selected_info = info
@@ -553,7 +490,7 @@ func _on_sea_chart_selection(info: Dictionary) -> void:
 		return
 	if info.is_empty():
 		map_sel_title.text = "点击左侧海图选择地标或标点"
-		map_sel_coords.text = "坐标: --   ·   水深: --"
+		map_sel_coords.text = "坐标: -- · 水深: --"
 		map_sel_desc.text = "点击任意位置放置标点，或选择已解锁的前哨站/地标进行快速跃迁。"
 		map_travel_btn.disabled = true
 		map_waypoint_btn.disabled = true
@@ -561,21 +498,23 @@ func _on_sea_chart_selection(info: Dictionary) -> void:
 	var p3: Vector3 = info.get("pos", Vector3.ZERO)
 	var can_tr: bool = bool(info.get("can_travel", false))
 	map_sel_title.text = str(info.get("name", "海域坐标"))
-	map_sel_coords.text = "坐标 X:%+d  Z:%+d   ·   深度 %dm" % [roundi(p3.x), roundi(p3.z), maxi(0, roundi(-p3.y))]
+	map_sel_coords.text = "坐标 X:%+d  Z:%+d · 深度 %dm" % [roundi(p3.x), roundi(p3.z), maxi(0, roundi(-p3.y))]
 	map_sel_desc.text = str(info.get("desc", ""))
 	map_travel_btn.disabled = not can_tr
-	map_travel_btn.text = "⚡ 洋流跃迁传送至此" if can_tr else "🔒 尚未解锁跃迁 (前往勘测/激活)"
+	map_travel_btn.text = "洋流跃迁至此" if can_tr else "尚未解锁 / 前往勘测或激活"
 	map_waypoint_btn.disabled = false
 
 func _build_win() -> void:
 	var menu := _menu("win")
-	var card := _panel(menu, Rect2(-320, -236, 640, 472), Vector2(0.5, 0.5))
-	_label(card, "●  EXPEDITION RECORD", Rect2(40, 34, 520, 30), 14, CYAN)
-	win_title = _label(card, "深海收到了回声", Rect2(37, 98, 560, 61), 36, INK)
-	win_desc = _label(card, "求救信标已重新上线。\n救援船正在驶来，你将平安返航。", Rect2(40, 185, 560, 72), 16, MUTED)
-	win_time = _label(card, "本次潜航  00:00", Rect2(40, 282, 560, 28), 13, CYAN)
-	_button(card, "继续漫游开放海域     ✦", Rect2(40, 346, 332, 56), func() -> void: resume_requested.emit(), true)
-	_button(card, "开启新航程     →", Rect2(386, 346, 214, 56), func() -> void: restart_requested.emit(), false)
+	var card := _panel(menu, Rect2(-340, -240, 680, 480), Vector2(0.5, 0.5))
+	_line(card, Rect2(36, 38, 38, 2), AMBER_GOLD)
+	_label(card, "潜航记录 / 航程里程碑", Rect2(90, 27, 554, 22), 11, CYAN)
+	win_title = _label(card, "深海收到了回声", Rect2(35, 95, 610, 58), 32, INK)
+	win_desc = _label(card, "", Rect2(36, 185, 608, 86), 15, MUTED)
+	win_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	win_time = _label(card, "本次潜航 00:00", Rect2(36, 292, 608, 24), 12, CYAN)
+	_button(card, "继续探索", Rect2(36, 368, 330, 48), func() -> void: resume_requested.emit(), true)
+	_button(card, "开启新航程", Rect2(382, 368, 262, 48), func() -> void: restart_requested.emit())
 
 func update_hud(data: Dictionary) -> void:
 	if not is_instance_valid(oxygen_value):
@@ -626,7 +565,7 @@ func update_hud(data: Dictionary) -> void:
 		status_value.text = "%s   [X:%+d Z:%+d]" % [biome, roundi(p_pos.x), roundi(p_pos.z)]
 		_set_font_color(status_value, CYAN)
 
-	home_value.text = "%d m" % roundi(float(data.get("distance_home", 0.0)))
+	home_value.text = "母港 %d m" % roundi(float(data.get("distance_home", 0.0)))
 	if is_instance_valid(explore_summary_label):
 		explore_summary_label.text = "勘测 %d%% · 地标 %d/%d\n前哨 %d/%d · 遗珍 %d/%d" % [
 			exp_pct, lm_cnt, lm_tot, out_cnt, out_tot, rel_cnt, rel_tot
@@ -668,7 +607,7 @@ func update_hud(data: Dictionary) -> void:
 	if is_instance_valid(sea_chart) and active_screen == "map":
 		sea_chart.update_chart(chart_payload)
 	if is_instance_valid(map_rank_label):
-		map_rank_label.text = "探索家头衔：【%s】   ·   全域探索度 %d%%" % [exp_rank, exp_pct]
+		map_rank_label.text = "探索家头衔：【%s】 · 全域探索度 %d%%" % [exp_rank, exp_pct]
 	if is_instance_valid(map_stats_label):
 		var survey_pct := roundi(float(data.get("survey_ratio", 0.0)) * 100.0)
 		map_stats_label.text = "海图扇区揭开: %d%%\n已发现生态地标: %d / %d\n已联网科考前哨: %d / %d\n已收集远古遗珍: %d / %d" % [
@@ -693,17 +632,17 @@ func update_hud(data: Dictionary) -> void:
 	var marinca_species: Dictionary = data.get("marinca_species", {})
 	var marinca_total: int = maxi(13, marinca_species.size())
 	if is_instance_valid(dave_status_label):
-		var w_str := "⚖ 超重 %.1f/%.0fkg" % [cur_weight, max_weight] if overweight else "⚖ 负重 %.1f/%.0fkg" % [cur_weight, max_weight]
+		var w_str := ("超重" if overweight else "负重") + " %.1f/%.0f kg" % [cur_weight, max_weight]
 		var d_str := "∞" if is_explore else "%d/%d" % [drone_cur, drone_max]
-		dave_status_label.text = "%s  ·  💰 %dG  ·  🎈 无人机 %s [V打捞]  ·  ★ 图鉴 %d/%d [B寿司吧]" % [
-			w_str, gold_val, d_str, marinca_cards.size(), marinca_total
+		dave_status_label.text = "%s · %d G\n无人机 %s / V 打捞" % [
+			w_str, gold_val, d_str
 		]
 		_set_font_color(dave_status_label, ORANGE if overweight else CYAN)
 
 	if is_instance_valid(sushi_header_label):
 		var rep_lv: int = int(data.get("sushi_reputation", 1))
 		var served_cnt: int = int(data.get("dishes_served", 0))
-		sushi_header_label.text = "💰 深海金币: %d G    ·    🍣 餐厅声望 Lv.%d (已售 %d 份)    ·    ⚖ 背包负重: %.1f / %.0f kg" % [
+		sushi_header_label.text = " 深海金币: %d G · 餐厅声望 Lv.%d (已售 %d 份) · 背包负重: %.1f / %.0f kg" % [
 			gold_val, rep_lv, served_cnt, cur_weight, max_weight
 		]
 		sushi_ingredients_label.text = "食材库存：鲜活小金鱼 %d   /   海兽生肉 %d   /   海藻 %d   /   骨齿 %d   /   韧性兽皮 %d   /   甲壳 %d" % [
@@ -715,7 +654,7 @@ func update_hud(data: Dictionary) -> void:
 			int(inventory.get("chitin", 0))
 		]
 		var three_stars: int = int(data.get("three_star_count", 0))
-		marinca_summary_label.text = "已收集物种: %d / %d   ·   ★★★ 完美图鉴: %d\n三星料理售价加成: +%d%%" % [
+		marinca_summary_label.text = "已收集物种: %d / %d · ★★★ 完美图鉴: %d\n三星料理售价加成: +%d%%" % [
 			marinca_cards.size(), marinca_total, three_stars, three_stars * 12
 		]
 		var lines: Array[String] = []
@@ -846,11 +785,9 @@ func update_hud(data: Dictionary) -> void:
 	var cur_w: String = str(data.get("current_weapon", "knife"))
 	var w_level: int = int(data.get("weapon_level", 0))
 	var w_bonus: float = float(data.get("damage_bonus", 0.0))
-	var k_txt: String = "【1 潜水刀】" if cur_w == "knife" else "1 潜水刀"
-	var a_txt: String = ("【2 破拆斧】" if cur_w == "axe" else "2 破拆斧") + ("" if has_axe else " (未制作)")
-	var s_txt: String = ("【3 蓝光枪】" if cur_w == "sonic" else "3 蓝光枪") + ("" if has_sonic else " (未制作)")
-	var upgrade_info: String = "   ·   武装强化 Lv.%d (+%d 伤)" % [w_level, int(w_bonus)] if w_level > 0 else ""
-	weapon_bar_label.text = "%s      %s      %s%s" % [k_txt, a_txt, s_txt, upgrade_info]
+	var weapon_names := {"knife": "潜水刀", "axe": "破拆战斧", "sonic": "蓝光静滞枪", "marker": "光标指示枪"}
+	var upgrade_info := " · 强化 %d / +%d" % [w_level, int(w_bonus)] if w_level > 0 else ""
+	weapon_bar_label.text = "1—4 切换 / %s%s" % [str(weapon_names.get(cur_w, "潜水装备")), upgrade_info]
 	var is_gun := cur_w == "sonic"
 	var aiming: bool = is_gun and bool(data.get("aiming", false))
 	var scoped: bool = is_gun and bool(data.get("scoped", false))
@@ -870,7 +807,7 @@ func update_hud(data: Dictionary) -> void:
 	charge_bar.value = float(data.get("charge_ratio", 0.0))
 	charge_label.text = "静滞大招就绪 · 松开发射" if bool(data.get("charge_ready", false)) else "蓄能  %.1f / 3.0 秒" % (charge_bar.value * 3.0)
 	var cooldown: float = float(data.get("gun_cooldown", 0.0))
-	weapon_hint.text = ("能量恢复 %.1f 秒" % cooldown) if is_gun and cooldown > 0.0 else ("短按 R / 左键：激光    蓄力 3 秒松手：静滞大招    T 瞄准 / Y 远距镜" if is_gun else "")
+	weapon_hint.text = ("能量恢复 %.1f s" % cooldown) if is_gun and cooldown > 0.0 else ("R 激光 / 长按蓄力静滞 · T 瞄准 · Y 远距镜" if is_gun else "")
 	var boss: Dictionary = data.get("boss", {})
 	var fighting: bool = bool(boss.get("active", false))
 	boss_panel.visible = fighting
@@ -912,30 +849,15 @@ func update_hud(data: Dictionary) -> void:
 	var mount_idx: int = int(data.get("active_mount_idx", -1))
 	var beast_cnt: int = beasts.size()
 	var atk_mult: float = pow(2.0, maxf(0.0, float(beast_cnt - 1))) if beast_cnt > 0 else 1.0
-	tame_title.text = "◈ 契约坐骑 (%d/20 · 出战 %d) · 攻击 ×%.0f · O 收纳/应援板" % [beast_cnt, deployed_cnt, atk_mult]
-	if beast_cnt == 0:
-		tame_slots_label.text = "大型猛兽/Boss近血时，用声波枪蓄力静滞后靠近按 E 驯服 (上限20只)！"
-		tame_mount_label.text = "方舟中立防卫：野生生物先手攻击时坐骑自动反击 · 按 O 打开坐骑应援板"
+	tame_panel.visible = beast_cnt > 0 and not scoped
+	tame_title.text = "契约 %d/20 · 出战 %d / O 管理" % [beast_cnt, deployed_cnt]
+	if mount_idx >= 0 and mount_idx < beast_cnt:
+		tame_mount_label.text = "骑乘 %s / G 离鞍" % str(beasts[mount_idx].get("name", "海兽"))
 	else:
-		var slots_str := ""
-		for i in range(mini(beast_cnt, 10)):
-			var b_info: Dictionary = beasts[i]
-			var is_dep: bool = bool(b_info.get("deployed", true))
-			var tag := "[★]" if i == mount_idx else ("[出]" if is_dep else "[收]")
-			var hotkey_str := str(i + 5) if i < 5 else str((i - 5) % 10)
-			slots_str += "%s:%s%s " % [hotkey_str, tag, str(b_info.get("name", "海兽")).substr(0, 3)]
-		if beast_cnt > 10:
-			slots_str += "...(+%d)" % (beast_cnt - 10)
-		tame_slots_label.text = slots_str
-		if mount_idx >= 0 and mount_idx < beast_cnt:
-			tame_mount_label.text = "★ 骑乘: %s (WASD/空格/C 机动 · 按 O 一键收纳坐骑)" % beasts[mount_idx].get("name", "海兽")
-		elif deployed_cnt == 0:
-			tame_mount_label.text = "📥 全部 %d 只坐骑已收入囊中 · 再按 O 键打开【坐骑应援板】点选或全选出战" % beast_cnt
-		else:
-			tame_mount_label.text = "🛡️ %d/%d 只坐骑出战护卫 · 生物先手攻击时自动反击 · 按 O 收入囊中" % [deployed_cnt, beast_cnt]
+		tame_mount_label.text = "护卫待命 · 战力 ×%.0f" % atk_mult
 
 	if is_instance_valid(mount_board_summary_label):
-		mount_board_summary_label.text = "已驯服生物: %d / 20   ·   当前出战: %d 只   ·   战力倍率: ×%.0f   ·   防卫姿态: 方舟中立反击（敌方先攻击才出击）" % [
+		mount_board_summary_label.text = "已契约 %d/20 · 出战 %d · 战力 ×%.0f · 中立防卫" % [
 			beast_cnt, deployed_cnt, atk_mult
 		]
 		if is_instance_valid(mount_board_empty_label):
@@ -953,36 +875,36 @@ func update_hud(data: Dictionary) -> void:
 				var is_dep: bool = bool(b_entry.get("deployed", true))
 				s_btn.visible = true
 				s_btn.disabled = false
-				var state_str := "● 已召唤出战" if is_dep else "○ 点击召唤出战"
-				s_btn.text = "#%02d 【%s】\nHP %d  ·  %s" % [idx + 1, b_name, b_hp, state_str]
+				var state_str := "出战中" if is_dep else "可召唤"
+				s_btn.text = "%02d / %s\n生命 %d · %s" % [idx + 1, b_name, b_hp, state_str]
 				_set_font_color(s_btn, AMBER_GOLD if is_dep else INK)
 			else:
 				s_btn.visible = beast_cnt > 0
 				s_btn.disabled = true
-				s_btn.text = "应援槽位 #%02d\n[ 空闲待驯服 ]" % (idx + 1)
+				s_btn.text = "%02d / 尚未契约" % (idx + 1)
 
 	var is_shield: bool = bool(data.get("shield_active", false))
-	shield_label.text = "[C] 单手能量盾: [防御中 🛡️]" if is_shield else "[C] 单手能量盾: [收起]"
+	shield_label.text = "C / 能量盾防御中" if is_shield else "C / 能量盾收起"
 	_set_font_color(shield_label, CYAN if is_shield else MUTED)
 
 	if fighting:
-		mission_title.text = "【巨兽决战】%s" % str(boss.get("name", "深渊领主"))
-		mission_detail.text = "近血时用声波枪静滞可按 E 契约驯服为坐骑！"
+		mission_title.text = "巨兽领域 / %s" % str(boss.get("name", "深渊领主"))
+		mission_detail.text = "残血时蓄力静滞，靠近按 E 契约驯服。"
 	elif bool(data.get("mother_tree_active", false)) and not bool(data.get("escape_crafted", false)):
 		var items_cnt: int = int(data.get("tree_items_collected", 0))
 		if items_cnt >= 3:
-			mission_title.text = "【母树圣物齐集】可前往母港控制台解锁跃迁纪念"
+			mission_title.text = "母树圣物齐集 / 返回母港"
 			mission_detail.text = "母树遗物 (3/3) · 或按 M 继续自由探索开放大海域"
 		else:
 			var dist_tree: float = float(data.get("distance_mother_tree", 300.0))
-			mission_title.text = "【深海母树现世】潜入母树圣所收集核心遗物"
+			mission_title.text = "潜入母树圣所"
 			mission_detail.text = "深海极渊母树 %d 米 · 收集核心物资 (%d/3)" % [roundi(dist_tree), items_cnt]
 	elif has_wp:
 		var wp_dist: int = roundi(p_pos.distance_to(wp_pos))
-		mission_title.text = "【%s】勘测度 %d%% · 航向自定义标点" % [exp_rank, exp_pct]
+		mission_title.text = "沿标点继续勘测 / %d%%" % exp_pct
 		mission_detail.text = "✦ 距离目标标点 %d 米 · 按 M 查看海图或切换跃迁点" % wp_dist
 	else:
-		mission_title.text = "【%s】开放海域自由探索 (%d%%)" % [exp_rank, exp_pct]
+		mission_title.text = "开放海域探索 / %d%%" % exp_pct
 		if has_near_out:
 			mission_detail.text = "最近未激活前哨 %dm · 按 M 海图跃迁 / N 声呐寻宝" % roundi(best_out_d)
 		else:
@@ -1008,7 +930,7 @@ func update_hud(data: Dictionary) -> void:
 
 func set_screen(screen: String) -> void:
 	active_screen = screen
-	instruments.visible = screen in ["play", "pause", "craft", "sushi", "mount_board", "map"]
+	instruments.visible = screen == "play"
 	for key: String in menus:
 		var menu: Control = menus[key]
 		menu.visible = key == screen
@@ -1064,22 +986,23 @@ func _label(parent: Node, text: String, rect: Rect2, font_size: int, color: Colo
 	label.text = text
 	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_color", color)
+	if parent == instruments:
+		label.add_theme_color_override("font_outline_color", Color(0.012, 0.036, 0.055, 0.88))
+		label.add_theme_constant_override("outline_size", 3)
+		label.add_theme_color_override("font_shadow_color", Color(0.008, 0.024, 0.038, 0.62))
+		label.add_theme_constant_override("shadow_offset_x", 0)
+		label.add_theme_constant_override("shadow_offset_y", 1)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return label
 
-func _style(background: Color, border: Color = Color.TRANSPARENT, radius: int = 10) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = background
-	style.border_color = border
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(radius)
-	return style
+func _style(background: Color, border: Color = Color.TRANSPARENT, radius: int = 4) -> StyleBoxFlat:
+	return OceanUiTheme.surface(background, border, radius)
 
 func _panel(parent: Node, rect: Rect2, anchor := Vector2.ZERO) -> Panel:
 	var panel := Panel.new()
 	_place(panel, parent, rect, anchor)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_theme_stylebox_override("panel", _style(PANEL, Color(0.28, 0.92, 1.0, 0.42)))
+	panel.add_theme_stylebox_override("panel", _style(PANEL, Color(CYAN, 0.20)))
 	return panel
 
 func _line(parent: Node, rect: Rect2, color: Color) -> void:
@@ -1093,15 +1016,6 @@ func _button(parent: Node, text: String, rect: Rect2, callback: Callable, primar
 	_place(button, parent, rect)
 	button.text = text
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	button.add_theme_font_size_override("font_size", 16)
-	button.add_theme_color_override("font_color", Color("082c36") if primary else INK)
-	button.add_theme_color_override("font_hover_color", Color("082c36") if primary else Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", Color("082c36") if primary else Color.WHITE)
-	button.add_theme_color_override("font_disabled_color", MUTED)
-	button.add_theme_stylebox_override("normal", _style(CYAN if primary else Color(0.1, 0.3, 0.34, 0.24), CYAN if primary else Color(0.45, 0.82, 0.82, 0.35)))
-	button.add_theme_stylebox_override("hover", _style(Color("a4f5e4") if primary else Color(0.13, 0.42, 0.46, 0.5), CYAN))
-	button.add_theme_stylebox_override("pressed", _style(Color("59baaf") if primary else Color(0.1, 0.26, 0.3, 0.8), CYAN))
-	button.add_theme_stylebox_override("disabled", _style(Color(0.13, 0.23, 0.27, 0.25), Color(0.4, 0.7, 0.7, 0.15)))
-	button.add_theme_stylebox_override("focus", _style(Color.TRANSPARENT, INK))
+	OceanUiTheme.button(button, primary)
 	button.pressed.connect(callback)
 	return button

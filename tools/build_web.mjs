@@ -4,11 +4,37 @@ import { spawnSync } from "node:child_process";
 import zlib from "node:zlib";
 
 const ROOT = process.cwd();
+const TOOLS_DIR = path.join(ROOT, ".tools");
+const STAGE_DIR = path.join(TOOLS_DIR, "web-build-stage");
 const WEB_DIR = path.join(ROOT, "build", "web");
 const CHUNK_SIZE_BYTES = 512 * 1024; // 512 KiB chunks for fast parallel upload & download
 const MAX_CF_ASSET_BYTES = 5 * 1024 * 1024;
 
+const STAGE_ROOT_FILES = [
+	"project.godot",
+	"export_presets.cfg",
+	"icon.svg",
+	"icon.svg.import",
+];
+
+const STAGE_DIRS = [
+	"scenes",
+	"scripts",
+	"shaders",
+	path.join("assets", "audio"),
+	path.join("assets", "collision"),
+	path.join("assets", "fonts"),
+	path.join("assets", "models"),
+];
+
 function findGodotBinary() {
+	if (process.env.GODOT_BIN && fs.existsSync(process.env.GODOT_BIN)) {
+		return process.env.GODOT_BIN;
+	}
+	const macBundled = path.join(ROOT, ".tools", "Godot.app", "Contents", "MacOS", "Godot");
+	if (fs.existsSync(macBundled)) {
+		return macBundled;
+	}
 	const candidates = [];
 	const localAppData = process.env.LOCALAPPDATA || "";
 	const wingetRoot = path.join(localAppData, "Microsoft", "WinGet", "Packages");
@@ -46,9 +72,97 @@ const SMALL_PROP_TEXTURE_PREFIXES = [
 	"tubeworms_",
 ];
 
-function ensureLossyModelTextures() {
-	const modelsDir = path.join(ROOT, "assets", "models");
-	if (!fs.existsSync(modelsDir)) return;
+function prepareStageProject(stageDir) {
+	const resolvedTools = path.resolve(TOOLS_DIR);
+	const resolvedStage = path.resolve(stageDir);
+	if (!resolvedStage.startsWith(resolvedTools + path.sep)) {
+		throw new Error(`Refusing to clean stage directory outside .tools: ${resolvedStage}`);
+	}
+	if (fs.existsSync(resolvedStage)) {
+		fs.rmSync(resolvedStage, { recursive: true, force: true });
+	}
+	fs.mkdirSync(resolvedStage, { recursive: true });
+
+	for (const relFile of STAGE_ROOT_FILES) {
+		const src = path.join(ROOT, relFile);
+		if (!fs.existsSync(src)) {
+			if (relFile === "project.godot" || relFile === "export_presets.cfg") {
+				throw new Error(`Required project file missing: ${src}`);
+			}
+			continue;
+		}
+		fs.copyFileSync(src, path.join(resolvedStage, relFile));
+	}
+
+	for (const relDir of STAGE_DIRS) {
+		const src = path.join(ROOT, relDir);
+		if (!fs.existsSync(src)) continue;
+		const dst = path.join(resolvedStage, relDir);
+		fs.mkdirSync(path.dirname(dst), { recursive: true });
+		fs.cpSync(src, dst, { recursive: true });
+	}
+	console.log(`[build_web] Prepared isolated Web staging project at: ${resolvedStage}`);
+}
+
+function ensureExtractedGlbTextures(stageDir) {
+	const modelsDir = path.join(stageDir, "assets", "models");
+	if (!fs.existsSync(modelsDir)) return { glbImportsUpdated: 0, missingExtracts: false };
+
+	const entries = fs.readdirSync(modelsDir);
+	const allAssetIds = entries.filter((name) => name.endsWith(".glb")).map((name) => name.slice(0, -4));
+	const pngImports = entries.filter((name) => name.endsWith(".png.import"));
+	let glbImportsUpdated = 0;
+	let missingExtracts = false;
+
+	for (const name of entries) {
+		if (name.endsWith(".glb")) {
+			const assetId = name.slice(0, -4);
+			const importName = `${name}.import`;
+			if (!entries.includes(importName)) {
+				missingExtracts = true;
+			}
+			const longerOverlaps = allAssetIds.filter(
+				(otherId) => otherId.length > assetId.length && otherId.startsWith(`${assetId}_`)
+			);
+			const matchingPngImports = pngImports.filter((imp) => {
+				if (!imp.startsWith(`${assetId}_`)) return false;
+				return !longerOverlaps.some((otherId) => imp.startsWith(`${otherId}_`));
+			});
+			if (matchingPngImports.length < 4) {
+				missingExtracts = true;
+			}
+		}
+		if (!name.endsWith(".glb.import")) continue;
+		const fullPath = path.join(modelsDir, name);
+		const content = fs.readFileSync(fullPath, "utf8");
+		let next = content;
+		if (/^gltf\/embedded_image_handling=\d+/m.test(next)) {
+			next = next.replace(/^gltf\/embedded_image_handling=\d+/m, "gltf/embedded_image_handling=1");
+		} else if (next.includes("[params]")) {
+			next = `${next.trimEnd()}\ngltf/embedded_image_handling=1\n`;
+		}
+		if (next !== content) {
+			fs.writeFileSync(fullPath, next, "utf8");
+			glbImportsUpdated++;
+		}
+	}
+	return { glbImportsUpdated, missingExtracts };
+}
+
+function upsertImportParam(content, key, value) {
+	const pattern = new RegExp(`^${key.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}=.*$`, "m");
+	if (pattern.test(content)) {
+		return content.replace(pattern, `${key}=${value}`);
+	}
+	if (content.includes("[params]")) {
+		return `${content.trimEnd()}\n${key}=${value}\n`;
+	}
+	return content;
+}
+
+function ensureLossyModelTextures(stageDir) {
+	const modelsDir = path.join(stageDir, "assets", "models");
+	if (!fs.existsSync(modelsDir)) return 0;
 	let updated = 0;
 	for (const name of fs.readdirSync(modelsDir)) {
 		if (!name.endsWith(".png.import")) continue;
@@ -56,29 +170,44 @@ function ensureLossyModelTextures() {
 		let content = fs.readFileSync(fullPath, "utf8");
 		const isSmallProp = SMALL_PROP_TEXTURE_PREFIXES.some((prefix) => name.startsWith(prefix));
 		const targetLimit = isSmallProp ? "256" : "512";
-		const next = content
-			.replace("compress/mode=0", "compress/mode=1")
-			.replace("mipmaps/generate=false", "mipmaps/generate=true")
-			.replace(/process\/size_limit=\d+/, `process/size_limit=${targetLimit}`);
+		let next = content;
+		next = upsertImportParam(next, "compress/mode", "1");
+		next = upsertImportParam(next, "mipmaps/generate", "true");
+		next = upsertImportParam(next, "process/size_limit", targetLimit);
 		if (next !== content) {
 			fs.writeFileSync(fullPath, next, "utf8");
 			updated++;
 		}
 	}
 	if (updated > 0) {
-		console.log(`[build_web] Optimized ${updated} model texture imports (lossy WebP + mipmaps, tiered 256/512px)`);
+		console.log(
+			`[build_web] Optimized ${updated} staged model texture imports in ${modelsDir} (lossy WebP + mipmaps, tiered 256/512px)`
+		);
+	}
+	return updated;
+}
+
+function runGodotImport(godotBin, stageDir, reason) {
+	console.log(`[build_web] Running Godot headless import in stage (${reason})...`);
+	const res = spawnSync(godotBin, ["--headless", "--path", stageDir, "--import"], {
+		cwd: stageDir,
+		stdio: "inherit",
+	});
+	if (res.status !== 0) {
+		throw new Error(`Godot headless import (${reason}) failed with code ${res.status}`);
 	}
 }
 
-function exportGodotWeb(godotBin) {
+function exportGodotWeb(godotBin, stageDir) {
 	fs.mkdirSync(WEB_DIR, { recursive: true });
 	fs.writeFileSync(path.join(ROOT, "build", ".gdignore"), "");
+	const outputHtml = path.join(WEB_DIR, "index.html");
 
-	console.log(`[build_web] Exporting Godot Web build using: ${godotBin}`);
+	console.log(`[build_web] Exporting Godot Web build from stage using: ${godotBin}`);
 	const res = spawnSync(
 		godotBin,
-		["--headless", "--path", ".", "--export-release", "Web", "build/web/index.html"],
-		{ cwd: ROOT, stdio: "inherit" }
+		["--headless", "--path", stageDir, "--export-release", "Web", outputHtml],
+		{ cwd: stageDir, stdio: "inherit" }
 	);
 	if (res.status !== 0) {
 		throw new Error(`Godot Web export failed with code ${res.status}`);
@@ -226,12 +355,18 @@ function postProcessWebBuild() {
 		const mb = (stat.size / 1048576).toFixed(2);
 		console.log(`  - ${file}: ${mb} MB (${stat.size} bytes)`);
 		if (stat.size > MAX_CF_ASSET_BYTES) {
-			throw new Error(`Asset ${file} (${mb} MB) exceeds Cloudflare Workers 25 MiB limit!`);
+			throw new Error(`Asset ${file} (${mb} MB) exceeds Cloudflare Workers 5 MiB limit!`);
 		}
 	}
 }
 
 const godotBin = findGodotBinary();
-ensureLossyModelTextures();
-exportGodotWeb(godotBin);
+prepareStageProject(STAGE_DIR);
+ensureExtractedGlbTextures(STAGE_DIR);
+ensureLossyModelTextures(STAGE_DIR);
+runGodotImport(godotBin, STAGE_DIR, "baking 256/512px lossy Web textures");
+if (ensureLossyModelTextures(STAGE_DIR) > 0) {
+	runGodotImport(godotBin, STAGE_DIR, "re-baking newly extracted 256/512px Web textures");
+}
+exportGodotWeb(godotBin, STAGE_DIR);
 postProcessWebBuild();

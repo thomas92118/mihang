@@ -2,6 +2,8 @@
 
 使用 Blender MCP 制作原创模型、Godot 4.7.2 实现的**开放大地图海洋探索与生态沙盒游戏**。在 **1800m × 1800m** 无隔离墙的无缝立体海域中自由远航，借助等深线迷雾海图、360° 航向罗盘、声呐中继前哨站与洋流跃迁网络，从北境晴空珊瑚环礁一路探索至百四十米深的南极渊星辉圣域。
 
+采用**绘画感半写实海洋科考冒险风**（九大海域色彩体系、水体连续光谱吸收与头灯色彩还原、四通道 PBR 笔触肌理材质与静谧海图仪器 UI）。详见 [美术与渲染技术规范](docs/art-direction.md) 与 [美术重构前后对比图](docs/art-comparison.png)。
+
 ![实际游戏画面](docs/gameplay.png)
 
 | 标题界面 | 逃生舱制造台 | 失事科考潜艇 | 深渊热液喷口 |
@@ -226,42 +228,52 @@ Windows 双击 **开始游戏.bat**；macOS 双击 **开始游戏.command**；�
 
 ## 项目与资产
 
-- `scripts/`：潜水控制器、武器持握与程序化打击系统、生态鱼群与掠食者追猎 AI、生存与探险状态管理、HUD 动态仪表盘、游戏总控。
+- `scripts/`：潜水控制器、武器持握与程序化打击系统、生态鱼群与掠食者追猎 AI、生存与探险状态管理、HUD 动态仪表盘、游戏总控；含全局色彩与光谱衰减词汇 `scripts/art_direction.gd` 及材质精修/海图仪器 UI 模块 `scripts/presentation/`。
 - `scripts/energy_orb.gd`、`scripts/marine_creature.gd`：球体连续碰撞检测、静滞弹，以及海蜘蛛、海豹和水龙的程序化模型与动作。
-- `shaders/`：海底深度感知沙质衰减着色器（`sand.gdshader`）、动态海浪表面着色器（`water.gdshader`）、阳光束体积光（`shaft.gdshader`）。
-- `assets/models/`：Blender 5.2.1 LTS 导出的 28 个原创高品质 GLB 资产模型（新增巨型鬼蝠鲼、深海绿海龟、深渊发光巨乌贼、底栖巨螯蟹、扇形海柳珊瑚、热泉巨型管虫群落、海星与发光海胆群；升级潜水刀/战斧/蓝光静滞枪、发光小金鱼、巡弋暗礁鲨、深渊鮟鱇巨兽、逃生舱、失事潜艇、鹿角珊瑚、管状珊瑚、海葵、水晶柱、水母、海藻与海床岩石等）。
-- `tools/create_assets.py`：可复现的 Blender 建模与材质导出脚本。
+- `shaders/`：九大海域深度感知海床沉积着色器（`sand.gdshader`）、菲涅耳动态海浪与天光透射窗（`water.gdshader`）、体积丁达尔阳光束（`shaft.gdshader`）、海流摆动植群（`plant_sway.gdshader`）、海洋雪微粒（`marine_snow.gdshader`）、GPU 鱼群游动（`ecosystem_fish.gdshader`）、静滞场（`stasis.gdshader`）与光学测距镜（`scope.gdshader`）。
+- `assets/models/` 与 `assets/collision/`：Blender 导出的 **34 个原创绘画感半写实四通道 PBR GLB 资产模型**（含完整 `albedo` / `normal` / `orm` / `emission` 贴图与资产契约 `assets/source/asset-contract.json`），以及视觉与物理解耦的预冻结地标碰撞体（`assets/collision/ruins.tscn`、`assets/collision/shipwreck.tscn`）。
+- `tools/create_assets.py` 与 `tools/build_web.mjs`：可复现的离线 Blender 暂存生成/签名晋升管线与独立副本 Web 压缩构建脚本。
 - `assets/audio/`：低多边形潜航环境音效与矿物采集音。
-- `docs/`：高质量截图与运行配置指南。
+- `docs/`：实机展示截图、[美术重构前后对比图](docs/art-comparison.png)、[美术与渲染技术规范](docs/art-direction.md) 与 [运行配置指南](docs/runtime-setup.md)。
 
 ## 自动化测试与验证
 
 ```sh
 # 1. 生存/探险模式、武器制作、捕食小鱼、伤害计算规则单元测试
-.tools/Godot.app/Contents/MacOS/Godot --headless --path . -s tests/smoke.gd
+godot --headless --path . -s tests/smoke.gd
 
 # 2. 真实 3D 物理、134 条鱼群生态、掠食攻击与受创、武器切换与实弹打击、地标发现及通关端到端验证
-.tools/Godot.app/Contents/MacOS/Godot --headless --path . -- --smoke-world
+godot --headless --path . -- --smoke-world
 
 # 3. 激光遮挡、T/Y 瞄准、3 秒蓄力松手、光球碰撞、各物种冻结恢复、Boss 战与终局
-.tools/Godot.app/Contents/MacOS/Godot --headless --path . -s tests/laser_stasis_boss.gd
+godot --headless --path . -s tests/laser_stasis_boss.gd
 
 # 4. 1800m 开放海域碰撞、24 处地标、6 座前哨站、12 处遗珍、迷雾海图、声呐脉冲与洋流跃迁验证
-.tools/Godot.app/Contents/MacOS/Godot --headless --path . -s tests/open_world_exploration.gd
+godot --headless --path . -s tests/open_world_exploration.gd
 
 # 5. 连续海深光照、远洋生态分布、实际海床贴地和有界加载/卸载
 godot --headless --path . -s tests/seabed_ecology.gd
 
-# 6. 使用真实渲染器检查十处海域与深海灯照，截图输出至 .tools/depth-review/
+# 6. 使用真实渲染器检查 12 处海域深度与深海头灯色彩还原，截图输出至 .tools/depth-review/
 godot --path . -s tests/depth_visual.gd
 
 # 7. 五层生态、近600m真实海床、深潜/助推器/潜艇、海沟跃迁与海图分层
 godot --headless --path . -s tests/depth_regions.gd
+
+# 8. 34 项 GLB 资产许可证、面数/贴图预算、四通道 PBR、AABB 尺寸与骨骼形变契约校验
+godot --headless --path . -s tests/asset_pipeline.gd
+
+# 9. 视觉重构回归校验（冻结碰撞体、角色/潜艇/生物枢轴与阴影预算、材质隔离及双分辨率全 UI 零越界零重叠）
+godot --headless --path . -s tests/art_regression.gd
+
+# 10. 真实渲染器多机位帧时间（p50/p95）、Draw Calls、三角面与显存性能门禁
+godot --path . -s tests/art_performance.gd -- --verify
 ```
 
 ## 构建与发布
 
 - **Windows 一键打包**：直接双击 `一键打包.bat`，即可在 `build/` 目录下生成包含全部资源的单文件 `深蓝回声.exe`。
+- **Web 独立压缩构建**：运行 `npm run build:web`，在隔离副本 `.tools/web-build-stage` 中分级压缩纹理并导出至 `build/web/`（自动完成 `.wasm` / `.pck` Gzip 分片与流式解压封装，工作区桌面端源纹理保持零改动）。
 - **导出预设**：项目根目录已包含标准 `export_presets.cfg`，可直接配合 Godot 4 导出模板使用。
 
 ## 许可证

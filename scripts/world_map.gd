@@ -2,21 +2,24 @@ extends RefCounted
 
 const Ocean = preload("res://scripts/ocean.gd")
 const OceanDepths = preload("res://scripts/ocean_depths.gd")
+const ArtDirection = preload("res://scripts/art_direction.gd")
 
 const WORLD_HALF := 900.0
 const WORLD_SPAN := 1800.0
 const SURVEY_GRID := 24
-const FOG_UNSURVEYED := Color(0.012, 0.045, 0.085, 0.90)
-const FOG_SURVEYED := Color(0.012, 0.045, 0.085, 0.0)
-const RADAR_FOG_MODULATE := Color(1.0, 1.0, 1.0, 0.86 / 0.90)
+const FOG_UNSURVEYED := Color(0.032, 0.072, 0.098, 0.88)
+const FOG_SURVEYED := Color(0.032, 0.072, 0.098, 0.0)
+const RADAR_FOG_MODULATE := Color(1.0, 1.0, 1.0, 0.84 / 0.88)
 
-const CYAN := Color("38f6e8")
-const INK := Color("f4fcff")
-const MUTED := Color("9ce0f4")
-const AMBER := Color("ffbe42")
-const ORANGE := Color("ff9e38")
-const EMERALD := Color("4dffb8")
-const MAGENTA := Color("ff6ad5")
+const INK := ArtDirection.INK
+const PAPER := ArtDirection.PAPER
+const CYAN := ArtDirection.CYAN
+const AMBER := ArtDirection.AMBER
+const DANGER := ArtDirection.DANGER
+const PANEL := ArtDirection.PANEL
+const MUTED := ArtDirection.MUTED
+const HARBOR_SAGE := Color("8eaa74")
+const BOSS_LANDMARK_IDS := ["altar", "storm_ridge", "kraken_trench", "turtle_basin", "obsidian_caldera"]
 
 const REGION_LABELS := [
 	{"name": "北境晴空环礁", "pos": Vector2(40, 380), "sub": "SUNLIT ATOLL"},
@@ -31,14 +34,48 @@ const REGION_LABELS := [
 ]
 
 static var _bathy_cache: Dictionary = {}
+static var _region_palettes: Dictionary = {}
+
+static func _get_region_palettes() -> Dictionary:
+	if _region_palettes.is_empty():
+		for key: String in ArtDirection.REGIONS:
+			_region_palettes[key] = ArtDirection.region_profile(key)
+	return _region_palettes
 
 static func _bathymetry_color(depth: float, world_x: float, world_z: float) -> Color:
-	var c_surface := Color(0.10, 0.58, 0.60)
-	var c_reef := Color(0.07, 0.43, 0.52)
-	var c_shelf := Color(0.045, 0.29, 0.44)
-	var c_twilight := Color(0.035, 0.18, 0.34)
-	var c_bathyal := Color(0.026, 0.103, 0.235)
-	var c_hadal := Color(0.014, 0.042, 0.13)
+	var palettes := _get_region_palettes()
+	var weights := ArtDirection.region_weights(Vector2(world_x, world_z))
+	var reg_water := Color(0.0, 0.0, 0.0, 1.0)
+	var reg_sand := Color(0.0, 0.0, 0.0, 1.0)
+	var reg_rock := Color(0.0, 0.0, 0.0, 1.0)
+	var reg_shadow := Color(0.0, 0.0, 0.0, 1.0)
+	for key: String in weights:
+		var w: float = float(weights[key])
+		var prof: Dictionary = palettes.get(key, palettes["core"])
+		var cw: Color = prof["water"]
+		var cs: Color = prof["sand"]
+		var cr: Color = prof["rock"]
+		var csh: Color = prof["shadow"]
+		reg_water.r += cw.r * w
+		reg_water.g += cw.g * w
+		reg_water.b += cw.b * w
+		reg_sand.r += cs.r * w
+		reg_sand.g += cs.g * w
+		reg_sand.b += cs.b * w
+		reg_rock.r += cr.r * w
+		reg_rock.g += cr.g * w
+		reg_rock.b += cr.b * w
+		reg_shadow.r += csh.r * w
+		reg_shadow.g += csh.g * w
+		reg_shadow.b += csh.b * w
+	var hadal_w: float = float(weights.get("hadal", 0.0))
+	var caldera_w: float = float(weights.get("caldera", 0.0))
+	var c_surface := Color("2b7c83").lerp(reg_water.lerp(reg_sand, 0.36), 0.34)
+	var c_reef := Color("1d606b").lerp(reg_water.lerp(reg_sand, 0.16), 0.32)
+	var c_shelf := Color("174956").lerp(reg_water.lerp(reg_rock, 0.25), 0.30)
+	var c_twilight := Color("133443").lerp(reg_shadow, 0.28)
+	var c_bathyal := Color("0e222f").lerp(reg_shadow.lerp(INK, 0.55), 0.25)
+	var c_hadal := Color("07121b").lerp(Color("0a1624"), hadal_w)
 	var chart_depth := clampf(depth, 0.0, OceanDepths.MAX_SEAFLOOR_DEPTH)
 	var base: Color
 	if chart_depth < 35.0:
@@ -51,16 +88,16 @@ static func _bathymetry_color(depth: float, world_x: float, world_z: float) -> C
 		base = c_twilight.lerp(c_bathyal, (chart_depth - 200.0) / 160.0)
 	else:
 		base = c_bathyal.lerp(c_hadal, (chart_depth - 360.0) / (OceanDepths.MAX_SEAFLOOR_DEPTH - 360.0))
-	# Subtle volcanic warmth near caldera & vents
-	var caldera_d := Vector2(world_x - (-440.0), world_z - (-420.0)).length()
-	if caldera_d < 170.0:
-		base = base.lerp(Color(0.24, 0.09, 0.08), (1.0 - caldera_d / 170.0) * 0.42)
-	# Fixed 50m contours read consistently across all five depth zones. Feather
-	# their edges so the chart remains continuous when crossing a depth boundary.
-	var phase := fposmod(chart_depth, 50.0)
-	var contour_distance := minf(phase, 50.0 - phase)
-	var contour_strength := 1.0 - smoothstep(0.0, 0.9, contour_distance)
-	base = base.lightened(contour_strength * 0.075)
+	if caldera_w > 0.0:
+		base = base.lerp(Color("38211b"), caldera_w * 0.34)
+	var phase_50 := fposmod(chart_depth, 50.0)
+	var dist_50 := minf(phase_50, 50.0 - phase_50)
+	var strength_50 := 1.0 - smoothstep(0.0, 0.85, dist_50)
+	var phase_100 := fposmod(chart_depth, 100.0)
+	var dist_100 := minf(phase_100, 100.0 - phase_100)
+	var strength_100 := 1.0 - smoothstep(0.0, 1.05, dist_100)
+	var contour_ink := CYAN.lerp(PAPER, 0.35)
+	base = base.lerp(contour_ink, strength_50 * 0.055 + strength_100 * 0.045)
 	return base
 
 static func build_bathymetry_texture(resolution: int = 128) -> ImageTexture:
@@ -153,8 +190,8 @@ class CompassStrip extends Control:
 		var w := size.x
 		var h := size.y
 		var bg_rect := Rect2(0, 0, w, h)
-		draw_rect(bg_rect, Color(0.02, 0.09, 0.16, 0.72), true)
-		draw_rect(bg_rect, Color(0.22, 0.85, 0.96, 0.35), false, 1.0)
+		draw_rect(bg_rect, Color(PANEL.r, PANEL.g, PANEL.b, 0.86), true)
+		draw_rect(bg_rect, Color(CYAN, 0.24), false, 1.0)
 		var font: Font = get_theme_default_font()
 		var half_fov := deg_to_rad(85.0)
 		var cx := w * 0.5
@@ -177,7 +214,8 @@ class CompassStrip extends Control:
 			var x := cx + (diff / half_fov) * (w * 0.46)
 			var is_card := deg % 45 == 0
 			var tick_h := 7.0 if is_card else 4.0
-			draw_line(Vector2(x, h - tick_h), Vector2(x, h - 1.0), Color(0.55, 0.9, 0.98, 0.45 if not is_card else 0.8), 1.0)
+			var tick_col := Color(CYAN, 0.62) if is_card else Color(MUTED, 0.34)
+			draw_line(Vector2(x, h - tick_h), Vector2(x, h - 1.0), tick_col, 1.0)
 
 		if font:
 			for d in dirs:
@@ -186,23 +224,21 @@ class CompassStrip extends Control:
 				if absf(diff) > half_fov:
 					continue
 				var x := cx + (diff / half_fov) * (w * 0.46)
-				var col: Color = CYAN if bool(d["major"]) else MUTED
+				var col: Color = PAPER if bool(d["major"]) else MUTED
 				if int(d["deg"]) == 0:
 					col = AMBER
 				var txt: String = str(d["txt"])
 				var fsz: int = 12 if bool(d["major"]) else 10
 				draw_string(font, Vector2(x - float(txt.length()) * 3.8, 15.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, col)
 
-			# Draw POI pips (Home, Outpost, Custom Waypoint)
-			_draw_pip(font, _bearing_to(home_pos), "⌂", EMERALD, half_fov, cx, w)
+			_draw_pip(font, _bearing_to(home_pos), "⌂", HARBOR_SAGE, half_fov, cx, w)
 			if has_nearest_outpost:
 				_draw_pip(font, _bearing_to(nearest_outpost_pos), "⬡", CYAN, half_fov, cx, w)
 			if has_waypoint:
 				_draw_pip(font, _bearing_to(waypoint_pos), "✦", AMBER, half_fov, cx, w)
 
-		# Center heading indicator triangle
 		var tri := PackedVector2Array([Vector2(cx - 4, 1), Vector2(cx + 4, 1), Vector2(cx, 6)])
-		draw_colored_polygon(tri, CYAN)
+		draw_colored_polygon(tri, AMBER)
 
 	func _draw_pip(font: Font, bearing: float, icon: String, col: Color, half_fov: float, cx: float, w: float) -> void:
 		var diff := clampf(_angle_diff(bearing, heading_yaw), -half_fov, half_fov)
@@ -264,10 +300,9 @@ class MinimapRadar extends Control:
 		var center := map_rect.get_center()
 		var half_r := map_side * 0.5
 
-		draw_rect(Rect2(0, 0, size.x, size.y), Color(0.02, 0.09, 0.17, 0.88), true)
-		draw_rect(Rect2(0, 0, size.x, size.y), Color(0.25, 0.90, 1.0, 0.45), false, 1.5)
+		draw_rect(Rect2(0, 0, size.x, size.y), PANEL, true)
+		draw_rect(Rect2(0, 0, size.x, size.y), Color(CYAN, 0.28), false, 1.0)
 
-		# Draw local bathymetry slice
 		if bathy_tex != null:
 			var u0 := clampf((player_pos.x - radar_range + WORLD_HALF) / WORLD_SPAN, 0.0, 1.0)
 			var v0 := clampf((player_pos.z - radar_range + WORLD_HALF) / WORLD_SPAN, 0.0, 1.0)
@@ -276,11 +311,10 @@ class MinimapRadar extends Control:
 			var tw := float(bathy_tex.get_width())
 			var th := float(bathy_tex.get_height())
 			var src := Rect2(u0 * tw, v0 * th, maxf(1.0, (u1 - u0) * tw), maxf(1.0, (v1 - v0) * th))
-			draw_texture_rect_region(bathy_tex, map_rect, src, Color(1, 1, 1, 0.92))
+			draw_texture_rect_region(bathy_tex, map_rect, src, Color(1, 1, 1, 0.95))
 		else:
-			draw_rect(map_rect, Color(0.02, 0.14, 0.24, 0.95), true)
+			draw_rect(map_rect, INK, true)
 
-		# Fog of war cells in radar window
 		var f_wx0 := clampf(player_pos.x - radar_range, -WORLD_HALF, WORLD_HALF)
 		var f_wz0 := clampf(player_pos.z - radar_range, -WORLD_HALF, WORLD_HALF)
 		var f_wx1 := clampf(player_pos.x + radar_range, -WORLD_HALF, WORLD_HALF)
@@ -297,18 +331,15 @@ class MinimapRadar extends Control:
 			)
 			draw_texture_rect_region(f_tex, Rect2(f_p0, f_p1 - f_p0), f_src, RADAR_FOG_MODULATE)
 
-		# Sonar rings & crosshairs
-		draw_arc(center, half_r * 0.45, 0.0, TAU, 36, Color(0.25, 0.9, 1.0, 0.16), 1.0)
-		draw_arc(center, half_r * 0.85, 0.0, TAU, 48, Color(0.25, 0.9, 1.0, 0.22), 1.0)
-		draw_line(Vector2(map_rect.position.x, center.y), Vector2(map_rect.end.x, center.y), Color(0.25, 0.9, 1.0, 0.12), 1.0)
-		draw_line(Vector2(center.x, map_rect.position.y), Vector2(center.x, map_rect.end.y), Color(0.25, 0.9, 1.0, 0.12), 1.0)
+		draw_arc(center, half_r * 0.45, 0.0, TAU, 36, Color(CYAN, 0.15), 1.0)
+		draw_arc(center, half_r * 0.85, 0.0, TAU, 48, Color(CYAN, 0.22), 1.0)
+		draw_line(Vector2(map_rect.position.x, center.y), Vector2(map_rect.end.x, center.y), Color(CYAN, 0.11), 1.0)
+		draw_line(Vector2(center.x, map_rect.position.y), Vector2(center.x, map_rect.end.y), Color(CYAN, 0.11), 1.0)
 
-		# Rotating sonar sweep line
 		var sweep_ang := fmod(pulse_clock * 1.35, TAU)
 		var sweep_end := center + Vector2(sin(sweep_ang), -cos(sweep_ang)) * (half_r * 0.92)
-		draw_line(center, sweep_end, Color(0.25, 1.0, 0.88, 0.28), 1.2)
+		draw_line(center, sweep_end, Color(CYAN, 0.34), 1.1)
 
-		# Landmarks
 		for lm_id in landmarks:
 			var lm: Dictionary = landmarks[lm_id]
 			var lpos: Vector3 = lm["pos"]
@@ -318,19 +349,19 @@ class MinimapRadar extends Control:
 				continue
 			var rp := _world_to_radar(lpos.x, lpos.z, center, half_r)
 			if map_rect.has_point(rp):
-				draw_circle(rp, 2.8 if is_disc else 2.4, CYAN if is_disc else Color(1.0, 0.78, 0.25, 0.85))
+				var is_hazard := BOSS_LANDMARK_IDS.has(str(lm_id))
+				var lm_col := (DANGER if is_hazard else CYAN) if is_disc else Color(AMBER, 0.88)
+				draw_circle(rp, 2.8 if is_disc else 2.4, lm_col)
 
-		# Outposts
 		for out in outposts:
 			var opos: Vector3 = out["pos"]
 			var oid: String = str(out["id"])
 			var unlocked: bool = unlocked_outposts.has(oid)
 			var rp := _world_to_radar(opos.x, opos.z, center, half_r)
 			if map_rect.has_point(rp):
-				var c := EMERALD if unlocked else AMBER
+				var c := HARBOR_SAGE if unlocked else AMBER
 				draw_rect(Rect2(rp - Vector2(3.2, 3.2), Vector2(6.4, 6.4)), c, true)
 
-		# Pinged / nearby relics
 		for rel in relics:
 			if bool(rel.get("collected", false)):
 				continue
@@ -340,31 +371,27 @@ class MinimapRadar extends Control:
 				continue
 			var rp := _world_to_radar(rpos.x, rpos.z, center, half_r)
 			if map_rect.has_point(rp):
-				draw_circle(rp, 2.6, MAGENTA)
+				draw_circle(rp, 2.6, DANGER)
 
-		# Submarines
 		for sub in submarines:
 			var spos: Vector3 = sub["pos"]
 			var rp := _world_to_radar(spos.x, spos.z, center, half_r)
 			if map_rect.has_point(rp):
-				draw_circle(rp, 3.2, Color(0.4, 0.95, 1.0))
+				draw_circle(rp, 3.2, PAPER)
 
-		# Lifepod Home (clamped to radar edge if far)
 		var hp := _world_to_radar(Ocean.HOME.x, Ocean.HOME.z, center, half_r)
 		hp.x = clampf(hp.x, map_rect.position.x + 4.0, map_rect.end.x - 4.0)
 		hp.y = clampf(hp.y, map_rect.position.y + 4.0, map_rect.end.y - 4.0)
-		draw_circle(hp, 3.6, EMERALD)
+		draw_circle(hp, 3.6, HARBOR_SAGE)
 
-		# Custom Waypoint (with dashed line + clamped edge diamond)
 		if has_waypoint:
 			var wp := _world_to_radar(waypoint_pos.x, waypoint_pos.z, center, half_r)
 			wp.x = clampf(wp.x, map_rect.position.x + 5.0, map_rect.end.x - 5.0)
 			wp.y = clampf(wp.y, map_rect.position.y + 5.0, map_rect.end.y - 5.0)
-			draw_line(center, wp, Color(1.0, 0.78, 0.25, 0.45), 1.2)
+			draw_line(center, wp, Color(AMBER, 0.48), 1.1)
 			var dia := PackedVector2Array([wp + Vector2(0, -4.5), wp + Vector2(4.5, 0), wp + Vector2(0, 4.5), wp + Vector2(-4.5, 0)])
 			draw_colored_polygon(dia, AMBER)
 
-		# Player directional chevron at center
 		var dir2 := Vector2(sin(heading_yaw), -cos(heading_yaw))
 		var side2 := Vector2(-dir2.y, dir2.x)
 		var chev := PackedVector2Array([
@@ -373,13 +400,13 @@ class MinimapRadar extends Control:
 			center - dir2 * 2.0,
 			center - dir2 * 4.5 - side2 * 4.2
 		])
-		draw_colored_polygon(chev, INK)
-		draw_rect(map_rect, Color(0.28, 0.92, 1.0, 0.42), false, 1.0)
+		draw_colored_polygon(chev, PAPER)
+		draw_rect(map_rect, Color(CYAN, 0.26), false, 1.0)
 
 		var font: Font = get_theme_default_font()
 		if font:
 			var coord_txt := "X:%+d  Z:%+d  [M海图]" % [roundi(player_pos.x), roundi(player_pos.z)]
-			draw_string(font, Vector2(8.0, size.y - 6.0), coord_txt, HORIZONTAL_ALIGNMENT_LEFT, size.x - 12.0, 11, CYAN)
+			draw_string(font, Vector2(8.0, size.y - 6.0), coord_txt, HORIZONTAL_ALIGNMENT_LEFT, size.x - 12.0, 11, MUTED)
 
 
 class SeaChartCanvas extends Control:
@@ -583,9 +610,8 @@ class SeaChartCanvas extends Control:
 
 	func _draw() -> void:
 		var rect := Rect2(Vector2.ZERO, size)
-		draw_rect(rect, Color(0.015, 0.07, 0.13, 0.98), true)
+		draw_rect(rect, Color(INK.r, INK.g, INK.b, 0.98), true)
 
-		# 1. Bathymetric background
 		if bathy_tex != null:
 			var half_vis := WORLD_HALF / zoom
 			var u0 := clampf((pan_world.x - half_vis + WORLD_HALF) / WORLD_SPAN, 0.0, 1.0)
@@ -616,17 +642,15 @@ class SeaChartCanvas extends Control:
 			)
 			draw_texture_rect_region(f_tex, Rect2(f_p0, f_p1 - f_p0), f_src)
 
-		# 3. Coordinate nautical grid every 225m
 		var font: Font = get_theme_default_font()
 		for g in range(-900, 901, 225):
 			var gp := _world_to_canvas(float(g), float(g))
-			var col := Color(0.28, 0.88, 1.0, 0.22 if g == 0 else 0.09)
+			var col := Color(CYAN, 0.22 if g == 0 else 0.09)
 			draw_line(Vector2(gp.x, 0), Vector2(gp.x, size.y), col, 1.0)
 			draw_line(Vector2(0, gp.y), Vector2(size.x, gp.y), col, 1.0)
 			if font and g != -900 and g != 900:
-				draw_string(font, Vector2(gp.x + 3.0, 13.0), "%+dm" % g, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.6, 0.88, 0.96, 0.45))
+				draw_string(font, Vector2(gp.x + 3.0, 13.0), "%+dm" % g, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(MUTED, 0.58))
 
-		# 4. Region titles in surveyed zones
 		if font:
 			for reg in REGION_LABELS:
 				var rpos: Vector2 = reg["pos"]
@@ -636,11 +660,10 @@ class SeaChartCanvas extends Control:
 				var cp := _world_to_canvas(rpos.x, rpos.y)
 				if not rect.has_point(cp):
 					continue
-				var rcol := Color(0.72, 0.96, 1.0, 0.62 if seen else 0.20)
+				var rcol := Color(PAPER, 0.76) if seen else Color(MUTED, 0.26)
 				var rtxt := str(reg["name"]) if seen else "未勘测海域"
 				draw_string(font, cp - Vector2(42, 0), rtxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, rcol)
 
-		# 5. Relics (pinged or collected)
 		for rel in relics:
 			var rpos: Vector3 = rel["pos"]
 			var collected: bool = bool(rel.get("collected", false))
@@ -649,10 +672,11 @@ class SeaChartCanvas extends Control:
 				continue
 			var cp := _world_to_canvas(rpos.x, rpos.z)
 			if rect.has_point(cp):
-				var rcol := Color(0.55, 0.75, 0.8, 0.45) if collected else MAGENTA
+				var rcol := Color(MUTED, 0.45) if collected else DANGER
 				draw_circle(cp, 4.0, rcol)
+				if not collected:
+					draw_arc(cp, 6.8, 0.0, TAU, 20, Color(DANGER, 0.36), 1.0)
 
-		# 6. Interactive POIs (Landmarks, Outposts, Submarines, Home)
 		var nodes := _collect_interactive_nodes()
 		for item in nodes:
 			var p3: Vector3 = item["pos"]
@@ -663,42 +687,43 @@ class SeaChartCanvas extends Control:
 			var is_sel: bool = str(selected_node.get("id", "")) == str(item.get("id", ""))
 			var is_hov: bool = str(hovered_node.get("id", "")) == str(item.get("id", ""))
 			if is_sel or is_hov:
-				draw_arc(cp, 11.5, 0.0, TAU, 24, AMBER if is_sel else INK, 1.8)
+				draw_arc(cp, 11.5, 0.0, TAU, 24, AMBER if is_sel else PAPER, 1.6)
 			match kind:
 				"home":
-					draw_circle(cp, 6.5, EMERALD)
-					draw_arc(cp, 9.0, 0.0, TAU, 20, EMERALD, 1.4)
+					draw_circle(cp, 6.0, HARBOR_SAGE)
+					draw_arc(cp, 8.8, 0.0, TAU, 20, Color(HARBOR_SAGE, 0.78), 1.3)
 					if font:
-						draw_string(font, cp + Vector2(9, 4), "⌂ 逃生舱母港", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, EMERALD)
+						draw_string(font, cp + Vector2(9, 4), "⌂ 逃生舱母港", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, PAPER)
 				"outpost":
 					var unlocked := bool(item["can_travel"])
-					var ocol := EMERALD if unlocked else AMBER
-					draw_rect(Rect2(cp - Vector2(5.5, 5.5), Vector2(11, 11)), ocol, true)
-					draw_rect(Rect2(cp - Vector2(8.0, 8.0), Vector2(16, 16)), Color(ocol.r, ocol.g, ocol.b, 0.55), false, 1.2)
+					var ocol := HARBOR_SAGE if unlocked else AMBER
+					draw_rect(Rect2(cp - Vector2(5.0, 5.0), Vector2(10, 10)), ocol, true)
+					draw_rect(Rect2(cp - Vector2(7.5, 7.5), Vector2(15, 15)), Color(AMBER if not unlocked else ocol, 0.55), false, 1.1)
 					if font:
-						draw_string(font, cp + Vector2(9, 4), str(item["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, ocol)
+						draw_string(font, cp + Vector2(9, 4), str(item["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, PAPER if unlocked else AMBER)
 				"submarine":
 					var tri := PackedVector2Array([cp + Vector2(0, -5.5), cp + Vector2(5.2, 4.5), cp + Vector2(-5.2, 4.5)])
-					draw_colored_polygon(tri, CYAN)
+					draw_colored_polygon(tri, PAPER)
+					draw_polyline(PackedVector2Array([tri[0], tri[1], tri[2], tri[0]]), CYAN, 1.1)
 				"landmark":
 					var is_disc := bool(item["can_travel"])
-					var lcol := CYAN if is_disc else AMBER
+					var is_hazard := BOSS_LANDMARK_IDS.has(str(item.get("raw_id", "")))
+					var lcol := (DANGER if is_hazard else CYAN) if is_disc else AMBER
 					draw_circle(cp, 4.5 if is_disc else 3.8, lcol)
 					if font and (is_hov or is_sel or zoom >= 1.45):
-						draw_string(font, cp + Vector2(7, 4), str(item["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, lcol)
+						var lbl_col := DANGER.lightened(0.14) if (is_disc and is_hazard) else (PAPER if is_disc else AMBER)
+						draw_string(font, cp + Vector2(7, 4), str(item["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, lbl_col)
 
-		# 7. Custom Waypoint & Navigation Line
 		var player_cp := _world_to_canvas(player_pos.x, player_pos.z)
 		if has_waypoint:
 			var wp_cp := _world_to_canvas(waypoint_pos.x, waypoint_pos.z)
-			draw_line(player_cp, wp_cp, Color(1.0, 0.78, 0.25, 0.65), 1.6)
+			draw_line(player_cp, wp_cp, Color(AMBER, 0.62), 1.4)
 			var dia := PackedVector2Array([wp_cp + Vector2(0, -7), wp_cp + Vector2(7, 0), wp_cp + Vector2(0, 7), wp_cp + Vector2(-7, 0)])
 			draw_colored_polygon(dia, AMBER)
 			if font:
 				var dist_m := roundi(Vector2(player_pos.x, player_pos.z).distance_to(Vector2(waypoint_pos.x, waypoint_pos.z)))
 				draw_string(font, wp_cp + Vector2(9, 4), "✦ 标点 (%dm)" % dist_m, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, AMBER)
 
-		# 8. Player live position & heading cone
 		if rect.has_point(player_cp):
 			var dir2 := Vector2(sin(heading_yaw), -cos(heading_yaw))
 			var side2 := Vector2(-dir2.y, dir2.x)
@@ -707,14 +732,14 @@ class SeaChartCanvas extends Control:
 				player_cp + (dir2 * 26.0 + side2 * 14.0),
 				player_cp + (dir2 * 26.0 - side2 * 14.0)
 			])
-			draw_colored_polygon(cone, Color(0.25, 0.95, 1.0, 0.18))
+			draw_colored_polygon(cone, Color(CYAN, 0.16))
 			var p_chev := PackedVector2Array([
 				player_cp + dir2 * 8.5,
 				player_cp - dir2 * 5.5 + side2 * 5.5,
 				player_cp - dir2 * 2.5,
 				player_cp - dir2 * 5.5 - side2 * 5.5
 			])
-			draw_colored_polygon(p_chev, INK)
+			draw_colored_polygon(p_chev, PAPER)
 			draw_polyline(PackedVector2Array([p_chev[0], p_chev[1], p_chev[2], p_chev[3], p_chev[0]]), CYAN, 1.4)
 
-		draw_rect(rect, Color(0.28, 0.92, 1.0, 0.55), false, 2.0)
+		draw_rect(rect, Color(CYAN, 0.30), false, 1.5)

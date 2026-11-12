@@ -1,5 +1,7 @@
 extends CharacterBody3D
 
+const ModelFinish = preload("res://scripts/presentation/model_finish.gd")
+
 const OceanDepths = preload("res://scripts/ocean_depths.gd")
 
 const AIM_FOV := 48.0
@@ -127,6 +129,7 @@ var marine_snow: CPUParticles3D
 var biomod_dash_unlocked: bool = false
 var biomod_vision_unlocked: bool = false
 var dash_cooldown: float = 0.0
+var _lamp_saved_before_sub: bool = false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -143,20 +146,23 @@ func _ready() -> void:
 
 	# High-performance volumetric flashlight: wide beam penetrating deep sea
 	lamp = SpotLight3D.new()
-	lamp.light_color = Color(0.78, 0.96, 1.0)
+	lamp.light_color = Color(1.0, 0.96, 0.88)
+	lamp.shadow_enabled = true
 	lamp.light_energy = 9.0
 	lamp.spot_range = 85.0
 	lamp.spot_angle = 55.0
 	lamp.spot_attenuation = 0.8
+	lamp.position = Vector3(0.0, 0.16, -0.32)
 	lamp.visible = false
 	equipment_rig.add_child(lamp)
 
 	# Soft ambient fill light for immediate diver perimeter
 	lamp_fill = OmniLight3D.new()
-	lamp_fill.light_color = Color(0.68, 0.92, 1.0)
-	lamp_fill.light_energy = 2.4
+	lamp_fill.light_color = Color(0.78, 0.85, 0.88)
+	lamp_fill.light_energy = 1.05
 	lamp_fill.omni_range = 16.0
-	lamp_fill.omni_attenuation = 0.85
+	lamp_fill.omni_attenuation = 1.05
+	lamp_fill.position = Vector3(0.0, 0.08, -1.45)
 	lamp_fill.visible = false
 	equipment_rig.add_child(lamp_fill)
 
@@ -190,6 +196,7 @@ func _ready() -> void:
 	_setup_weapons()
 	_setup_booster()
 	_setup_vfx()
+	ModelFinish.apply(equipment_rig, "weapon")
 
 func _ensure_third_person_rig() -> void:
 	if not is_instance_valid(equipment_rig):
@@ -275,9 +282,9 @@ func _setup_weapons() -> void:
 						var w_mat := w_mi.mesh.surface_get_material(s_idx)
 						if w_mat is BaseMaterial3D:
 							var wb: BaseMaterial3D = w_mat
-							wb.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-							wb.specular_mode = BaseMaterial3D.SPECULAR_TOON
-							wb.rim_enabled = true
+							wb.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+							wb.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+							wb.rim_enabled = false
 							wb.rim = 0.52
 							wb.rim_tint = 0.35
 			weapon_base_trans[id] = {"pos": node.position, "rot": node.rotation_degrees}
@@ -582,27 +589,27 @@ func _setup_booster() -> void:
 	mat_hull.albedo_color = Color(0.14, 0.68, 1.0)
 	mat_hull.metallic = 0.28
 	mat_hull.roughness = 0.22
-	mat_hull.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	mat_hull.specular_mode = BaseMaterial3D.SPECULAR_TOON
-	mat_hull.rim_enabled = true
+	mat_hull.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat_hull.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat_hull.rim_enabled = false
 	mat_hull.rim = 0.52
 
 	var mat_white := StandardMaterial3D.new()
 	mat_white.albedo_color = Color(0.95, 0.98, 1.0)
 	mat_white.metallic = 0.2
 	mat_white.roughness = 0.24
-	mat_white.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	mat_white.specular_mode = BaseMaterial3D.SPECULAR_TOON
-	mat_white.rim_enabled = true
+	mat_white.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat_white.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat_white.rim_enabled = false
 	mat_white.rim = 0.48
 
 	var mat_dark := StandardMaterial3D.new()
 	mat_dark.albedo_color = Color(0.12, 0.20, 0.32)
 	mat_dark.metallic = 0.45
 	mat_dark.roughness = 0.28
-	mat_dark.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	mat_dark.specular_mode = BaseMaterial3D.SPECULAR_TOON
-	mat_dark.rim_enabled = true
+	mat_dark.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat_dark.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat_dark.rim_enabled = false
 	mat_dark.rim = 0.45
 
 	var mat_display := StandardMaterial3D.new()
@@ -788,14 +795,26 @@ func _update_vehicle_collision_state() -> void:
 			body_collision.disabled = false
 
 func set_submarine_mode(in_sub: bool, sub_type: String = "scout", sub_rid: RID = RID()) -> void:
+	var was_in_sub := in_submarine_mode
 	in_submarine_mode = in_sub
 	vehicle_exclude_rid = sub_rid if in_sub else RID()
 	if in_sub:
 		vehicle_camera_distance = 22.0 if sub_type == "titan" else (6.5 if sub_type == "mini" else 9.2)
 		if is_instance_valid(backpack_thruster_bubbles):
 			backpack_thruster_bubbles.emitting = false
+		if not was_in_sub and is_instance_valid(lamp):
+			_lamp_saved_before_sub = lamp.visible
+		if is_instance_valid(lamp):
+			lamp.visible = false
+		if is_instance_valid(lamp_fill):
+			lamp_fill.visible = false
 	elif not in_mount_mode:
 		vehicle_camera_distance = 0.0
+	if not in_sub and was_in_sub:
+		if is_instance_valid(lamp):
+			lamp.visible = _lamp_saved_before_sub
+		if is_instance_valid(lamp_fill):
+			lamp_fill.visible = _lamp_saved_before_sub
 	if is_instance_valid(breath_bubbles):
 		breath_bubbles.emitting = not in_sub
 	_update_vehicle_collision_state()
@@ -1138,10 +1157,10 @@ func _process(delta: float) -> void:
 	# Biomod Vision: adapt fill lighting in deep abyss
 	if is_instance_valid(lamp_fill):
 		if biomod_vision_unlocked and position.y < -45.0:
-			lamp_fill.light_energy = 3.8
+			lamp_fill.light_energy = 1.65
 			lamp_fill.omni_range = 22.0
-		elif not lamp_fill.visible:
-			lamp_fill.light_energy = 2.4
+		else:
+			lamp_fill.light_energy = 1.05
 			lamp_fill.omni_range = 16.0
 	# 鼠标惯性阻尼滞后解算 (Spring-damper mouse lag)
 	mouse_lag = mouse_lag.lerp(mouse_lag_target, delta * 14.0)
@@ -1453,56 +1472,56 @@ func _build_diver_model() -> void:
 	diver_model.add_child(body_pivot)
 
 	var mat_suit := StandardMaterial3D.new()
-	mat_suit.albedo_color = Color(0.12, 0.24, 0.42)
-	mat_suit.metallic = 0.18
-	mat_suit.roughness = 0.28
-	mat_suit.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	mat_suit.specular_mode = BaseMaterial3D.SPECULAR_TOON
-	mat_suit.rim_enabled = true
+	mat_suit.albedo_color = Color("1d3545")
+	mat_suit.metallic = 0.06
+	mat_suit.roughness = 0.72
+	mat_suit.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat_suit.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat_suit.rim_enabled = false
 	mat_suit.rim = 0.54
 	mat_suit.rim_tint = 0.32
 
 	var mat_armor := StandardMaterial3D.new()
-	mat_armor.albedo_color = Color(0.94, 0.98, 1.0)
-	mat_armor.metallic = 0.32
-	mat_armor.roughness = 0.22
-	mat_armor.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	mat_armor.specular_mode = BaseMaterial3D.SPECULAR_TOON
-	mat_armor.rim_enabled = true
+	mat_armor.albedo_color = Color("cbc8b8")
+	mat_armor.metallic = 0.16
+	mat_armor.roughness = 0.52
+	mat_armor.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat_armor.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat_armor.rim_enabled = false
 	mat_armor.rim = 0.52
 
 	var mat_accent := StandardMaterial3D.new()
-	mat_accent.albedo_color = Color(1.0, 0.54, 0.14)
-	mat_accent.metallic = 0.22
-	mat_accent.roughness = 0.24
-	mat_accent.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	mat_accent.specular_mode = BaseMaterial3D.SPECULAR_TOON
-	mat_accent.rim_enabled = true
+	mat_accent.albedo_color = Color("c99652")
+	mat_accent.metallic = 0.14
+	mat_accent.roughness = 0.52
+	mat_accent.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat_accent.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat_accent.rim_enabled = false
 	mat_accent.rim = 0.52
 
 	var mat_cyan := StandardMaterial3D.new()
 	mat_cyan.albedo_color = Color(0.15, 0.92, 1.0)
 	mat_cyan.emission_enabled = true
 	mat_cyan.emission = Color(0.12, 0.85, 1.0)
-	mat_cyan.emission_energy_multiplier = 2.8
+	mat_cyan.emission_energy_multiplier = 0.4
 
 	var mat_visor := StandardMaterial3D.new()
 	mat_visor.albedo_color = Color(0.12, 0.85, 0.98, 0.82)
 	mat_visor.metallic = 0.15
 	mat_visor.roughness = 0.08
-	mat_visor.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	mat_visor.specular_mode = BaseMaterial3D.SPECULAR_TOON
+	mat_visor.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat_visor.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
 	mat_visor.emission_enabled = true
 	mat_visor.emission = Color(0.14, 0.72, 0.95)
-	mat_visor.emission_energy_multiplier = 2.0
+	mat_visor.emission_energy_multiplier = 0.12
 
 	var mat_tank := StandardMaterial3D.new()
-	mat_tank.albedo_color = Color(1.0, 0.82, 0.18)
+	mat_tank.albedo_color = Color("b1ad8b")
 	mat_tank.metallic = 0.28
 	mat_tank.roughness = 0.22
-	mat_tank.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	mat_tank.specular_mode = BaseMaterial3D.SPECULAR_TOON
-	mat_tank.rim_enabled = true
+	mat_tank.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mat_tank.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat_tank.rim_enabled = false
 	mat_tank.rim = 0.52
 
 	# 1. Torso & Pelvis Wetsuit + Exosuit Chest Rig
@@ -1674,11 +1693,13 @@ func _build_diver_model() -> void:
 	# Subtle local character rim light so the 3D diver is always visible in deep abyss
 	var suit_light := OmniLight3D.new()
 	suit_light.name = "DiverSuitRimLight"
-	suit_light.position = Vector3(0, 0.25, 0.45)
-	suit_light.light_color = Color(0.45, 0.90, 1.0)
-	suit_light.light_energy = 1.15
-	suit_light.omni_range = 3.2
+	suit_light.position = Vector3(0.0, 0.18, 0.72)
+	suit_light.light_color = Color(0.58, 0.82, 0.88)
+	suit_light.light_energy = 0.26
+	suit_light.omni_range = 2.6
+	suit_light.omni_attenuation = 1.15
 	diver_model.add_child(suit_light)
+	ModelFinish.apply(diver_model, "diver")
 
 func _build_limb_arm(side: float, mat_suit: Material, mat_armor: Material, mat_accent: Material, mat_cyan: Material) -> Node3D:
 	var pivot := Node3D.new()

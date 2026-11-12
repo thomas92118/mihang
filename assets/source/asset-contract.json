@@ -1,0 +1,941 @@
+{
+  "coral": {
+    "file": "assets/models/coral.glb",
+    "dimensions_blender_xyz": [
+      2.028,
+      2.065,
+      2.355
+    ],
+    "dimensions_godot_xyz": [
+      2.028,
+      2.355,
+      2.065
+    ],
+    "bounds_blender": [
+      [
+        -1.036,
+        -1.023,
+        0
+      ],
+      [
+        0.991,
+        1.041,
+        2.355
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "tube_coral": {
+    "file": "assets/models/tube_coral.glb",
+    "dimensions_blender_xyz": [
+      1.713,
+      1.392,
+      2.635
+    ],
+    "dimensions_godot_xyz": [
+      1.713,
+      2.635,
+      1.392
+    ],
+    "bounds_blender": [
+      [
+        -0.713,
+        -0.681,
+        0
+      ],
+      [
+        1,
+        0.711,
+        2.635
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "kelp": {
+    "file": "assets/models/kelp.glb",
+    "dimensions_blender_xyz": [
+      2.239,
+      2.304,
+      5.114
+    ],
+    "dimensions_godot_xyz": [
+      2.239,
+      5.114,
+      2.304
+    ],
+    "bounds_blender": [
+      [
+        -1.171,
+        -1.163,
+        0
+      ],
+      [
+        1.068,
+        1.14,
+        5.114
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "rock": {
+    "file": "assets/models/rock.glb",
+    "dimensions_blender_xyz": [
+      2.989,
+      2.16,
+      1.784
+    ],
+    "dimensions_godot_xyz": [
+      2.989,
+      1.784,
+      2.16
+    ],
+    "bounds_blender": [
+      [
+        -1.561,
+        -1.078,
+        0
+      ],
+      [
+        1.428,
+        1.082,
+        1.784
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "fish": {
+    "file": "assets/models/fish.glb",
+    "dimensions_blender_xyz": [
+      0.64,
+      0.84,
+      0.54
+    ],
+    "dimensions_godot_xyz": [
+      0.64,
+      0.54,
+      0.84
+    ],
+    "bounds_blender": [
+      [
+        -0.32,
+        -0.32,
+        -0.22
+      ],
+      [
+        0.32,
+        0.52,
+        0.32
+      ]
+    ],
+    "bones": 6,
+    "animations": [
+      "swim"
+    ]
+  },
+  "pod": {
+    "file": "assets/models/pod.glb",
+    "dimensions_blender_xyz": [
+      4.7,
+      4.894,
+      4.215
+    ],
+    "dimensions_godot_xyz": [
+      4.7,
+      4.215,
+      4.894
+    ],
+    "bounds_blender": [
+      [
+        -2.35,
+        -2.85,
+        0
+      ],
+      [
+        2.35,
+        2.044,
+        4.215
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "ruins": {
+    "file": "assets/models/ruins.glb",
+    "dimensions_blender_xyz": [
+      8.29,
+      1.8,
+      6.211
+    ],
+    "dimensions_godot_xyz": [
+      8.29,
+      6.211,
+      1.8
+    ],
+    "bounds_blender": [
+      [
+        -4.145,
+        -0.9,
+        0
+      ],
+      [
+        4.145,
+        0.9,
+        6.211
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "shipwreck": {
+    "file": "assets/models/shipwreck.glb",
+    "dimensions_blender_xyz": [
+      4.52,
+      10.139,
+      6.43
+    ],
+    "dimensions_godot_xyz": [
+      4.52,
+      6.43,
+      10.139
+    ],
+    "bounds_blender": [
+      [
+        -2.26,
+        -5.252,
+        0
+      ],
+      [
+        2.26,
+        4.888,
+        6.43
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "anemone": {
+    "file": "assets/models/anemone.glb",
+    "dimensions_blender_xyz": [
+      3.002,
+      2.982,
+      2.01
+    ],
+    "dimensions_godot_xyz": [
+      3.002,
+      2.01,
+      2.982
+    ],
+    "bounds_blender": [
+      [
+        -1.476,
+        -1.442,
+        0
+      ],
+      [
+        1.526,
+        1.541,
+        2.01
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "crystal_spire": {
+    "file": "assets/models/crystal_spire.glb",
+    "dimensions_blender_xyz": [
+      3.292,
+      2.915,
+      5.5
+    ],
+    "dimensions_godot_xyz": [
+      3.292,
+      5.5,
+      2.915
+    ],
+    "bounds_blender": [
+      [
+        -1.662,
+        -1.366,
+        0
+      ],
+      [
+        1.63,
+        1.549,
+        5.5
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "jellyfish": {
+    "file": "assets/models/jellyfish.glb",
+    "dimensions_blender_xyz": [
+      1.57,
+      1.57,
+      2.935
+    ],
+    "dimensions_godot_xyz": [
+      1.57,
+      2.935,
+      1.57
+    ],
+    "bounds_blender": [
+      [
+        -0.785,
+        -0.785,
+        -0.785
+      ],
+      [
+        0.785,
+        0.785,
+        2.15
+      ]
+    ],
+    "bones": 38,
+    "animations": [
+      "pulse"
+    ]
+  },
+  "resource_titanium": {
+    "file": "assets/models/resource_titanium.glb",
+    "dimensions_blender_xyz": [
+      0.615,
+      0.476,
+      0.593
+    ],
+    "dimensions_godot_xyz": [
+      0.615,
+      0.593,
+      0.476
+    ],
+    "bounds_blender": [
+      [
+        -0.304,
+        -0.238,
+        0
+      ],
+      [
+        0.311,
+        0.238,
+        0.593
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "resource_copper": {
+    "file": "assets/models/resource_copper.glb",
+    "dimensions_blender_xyz": [
+      0.615,
+      0.476,
+      0.593
+    ],
+    "dimensions_godot_xyz": [
+      0.615,
+      0.593,
+      0.476
+    ],
+    "bounds_blender": [
+      [
+        -0.304,
+        -0.238,
+        0
+      ],
+      [
+        0.311,
+        0.238,
+        0.593
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "resource_quartz": {
+    "file": "assets/models/resource_quartz.glb",
+    "dimensions_blender_xyz": [
+      0.572,
+      0.408,
+      0.74
+    ],
+    "dimensions_godot_xyz": [
+      0.572,
+      0.74,
+      0.408
+    ],
+    "bounds_blender": [
+      [
+        -0.286,
+        -0.204,
+        0
+      ],
+      [
+        0.286,
+        0.204,
+        0.74
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "resource_kelp": {
+    "file": "assets/models/resource_kelp.glb",
+    "dimensions_blender_xyz": [
+      0.609,
+      0.353,
+      0.7
+    ],
+    "dimensions_godot_xyz": [
+      0.609,
+      0.7,
+      0.353
+    ],
+    "bounds_blender": [
+      [
+        -0.299,
+        -0.152,
+        0
+      ],
+      [
+        0.31,
+        0.201,
+        0.7
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "fish_small": {
+    "file": "assets/models/fish_small.glb",
+    "dimensions_blender_xyz": [
+      0.48,
+      0.61,
+      0.43
+    ],
+    "dimensions_godot_xyz": [
+      0.48,
+      0.43,
+      0.61
+    ],
+    "bounds_blender": [
+      [
+        -0.24,
+        -0.23,
+        -0.18
+      ],
+      [
+        0.24,
+        0.38,
+        0.25
+      ]
+    ],
+    "bones": 6,
+    "animations": [
+      "swim"
+    ]
+  },
+  "fish_predator": {
+    "file": "assets/models/fish_predator.glb",
+    "dimensions_blender_xyz": [
+      2.5,
+      4.08,
+      1.75
+    ],
+    "dimensions_godot_xyz": [
+      2.5,
+      1.75,
+      4.08
+    ],
+    "bounds_blender": [
+      [
+        -1.25,
+        -1.83,
+        -0.6
+      ],
+      [
+        1.25,
+        2.25,
+        1.15
+      ]
+    ],
+    "bones": 7,
+    "animations": [
+      "swim",
+      "bite"
+    ]
+  },
+  "fish_abyss": {
+    "file": "assets/models/fish_abyss.glb",
+    "dimensions_blender_xyz": [
+      0.913,
+      3.214,
+      1.716
+    ],
+    "dimensions_godot_xyz": [
+      0.913,
+      1.716,
+      3.214
+    ],
+    "bounds_blender": [
+      [
+        -0.457,
+        -1.464,
+        -0.66
+      ],
+      [
+        0.457,
+        1.75,
+        1.056
+      ]
+    ],
+    "bones": 7,
+    "animations": [
+      "swim",
+      "bite"
+    ]
+  },
+  "weapon_knife": {
+    "file": "assets/models/weapon_knife.glb",
+    "dimensions_blender_xyz": [
+      0.044,
+      0.421,
+      0.072
+    ],
+    "dimensions_godot_xyz": [
+      0.044,
+      0.072,
+      0.421
+    ],
+    "bounds_blender": [
+      [
+        -0.022,
+        -0.191,
+        -0.036
+      ],
+      [
+        0.022,
+        0.23,
+        0.036
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "weapon_axe": {
+    "file": "assets/models/weapon_axe.glb",
+    "dimensions_blender_xyz": [
+      0.045,
+      0.553,
+      0.3
+    ],
+    "dimensions_godot_xyz": [
+      0.045,
+      0.3,
+      0.553
+    ],
+    "bounds_blender": [
+      [
+        -0.023,
+        -0.312,
+        -0.09
+      ],
+      [
+        0.023,
+        0.24,
+        0.21
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "weapon_sonic": {
+    "file": "assets/models/weapon_sonic.glb",
+    "dimensions_blender_xyz": [
+      0.178,
+      0.87,
+      0.348
+    ],
+    "dimensions_godot_xyz": [
+      0.178,
+      0.348,
+      0.87
+    ],
+    "bounds_blender": [
+      [
+        -0.089,
+        -0.41,
+        -0.173
+      ],
+      [
+        0.089,
+        0.46,
+        0.175
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "manta_ray": {
+    "file": "assets/models/manta_ray.glb",
+    "dimensions_blender_xyz": [
+      4.509,
+      4.841,
+      0.5
+    ],
+    "dimensions_godot_xyz": [
+      4.509,
+      0.5,
+      4.841
+    ],
+    "bounds_blender": [
+      [
+        -2.255,
+        -1.49,
+        -0.25
+      ],
+      [
+        2.255,
+        3.351,
+        0.25
+      ]
+    ],
+    "bones": 5,
+    "animations": [
+      "swim"
+    ]
+  },
+  "sea_turtle": {
+    "file": "assets/models/sea_turtle.glb",
+    "dimensions_blender_xyz": [
+      3.009,
+      2.338,
+      0.71
+    ],
+    "dimensions_godot_xyz": [
+      3.009,
+      0.71,
+      2.338
+    ],
+    "bounds_blender": [
+      [
+        -1.504,
+        -1.267,
+        -0.21
+      ],
+      [
+        1.504,
+        1.071,
+        0.5
+      ]
+    ],
+    "bones": 5,
+    "animations": [
+      "swim"
+    ]
+  },
+  "squid": {
+    "file": "assets/models/squid.glb",
+    "dimensions_blender_xyz": [
+      1.44,
+      4.39,
+      0.775
+    ],
+    "dimensions_godot_xyz": [
+      1.44,
+      0.775,
+      4.39
+    ],
+    "bounds_blender": [
+      [
+        -0.72,
+        -2.87,
+        -0.388
+      ],
+      [
+        0.72,
+        1.52,
+        0.388
+      ]
+    ],
+    "bones": 33,
+    "animations": [
+      "swim"
+    ]
+  },
+  "crab": {
+    "file": "assets/models/crab.glb",
+    "dimensions_blender_xyz": [
+      2.064,
+      1.683,
+      0.509
+    ],
+    "dimensions_godot_xyz": [
+      2.064,
+      0.509,
+      1.683
+    ],
+    "bounds_blender": [
+      [
+        -1.032,
+        -1.243,
+        0
+      ],
+      [
+        1.032,
+        0.44,
+        0.509
+      ]
+    ],
+    "bones": 27,
+    "animations": [
+      "walk",
+      "defend"
+    ]
+  },
+  "sea_fan": {
+    "file": "assets/models/sea_fan.glb",
+    "dimensions_blender_xyz": [
+      2.235,
+      0.84,
+      2.652
+    ],
+    "dimensions_godot_xyz": [
+      2.235,
+      2.652,
+      0.84
+    ],
+    "bounds_blender": [
+      [
+        -1.118,
+        -0.42,
+        0
+      ],
+      [
+        1.118,
+        0.42,
+        2.652
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "tubeworms": {
+    "file": "assets/models/tubeworms.glb",
+    "dimensions_blender_xyz": [
+      1.697,
+      1.478,
+      2.376
+    ],
+    "dimensions_godot_xyz": [
+      1.697,
+      2.376,
+      1.478
+    ],
+    "bounds_blender": [
+      [
+        -0.825,
+        -0.789,
+        0
+      ],
+      [
+        0.872,
+        0.689,
+        2.376
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "starfish_urchin": {
+    "file": "assets/models/starfish_urchin.glb",
+    "dimensions_blender_xyz": [
+      1.37,
+      1.24,
+      0.607
+    ],
+    "dimensions_godot_xyz": [
+      1.37,
+      0.607,
+      1.24
+    ],
+    "bounds_blender": [
+      [
+        -0.685,
+        -0.62,
+        0
+      ],
+      [
+        0.685,
+        0.62,
+        0.607
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "brain_coral": {
+    "file": "assets/models/brain_coral.glb",
+    "dimensions_blender_xyz": [
+      2.28,
+      2.22,
+      1.56
+    ],
+    "dimensions_godot_xyz": [
+      2.28,
+      1.56,
+      2.22
+    ],
+    "bounds_blender": [
+      [
+        -1.14,
+        -1.11,
+        0
+      ],
+      [
+        1.14,
+        1.11,
+        1.56
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "staghorn_coral": {
+    "file": "assets/models/staghorn_coral.glb",
+    "dimensions_blender_xyz": [
+      2.46,
+      2.38,
+      2.32
+    ],
+    "dimensions_godot_xyz": [
+      2.46,
+      2.32,
+      2.38
+    ],
+    "bounds_blender": [
+      [
+        -1.23,
+        -1.19,
+        0
+      ],
+      [
+        1.23,
+        1.19,
+        2.32
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "table_coral": {
+    "file": "assets/models/table_coral.glb",
+    "dimensions_blender_xyz": [
+      2.84,
+      2.72,
+      1.74
+    ],
+    "dimensions_godot_xyz": [
+      2.84,
+      1.74,
+      2.72
+    ],
+    "bounds_blender": [
+      [
+        -1.42,
+        -1.36,
+        0
+      ],
+      [
+        1.42,
+        1.36,
+        1.74
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "barrel_sponge": {
+    "file": "assets/models/barrel_sponge.glb",
+    "dimensions_blender_xyz": [
+      2.12,
+      2.12,
+      2.52
+    ],
+    "dimensions_godot_xyz": [
+      2.12,
+      2.52,
+      2.12
+    ],
+    "bounds_blender": [
+      [
+        -1.06,
+        -1.06,
+        0
+      ],
+      [
+        1.06,
+        1.06,
+        2.52
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "giant_clam": {
+    "file": "assets/models/giant_clam.glb",
+    "dimensions_blender_xyz": [
+      2.32,
+      1.84,
+      1.44
+    ],
+    "dimensions_godot_xyz": [
+      2.32,
+      1.44,
+      1.84
+    ],
+    "bounds_blender": [
+      [
+        -1.16,
+        -0.92,
+        0
+      ],
+      [
+        1.16,
+        0.92,
+        1.44
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  },
+  "sea_lily": {
+    "file": "assets/models/sea_lily.glb",
+    "dimensions_blender_xyz": [
+      2.08,
+      2.08,
+      2.64
+    ],
+    "dimensions_godot_xyz": [
+      2.08,
+      2.64,
+      2.08
+    ],
+    "bounds_blender": [
+      [
+        -1.04,
+        -1.04,
+        0
+      ],
+      [
+        1.04,
+        1.04,
+        2.64
+      ]
+    ],
+    "bones": 0,
+    "animations": []
+  }
+}
