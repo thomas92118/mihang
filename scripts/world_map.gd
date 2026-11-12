@@ -263,6 +263,7 @@ class MinimapRadar extends Control:
 	var waypoint_pos: Vector3 = Vector3.ZERO
 	var radar_range: float = 220.0
 	var pulse_clock: float = 0.0
+	var map_hint: String = "M"
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -405,7 +406,7 @@ class MinimapRadar extends Control:
 
 		var font: Font = get_theme_default_font()
 		if font:
-			var coord_txt := "X:%+d  Z:%+d  [M海图]" % [roundi(player_pos.x), roundi(player_pos.z)]
+			var coord_txt := "X:%+d  Z:%+d  [%s海图]" % [roundi(player_pos.x), roundi(player_pos.z), map_hint]
 			draw_string(font, Vector2(8.0, size.y - 6.0), coord_txt, HORIZONTAL_ALIGNMENT_LEFT, size.x - 12.0, 11, MUTED)
 
 
@@ -414,6 +415,7 @@ class SeaChartCanvas extends Control:
 	signal waypoint_cleared
 	signal fast_travel_requested(target_id: String, world_pos: Vector3, target_name: String)
 	signal selection_changed(info: Dictionary)
+	signal sidebar_focus_requested
 
 	var bathy_tex: ImageTexture
 	var fog_overlay := FogOverlay.new()
@@ -434,10 +436,62 @@ class SeaChartCanvas extends Control:
 	var waypoint_pos: Vector3 = Vector3.ZERO
 	var selected_node: Dictionary = {}
 	var hovered_node: Dictionary = {}
+	var input_controller: Node
+	var _touches: Dictionary = {}
+	var _touch_origins: Dictionary = {}
+	var _touch_moved: Dictionary = {}
+	var _pinch_distance := 0.0
+	var _had_multitouch := false
+	var _last_touch_time := -1000
+	var _gamepad_device := -1
 
 	func _ready() -> void:
 		clip_contents = true
 		mouse_filter = Control.MOUSE_FILTER_STOP
+		focus_mode = Control.FOCUS_ALL
+		visibility_changed.connect(func() -> void:
+			if not is_visible_in_tree():
+				cancel_touches()
+		)
+
+	func cancel_touches() -> void:
+		_touches.clear()
+		_touch_origins.clear()
+		_touch_moved.clear()
+		_pinch_distance = 0.0
+		_had_multitouch = false
+		dragging = false
+
+	func _input(event: InputEvent) -> void:
+		# Keep the original touch owner after a finger leaves the map bounds.
+		if not is_visible_in_tree():
+			return
+		if event is InputEventScreenDrag and _touches.has(event.index):
+			var local: Vector2 = get_global_transform_with_canvas().affine_inverse() * event.position
+			_handle_touch_drag(event.index, local)
+			get_viewport().set_input_as_handled()
+		elif event is InputEventScreenTouch and not event.pressed and _touches.has(event.index):
+			var local: Vector2 = get_global_transform_with_canvas().affine_inverse() * event.position
+			_handle_touch_release(event.index, local, event.canceled)
+			get_viewport().set_input_as_handled()
+
+	func _process(delta: float) -> void:
+		if not is_visible_in_tree() or not has_focus():
+			return
+		var connected := Input.get_connected_joypads()
+		if not connected.has(_gamepad_device):
+			_gamepad_device = int(connected[0]) if not connected.is_empty() else -1
+		if _gamepad_device < 0:
+			return
+		var stick := Vector2(Input.get_joy_axis(_gamepad_device, JOY_AXIS_LEFT_X), Input.get_joy_axis(_gamepad_device, JOY_AXIS_LEFT_Y))
+		var deadzone := 0.2
+		if is_instance_valid(input_controller):
+			deadzone = float(input_controller.settings.get("deadzone", 0.2))
+		if stick.length() > deadzone:
+			stick = stick.normalized() * clampf((stick.length() - deadzone) / maxf(1.0 - deadzone, 0.01), 0.0, 1.0)
+			pan_world += stick * (WORLD_SPAN / zoom) * delta * 0.45
+			_clamp_pan()
+			queue_redraw()
 
 	func set_bathymetry(tex: ImageTexture) -> void:
 		bathy_tex = tex
@@ -541,7 +595,7 @@ class SeaChartCanvas extends Control:
 
 	func _find_node_at(pt: Vector2) -> Dictionary:
 		var best := {}
-		var best_d := 16.0
+		var best_d := 26.0
 		for item in _collect_interactive_nodes():
 			var p3: Vector3 = item["pos"]
 			var cp := _world_to_canvas(p3.x, p3.z)
@@ -551,7 +605,123 @@ class SeaChartCanvas extends Control:
 				best = item
 		return best
 
+	func select_at(pt: Vector2) -> void:
+		# Touch and gamepad selection never travel or place a waypoint implicitly.
+		var hit := _find_node_at(pt)
+		if hit.is_empty():
+			var xz := _canvas_to_world(pt)
+			hit = {
+				"id": "custom_waypoint", "kind": "waypoint", "name": "海域坐标",
+				"desc": "选择「设为导航标点」记录此处；已解锁地标可在操作栏确认跃迁。",
+				"pos": Vector3(xz.x, minf(-2.5, Ocean.floor_height(xz.x, xz.y) + 6.0), xz.y),
+				"can_travel": false
+			}
+		selected_node = hit
+		selection_changed.emit(hit)
+		queue_redraw()
+
+	func cycle_node(step: int) -> void:
+		var nodes := _collect_interactive_nodes()
+		if nodes.is_empty():
+			return
+		var index := -1
+		for i in range(nodes.size()):
+			if nodes[i].get("id", "") == selected_node.get("id", ""):
+				index = i
+		if index < 0 and step < 0:
+			index = 0
+		index = posmod(index + step, nodes.size())
+		selected_node = nodes[index]
+		var pos: Vector3 = selected_node["pos"]
+		pan_world = Vector2(pos.x, pos.z)
+		_clamp_pan()
+		selection_changed.emit(selected_node)
+		queue_redraw()
+
+	func _handle_touch_drag(index: int, point: Vector2) -> void:
+		_last_touch_time = Time.get_ticks_msec()
+		var previous: Vector2 = _touches[index]
+		_touches[index] = point
+		if point.distance_to(_touch_origins[index]) > 12.0:
+			_touch_moved[index] = true
+		if _touches.size() >= 2:
+			_had_multitouch = true
+			var positions := _touches.values()
+			var distance: float = (positions[0] as Vector2).distance_to(positions[1])
+			if _pinch_distance > 1.0 and distance > 1.0:
+				adjust_zoom(distance / _pinch_distance)
+			_pinch_distance = distance
+		elif bool(_touch_moved.get(index, false)):
+			var world_per_pixel := Vector2(WORLD_SPAN / zoom / maxf(size.x, 1.0), WORLD_SPAN / zoom / maxf(size.y, 1.0))
+			pan_world -= (point - previous) * world_per_pixel
+			_clamp_pan()
+			queue_redraw()
+
+	func _handle_touch_release(index: int, point: Vector2, canceled: bool) -> void:
+		_last_touch_time = Time.get_ticks_msec()
+		var can_select := not canceled and not _had_multitouch and not bool(_touch_moved.get(index, false))
+		_touches.erase(index)
+		_touch_origins.erase(index)
+		_touch_moved.erase(index)
+		_pinch_distance = 0.0
+		if _touches.is_empty():
+			_had_multitouch = false
+		if can_select and Rect2(Vector2.ZERO, size).has_point(point):
+			select_at(point)
+
 	func _gui_input(event: InputEvent) -> void:
+		if event is InputEventScreenTouch:
+			_last_touch_time = Time.get_ticks_msec()
+			if event.pressed:
+				_touches[event.index] = event.position
+				_touch_origins[event.index] = event.position
+				_touch_moved[event.index] = false
+				if _touches.size() >= 2:
+					_had_multitouch = true
+					var positions := _touches.values()
+					_pinch_distance = (positions[0] as Vector2).distance_to(positions[1])
+			elif _touches.has(event.index):
+				_handle_touch_release(event.index, event.position, event.canceled)
+			accept_event()
+			return
+		if event is InputEventScreenDrag:
+			if _touches.has(event.index):
+				_handle_touch_drag(event.index, event.position)
+				accept_event()
+			return
+		if event is InputEventJoypadButton and event.pressed:
+			_gamepad_device = event.device
+			match event.button_index:
+				JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_LEFT:
+					cycle_node(-1)
+					accept_event()
+				JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_RIGHT:
+					cycle_node(1)
+					accept_event()
+				JOY_BUTTON_LEFT_SHOULDER:
+					adjust_zoom(0.8)
+					accept_event()
+				JOY_BUTTON_RIGHT_SHOULDER:
+					adjust_zoom(1.25)
+					accept_event()
+				JOY_BUTTON_A:
+					select_at(size * 0.5)
+					accept_event()
+				JOY_BUTTON_X:
+					sidebar_focus_requested.emit()
+					accept_event()
+			return
+		if event is InputEventJoypadMotion:
+			_gamepad_device = event.device
+			accept_event()
+			return
+		if event.is_action_pressed("ui_accept"):
+			select_at(size * 0.5)
+			accept_event()
+			return
+		if (event is InputEventMouseButton or event is InputEventMouseMotion) and event.device == InputEvent.DEVICE_ID_EMULATION and Time.get_ticks_msec() - _last_touch_time < 800:
+			accept_event()
+			return
 		if event is InputEventMouseButton:
 			var mb: InputEventMouseButton = event
 			if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
@@ -743,3 +913,9 @@ class SeaChartCanvas extends Control:
 			draw_polyline(PackedVector2Array([p_chev[0], p_chev[1], p_chev[2], p_chev[3], p_chev[0]]), CYAN, 1.4)
 
 		draw_rect(rect, Color(CYAN, 0.30), false, 1.5)
+		if has_focus():
+			var center := size * 0.5
+			draw_line(center - Vector2(13, 0), center + Vector2(13, 0), PAPER, 1.5)
+			draw_line(center - Vector2(0, 13), center + Vector2(0, 13), PAPER, 1.5)
+			draw_circle(center, 19.0, Color(CYAN, 0.7), false, 1.0)
+			draw_rect(rect.grow(-2.0), Color(CYAN, 0.8), false, 3.0)
