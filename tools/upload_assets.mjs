@@ -1,44 +1,93 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const blake3Wasm = require("C:\\Users\\feimaojia\\AppData\\Local\\npm-cache\\_npx\\32026684e21afda6\\node_modules\\blake3-wasm");
-const WRANGLER_BIN = "C:\\Users\\feimaojia\\AppData\\Local\\npm-cache\\_npx\\32026684e21afda6\\node_modules\\wrangler\\bin\\wrangler.js";
 
-const WEB_DIR = path.resolve("build/web");
-const SCRIPT_NAME = "abyssal-echo";
-const CONCURRENCY = 6;
-
-function getTempTomlPath() {
-	return path.join(
-		process.env.APPDATA || "",
-		"xdg.config",
-		".wrangler",
-		"wrangler-temporary-account.toml"
-	);
+function resolveWranglerDeps() {
+	try {
+		const pkgPath = require.resolve("wrangler/package.json");
+		const wranglerReq = createRequire(pkgPath);
+		return {
+			wranglerBin: path.join(path.dirname(pkgPath), "bin", "wrangler.js"),
+			blake3Wasm: wranglerReq("blake3-wasm"),
+		};
+	} catch {
+		throw new Error(
+			'Cannot find local "wrangler" package. Please run "npm install" first.'
+		);
+	}
 }
 
-function bootstrapTemporaryAccount() {
-	console.log("[upload_assets] Bootstrapping fresh Cloudflare temporary preview account...");
-	const tomlPath = getTempTomlPath();
-	if (fs.existsSync(tomlPath)) {
-		fs.unlinkSync(tomlPath);
+const { wranglerBin: WRANGLER_BIN, blake3Wasm } = resolveWranglerDeps();
+
+const WEB_DIR = path.resolve("build/web");
+const WRANGLER_TOML_PATH = path.resolve("wrangler.toml");
+const CONCURRENCY = 6;
+const USE_TEMPORARY = process.argv.includes("--temporary");
+
+function readWranglerToml() {
+	if (!fs.existsSync(WRANGLER_TOML_PATH)) return "";
+	return fs.readFileSync(WRANGLER_TOML_PATH, "utf8");
+}
+
+function resolveScriptName() {
+	const toml = readWranglerToml();
+	return toml.match(/^name\s*=\s*"([^"]+)"/m)?.[1] || "abyssal-echo";
+}
+
+const SCRIPT_NAME = resolveScriptName();
+
+function getWranglerConfigDir() {
+	const legacyDir = path.join(os.homedir(), ".wrangler");
+	if (fs.existsSync(legacyDir) && fs.statSync(legacyDir).isDirectory()) {
+		return legacyDir;
+	}
+	if (process.env.XDG_CONFIG_HOME) {
+		return path.join(process.env.XDG_CONFIG_HOME, ".wrangler");
+	}
+	if (process.platform === "win32") {
+		return path.join(
+			process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
+			"xdg.config",
+			".wrangler"
+		);
+	}
+	if (process.platform === "darwin") {
+		return path.join(os.homedir(), "Library", "Preferences", ".wrangler");
+	}
+	return path.join(os.homedir(), ".config", ".wrangler");
+}
+
+function getTempTomlPath() {
+	return path.join(getWranglerConfigDir(), "wrangler-temporary-account.toml");
+}
+
+function bootstrapWorker(extraArgs = [], resetTempAccount = false) {
+	if (resetTempAccount) {
+		console.log("[upload_assets] Bootstrapping fresh Cloudflare temporary preview account...");
+		const tomlPath = getTempTomlPath();
+		if (fs.existsSync(tomlPath)) {
+			fs.unlinkSync(tomlPath);
+		}
+	} else {
+		console.log(`[upload_assets] Bootstrapping Worker "${SCRIPT_NAME}" before chunk upload...`);
 	}
 	const assetsIgnorePath = path.join(WEB_DIR, ".assetsignore");
 	fs.writeFileSync(assetsIgnorePath, "*.part*\n", "utf8");
 	try {
 		const res = spawnSync(
 			process.execPath,
-			[WRANGLER_BIN, "deploy", "--temporary"],
+			[WRANGLER_BIN, "deploy", ...extraArgs],
 			{
 				stdio: "inherit",
 				env: { ...process.env, WRANGLER_SEND_METRICS: "false" },
 			}
 		);
 		if (res.status !== 0) {
-			throw new Error(`wrangler deploy --temporary failed with code ${res.status}`);
+			throw new Error(`wrangler deploy ${extraArgs.join(" ")} failed with code ${res.status}`);
 		}
 	} finally {
 		if (fs.existsSync(assetsIgnorePath)) {
@@ -50,13 +99,60 @@ function bootstrapTemporaryAccount() {
 function loadTemporaryAccount() {
 	const tomlPath = getTempTomlPath();
 	if (!fs.existsSync(tomlPath)) {
-		bootstrapTemporaryAccount();
+		bootstrapWorker(["--temporary"], true);
 	}
 	const toml = fs.readFileSync(tomlPath, "utf8");
 	const accountId = toml.match(/^id\s*=\s*"([^"]+)"/m)?.[1];
 	const apiToken = toml.match(/^apiToken\s*=\s*"([^"]+)"/m)?.[1];
 	if (!accountId || !apiToken) {
 		throw new Error("Missing id or apiToken in wrangler-temporary-account.toml");
+	}
+	return { accountId, apiToken };
+}
+
+async function loadPermanentAccount() {
+	let apiToken = process.env.CLOUDFLARE_API_TOKEN || "";
+	if (!apiToken) {
+		const defaultTomlPath = path.join(getWranglerConfigDir(), "config", "default.toml");
+		if (!fs.existsSync(defaultTomlPath)) {
+			throw new Error(
+				'Not authenticated with Cloudflare. Run "npx wrangler login" first, or use "npm run deploy:preview" for temporary preview deployment.'
+			);
+		}
+		let toml = fs.readFileSync(defaultTomlPath, "utf8");
+		const expStr = toml.match(/^expiration_time\s*=\s*"([^"]+)"/m)?.[1];
+		if (expStr && Date.parse(expStr) - Date.now() < 120_000) {
+			spawnSync(process.execPath, [WRANGLER_BIN, "whoami"], {
+				stdio: "inherit",
+				env: { ...process.env, WRANGLER_SEND_METRICS: "false" },
+			});
+			toml = fs.readFileSync(defaultTomlPath, "utf8");
+		}
+		apiToken =
+			toml.match(/^oauth_token\s*=\s*"([^"]+)"/m)?.[1] ||
+			toml.match(/^api_token\s*=\s*"([^"]+)"/m)?.[1] ||
+			"";
+	}
+	if (!apiToken) {
+		throw new Error("Missing Cloudflare API/OAuth token. Please run `npx wrangler login`.");
+	}
+
+	const wranglerToml = readWranglerToml();
+	let accountId =
+		process.env.CLOUDFLARE_ACCOUNT_ID ||
+		wranglerToml.match(/^account_id\s*=\s*"([^"]+)"/m)?.[1] ||
+		"";
+
+	if (!accountId) {
+		const accRes = await fetch("https://api.cloudflare.com/client/v4/accounts", {
+			headers: { Authorization: `Bearer ${apiToken}` },
+		});
+		const accJson = await accRes.json();
+		if (!accJson.success || !Array.isArray(accJson.result) || accJson.result.length === 0) {
+			throw new Error(`Unable to resolve Cloudflare account ID: ${JSON.stringify(accJson.errors)}`);
+		}
+		accountId = accJson.result[0].id;
+		console.log(`[upload_assets] Using Cloudflare account: ${accJson.result[0].name} (${accountId})`);
 	}
 	return { accountId, apiToken };
 }
@@ -138,7 +234,9 @@ async function uploadSingleFile(accountId, apiToken, entry, index, total) {
 }
 
 async function main() {
-	let { accountId, apiToken } = loadTemporaryAccount();
+	let { accountId, apiToken } = USE_TEMPORARY
+		? loadTemporaryAccount()
+		: await loadPermanentAccount();
 	const assetsIgnorePath = path.join(WEB_DIR, ".assetsignore");
 	if (fs.existsSync(assetsIgnorePath)) {
 		fs.unlinkSync(assetsIgnorePath);
@@ -182,9 +280,14 @@ async function main() {
 		}
 	);
 	let initJson = await initRes.json();
-	if (!initJson.success && initJson.errors?.some((e) => e.code === 10000)) {
-		bootstrapTemporaryAccount();
-		({ accountId, apiToken } = loadTemporaryAccount());
+	if (!initJson.success && initJson.errors?.some((e) => e.code === 10000 || e.code === 10007)) {
+		if (USE_TEMPORARY) {
+			bootstrapWorker(["--temporary"], true);
+			({ accountId, apiToken } = loadTemporaryAccount());
+		} else {
+			bootstrapWorker([], false);
+			({ accountId, apiToken } = await loadPermanentAccount());
+		}
 		initRes = await fetch(
 			`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${SCRIPT_NAME}/assets-upload-session`,
 			{

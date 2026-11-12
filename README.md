@@ -276,6 +276,7 @@ godot --path . -s tests/art_performance.gd -- --verify
 
 - **Windows 一键打包**：直接双击 `一键打包.bat`，即可在 `build/` 目录下生成包含全部资源的单文件 `深蓝回声.exe`。
 - **Web 独立压缩构建**：运行 `npm run build:web`，在隔离副本 `.tools/web-build-stage` 中分级压缩纹理并导出至 `build/web/`（自动完成 `.wasm` / `.pck` Gzip 分片与流式解压封装，工作区桌面端源纹理保持零改动）。
+- **Cloudflare Workers 发布**：先运行 `npm install` 与 `npm run build:web`；已通过 `npx wrangler login` 登录个人 Cloudflare 账号时执行 `npm run deploy` 即可正式发布，未登录时可执行 `npm run deploy:preview` 一键发布至临时预览域名（并支持通过终端输出的 Claim URL 认领至个人账号）。
 - **导出预设**：项目根目录已包含标准 `export_presets.cfg`，可直接配合 Godot 4 导出模板使用。
 
 ## 许可证
