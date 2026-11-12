@@ -25,11 +25,25 @@ var explorer_speed_mult: float = 1.0
 var third_person_mode: bool = true
 var third_person_distance: float = THIRD_PERSON_DEFAULT_DIST
 var current_camera_distance: float = THIRD_PERSON_DEFAULT_DIST
+var _applied_camera_distance: float = THIRD_PERSON_DEFAULT_DIST
 var vehicle_camera_distance: float = 0.0
 var in_submarine_mode: bool = false
 var in_mount_mode: bool = false
 var body_collision: CollisionShape3D = null
 var vehicle_exclude_rid: RID = RID()
+var _cam_ray_query: PhysicsRayQueryParameters3D = null
+var _cam_ray_exclude: Array[RID] = []
+var _cam_ray_exclude_self_rid: RID = RID()
+var _cam_ray_exclude_vehicle_rid: RID = RID()
+var _cam_ray_cache_valid: bool = false
+var _cam_ray_last_frame: int = -1
+var _cam_ray_last_origin: Vector3 = Vector3.ZERO
+var _cam_ray_last_target: Vector3 = Vector3.ZERO
+var _cam_ray_last_sub_mode: bool = false
+var _cam_ray_last_mount_mode: bool = false
+var _cam_ray_last_scoped: bool = false
+var _cam_ray_cached_hit_valid: bool = false
+var _cam_ray_cached_hit_dist: float = 0.0
 var equipment_rig: Node3D
 var diver_model: Node3D
 var body_pivot: Node3D
@@ -162,6 +176,8 @@ func _ready() -> void:
 	var s_mesh := SphereMesh.new()
 	s_mesh.radius = 0.018
 	s_mesh.height = 0.036
+	s_mesh.radial_segments = 6
+	s_mesh.rings = 3
 	var s_mat := StandardMaterial3D.new()
 	s_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	s_mat.albedo_color = Color(0.72, 0.94, 1.0, 0.38)
@@ -340,6 +356,8 @@ func _setup_weapons() -> void:
 	var bb_mesh := SphereMesh.new()
 	bb_mesh.radius = 0.016
 	bb_mesh.height = 0.032
+	bb_mesh.radial_segments = 6
+	bb_mesh.rings = 3
 	var bb_mat := StandardMaterial3D.new()
 	bb_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	bb_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -692,11 +710,14 @@ func _setup_booster() -> void:
 	var p_mesh := SphereMesh.new()
 	p_mesh.radius = 0.022
 	p_mesh.height = 0.044
+	p_mesh.radial_segments = 6
+	p_mesh.rings = 3
 	var p_mat := StandardMaterial3D.new()
 	p_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	p_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	p_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	p_mat.albedo_color = Color(0.75, 0.95, 1.0, 0.6)
+	p_mesh.material = p_mat
 	booster_particles.mesh = p_mesh
 	booster_node.add_child(booster_particles)
 
@@ -771,8 +792,12 @@ func set_submarine_mode(in_sub: bool, sub_type: String = "scout", sub_rid: RID =
 	vehicle_exclude_rid = sub_rid if in_sub else RID()
 	if in_sub:
 		vehicle_camera_distance = 22.0 if sub_type == "titan" else (6.5 if sub_type == "mini" else 9.2)
+		if is_instance_valid(backpack_thruster_bubbles):
+			backpack_thruster_bubbles.emitting = false
 	elif not in_mount_mode:
 		vehicle_camera_distance = 0.0
+	if is_instance_valid(breath_bubbles):
+		breath_bubbles.emitting = not in_sub
 	_update_vehicle_collision_state()
 
 func set_mount_mode(mounted: bool, is_boss_mount: bool = false) -> void:
@@ -995,7 +1020,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		var sensitivity := 0.00028 if scoped else (0.0011 if aiming else 0.0022)
 		rotate_y(-event.relative.x * sensitivity)
 		camera.rotation.x = clampf(camera.rotation.x - event.relative.y * sensitivity, -1.45, 1.45)
-		_update_third_person_camera(0.0)
+		if is_instance_valid(equipment_rig):
+			equipment_rig.rotation = camera.rotation
+		camera.position = camera.basis.z * _applied_camera_distance
 		# 视角转动惯性滞后 (Viewmodel lag behind mouse)
 		mouse_lag_target.x = clampf(mouse_lag_target.x - event.relative.x * 0.0006, -0.04, 0.04)
 		mouse_lag_target.y = clampf(mouse_lag_target.y + event.relative.y * 0.0006, -0.035, 0.035)
@@ -1102,7 +1129,7 @@ func _process(delta: float) -> void:
 	if is_instance_valid(muzzle_flash):
 		if muzzle_flash.light_energy > 0.0:
 			muzzle_flash.light_energy = maxf(0.0, muzzle_flash.light_energy - delta * 28.0)
-		elif current_weapon == "sonic":
+		elif current_weapon == "sonic" and not in_submarine_mode:
 			# 声波脉冲枪待机能量核心呼吸发光
 			var idle_glow := sin(Time.get_ticks_msec() * 0.005) * 0.5 + 0.5
 			muzzle_flash.light_energy = idle_glow * 1.5
@@ -1140,7 +1167,6 @@ func _process(delta: float) -> void:
 		elif not in_submarine_mode:
 			camera.rotation.z = lerpf(camera.rotation.z, 0.0, 1.0 - exp(-delta * 12.0))
 	_update_third_person_camera(delta)
-	_animate_diver_model(delta)
 	# Visual effects update
 	if is_instance_valid(slash_light) and slash_light.light_energy > 0.0:
 		slash_light.light_energy = maxf(0.0, slash_light.light_energy - delta * 18.0)
@@ -1181,6 +1207,12 @@ func _process(delta: float) -> void:
 			if vfx_timer <= 0.0:
 				sonic_ring.visible = false
 
+	if in_submarine_mode:
+		if equip_anim_time > 0.0:
+			equip_anim_time = maxf(0.0, equip_anim_time - delta)
+		return
+
+	_animate_diver_model(delta)
 	if not is_instance_valid(weapon_mount):
 		return
 	var active_node: Node3D = weapon_nodes.get(current_weapon, null)
@@ -1350,6 +1382,8 @@ func _update_third_person_camera(delta: float) -> void:
 
 	if delta > 0.0 and not scoped:
 		current_camera_distance = lerpf(current_camera_distance, desired_dist, 1.0 - exp(-delta * 10.0))
+		if absf(current_camera_distance - desired_dist) < 0.0005:
+			current_camera_distance = desired_dist
 	else:
 		current_camera_distance = desired_dist
 
@@ -1357,16 +1391,52 @@ func _update_third_person_camera(delta: float) -> void:
 	if actual_dist > 0.1 and is_inside_tree() and get_world_3d() != null and get_world_3d().direct_space_state != null:
 		var origin := global_position
 		var back_dir := camera.global_basis.z.normalized()
-		var query := PhysicsRayQueryParameters3D.create(origin, origin + back_dir * actual_dist, 1)
-		var excl: Array[RID] = [get_rid()]
-		if vehicle_exclude_rid.is_valid():
-			excl.append(vehicle_exclude_rid)
-		query.exclude = excl
-		var hit := get_world_3d().direct_space_state.intersect_ray(query)
-		if not hit.is_empty() and hit.get("collider") is StaticBody3D:
-			var hit_dist := origin.distance_to(hit["position"])
-			actual_dist = clampf(hit_dist - 0.25, 0.55, actual_dist)
+		var desired_cam_pos := origin + back_dir * actual_dist
+		var frame_now := Engine.get_process_frames()
+		var same_query := (
+			_cam_ray_cache_valid
+			and frame_now == _cam_ray_last_frame
+			and origin.is_equal_approx(_cam_ray_last_origin)
+			and desired_cam_pos.is_equal_approx(_cam_ray_last_target)
+			and in_submarine_mode == _cam_ray_last_sub_mode
+			and in_mount_mode == _cam_ray_last_mount_mode
+			and scoped == _cam_ray_last_scoped
+		)
+		var self_rid := get_rid()
+		if same_query and _cam_ray_exclude_self_rid == self_rid and _cam_ray_exclude_vehicle_rid == vehicle_exclude_rid:
+			if _cam_ray_cached_hit_valid:
+				actual_dist = clampf(_cam_ray_cached_hit_dist - 0.25, 0.55, actual_dist)
+		else:
+			if _cam_ray_query == null:
+				_cam_ray_query = PhysicsRayQueryParameters3D.new()
+			if _cam_ray_exclude.is_empty() or _cam_ray_exclude_self_rid != self_rid or _cam_ray_exclude_vehicle_rid != vehicle_exclude_rid:
+				_cam_ray_exclude.clear()
+				_cam_ray_exclude.append(self_rid)
+				if vehicle_exclude_rid.is_valid():
+					_cam_ray_exclude.append(vehicle_exclude_rid)
+				_cam_ray_query.exclude = _cam_ray_exclude
+				_cam_ray_exclude_self_rid = self_rid
+				_cam_ray_exclude_vehicle_rid = vehicle_exclude_rid
+			_cam_ray_query.from = origin
+			_cam_ray_query.to = desired_cam_pos
+			_cam_ray_query.collision_mask = 1
+			var hit := get_world_3d().direct_space_state.intersect_ray(_cam_ray_query)
+			if not hit.is_empty() and hit.get("collider") is StaticBody3D:
+				_cam_ray_cached_hit_valid = true
+				_cam_ray_cached_hit_dist = origin.distance_to(hit["position"])
+				actual_dist = clampf(_cam_ray_cached_hit_dist - 0.25, 0.55, actual_dist)
+			else:
+				_cam_ray_cached_hit_valid = false
+				_cam_ray_cached_hit_dist = 0.0
+			_cam_ray_cache_valid = true
+			_cam_ray_last_frame = frame_now
+			_cam_ray_last_origin = origin
+			_cam_ray_last_target = desired_cam_pos
+			_cam_ray_last_sub_mode = in_submarine_mode
+			_cam_ray_last_mount_mode = in_mount_mode
+			_cam_ray_last_scoped = scoped
 
+	_applied_camera_distance = actual_dist
 	camera.position = camera.basis.z * actual_dist
 	if is_instance_valid(diver_model):
 		diver_model.visible = third_person_mode and not scoped and not in_submarine_mode
@@ -1567,6 +1637,8 @@ func _build_diver_model() -> void:
 	var b_mesh := SphereMesh.new()
 	b_mesh.radius = 0.018
 	b_mesh.height = 0.036
+	b_mesh.radial_segments = 6
+	b_mesh.rings = 3
 	var b_mat := StandardMaterial3D.new()
 	b_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	b_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA

@@ -11,6 +11,7 @@ signal sushi_cook_requested(dish_id: String)
 signal sushi_serve_all_requested
 signal cobra_buy_requested(item_id: String)
 signal open_sushi_requested
+signal open_map_requested
 signal mount_board_select_requested(index: int)
 signal mount_board_select_all_requested
 signal mount_board_store_all_requested
@@ -378,7 +379,7 @@ func _build_pause() -> void:
 	_label(card, "在此稍作停留", Rect2(35, 77, 450, 57), 34, INK)
 	_label(card, "生命支持已暂停。可随时按 M 查看开放海图与前哨跃迁点。", Rect2(37, 142, 445, 30), 14, MUTED)
 	_button(card, "继续潜航     →", Rect2(36, 192, 448, 48), func() -> void: resume_requested.emit(), true)
-	_button(card, "打开全域勘测海图 [M]", Rect2(36, 250, 448, 44), func() -> void: set_screen("map"))
+	_button(card, "打开全域勘测海图 [M]", Rect2(36, 250, 448, 44), func() -> void: open_map_requested.emit())
 	_button(card, "重新开始", Rect2(36, 304, 448, 44), func() -> void: restart_requested.emit())
 	_label(card, "ESC 返回海底", Rect2(36, 353, 448, 23), 11, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
@@ -596,7 +597,7 @@ func update_hud(data: Dictionary) -> void:
 
 	if is_explore:
 		oxygen_value.text = "∞"
-		oxygen_value.add_theme_color_override("font_color", CYAN)
+		_set_font_color(oxygen_value, CYAN)
 		oxygen_unit.text = "探险  /  无限制"
 		oxygen_bar.max_value = 100.0
 		oxygen_bar.value = 100.0
@@ -605,7 +606,7 @@ func update_hud(data: Dictionary) -> void:
 		var oxygen := float(data.get("oxygen", 90.0))
 		var maximum := maxf(float(data.get("max_oxygen", 90.0)), 1.0)
 		oxygen_value.text = "%02d" % ceili(maxf(oxygen, 0.0))
-		oxygen_value.add_theme_color_override("font_color", ORANGE if oxygen < maximum * 0.25 else INK)
+		_set_font_color(oxygen_value, ORANGE if oxygen < maximum * 0.25 else INK)
 		oxygen_unit.text = "秒  /  氧气"
 		oxygen_bar.max_value = maximum
 		oxygen_bar.value = oxygen
@@ -620,10 +621,10 @@ func update_hud(data: Dictionary) -> void:
 	var max_oxygen_level := maxf(float(data.get("max_oxygen", 90.0)), 1.0)
 	if not is_explore and oxygen_level < max_oxygen_level * 0.25:
 		status_value.text = "氧气不足  /  请上浮、靠近巨砗磲或前往科考前哨站"
-		status_value.add_theme_color_override("font_color", ORANGE)
+		_set_font_color(status_value, ORANGE)
 	else:
 		status_value.text = "%s   [X:%+d Z:%+d]" % [biome, roundi(p_pos.x), roundi(p_pos.z)]
-		status_value.add_theme_color_override("font_color", CYAN)
+		_set_font_color(status_value, CYAN)
 
 	home_value.text = "%d m" % roundi(float(data.get("distance_home", 0.0)))
 	if is_instance_valid(explore_summary_label):
@@ -697,7 +698,7 @@ func update_hud(data: Dictionary) -> void:
 		dave_status_label.text = "%s  ·  💰 %dG  ·  🎈 无人机 %s [V打捞]  ·  ★ 图鉴 %d/%d [B寿司吧]" % [
 			w_str, gold_val, d_str, marinca_cards.size(), marinca_total
 		]
-		dave_status_label.add_theme_color_override("font_color", ORANGE if overweight else CYAN)
+		_set_font_color(dave_status_label, ORANGE if overweight else CYAN)
 
 	if is_instance_valid(sushi_header_label):
 		var rep_lv: int = int(data.get("sushi_reputation", 1))
@@ -783,7 +784,7 @@ func update_hud(data: Dictionary) -> void:
 		var p_name: String = str(pinned_info.get("name", "配方"))
 		var is_all_ready: bool = bool(pinned_info.get("all_ready", false))
 		pinned_title.text = "【配方追踪】%s %s" % [p_name, "✦ 材料齐备" if is_all_ready else ""]
-		pinned_title.add_theme_color_override("font_color", ORANGE if is_all_ready else CYAN)
+		_set_font_color(pinned_title, ORANGE if is_all_ready else CYAN)
 		var items_arr: Array = pinned_info.get("details", [])
 		var parts: Array[String] = []
 		for it: Dictionary in items_arr:
@@ -954,16 +955,15 @@ func update_hud(data: Dictionary) -> void:
 				s_btn.disabled = false
 				var state_str := "● 已召唤出战" if is_dep else "○ 点击召唤出战"
 				s_btn.text = "#%02d 【%s】\nHP %d  ·  %s" % [idx + 1, b_name, b_hp, state_str]
-				s_btn.add_theme_color_override("font_color", AMBER_GOLD if is_dep else INK)
+				_set_font_color(s_btn, AMBER_GOLD if is_dep else INK)
 			else:
 				s_btn.visible = beast_cnt > 0
 				s_btn.disabled = true
 				s_btn.text = "应援槽位 #%02d\n[ 空闲待驯服 ]" % (idx + 1)
-				s_btn.add_theme_color_override("font_color", MUTED)
 
 	var is_shield: bool = bool(data.get("shield_active", false))
 	shield_label.text = "[C] 单手能量盾: [防御中 🛡️]" if is_shield else "[C] 单手能量盾: [收起]"
-	shield_label.add_theme_color_override("font_color", CYAN if is_shield else MUTED)
+	_set_font_color(shield_label, CYAN if is_shield else MUTED)
 
 	if fighting:
 		mission_title.text = "【巨兽决战】%s" % str(boss.get("name", "深渊领主"))
@@ -1023,6 +1023,11 @@ func toast(message: String) -> void:
 	toast_time = 3.6
 	toast_label.modulate.a = 1.0
 	toast_label.visible = active_screen in ["play", "craft", "sushi", "mount_board", "map"]
+
+func _set_font_color(ctrl: Control, col: Color) -> void:
+	if ctrl.get_meta("_fc", Color(-1.0, -1.0, -1.0, -1.0)) != col:
+		ctrl.set_meta("_fc", col)
+		ctrl.add_theme_color_override("font_color", col)
 
 func _full(parent: Node) -> Control:
 	var control := Control.new()

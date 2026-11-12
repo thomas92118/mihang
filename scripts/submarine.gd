@@ -352,8 +352,12 @@ func _build_escape_pod(at: Vector3, size: Vector3, pod_label: String, side: floa
 	label.font = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 	label.text = "◈ " + pod_label
 	label.position = Vector3(side * size.x * 0.55, size.y * 0.4, 0)
-	label.font_size = 28
-	label.pixel_size = 0.007
+	var old_font_size := 28
+	var old_pixel_size := 0.007
+	var old_outline_size := label.outline_size
+	label.font_size = 40
+	label.pixel_size = old_pixel_size * (float(old_font_size) / 40.0)
+	label.outline_size = roundi(float(old_outline_size) * 40.0 / float(old_font_size))
 	label.modulate = Color(1.0, 0.85, 0.3)
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
@@ -380,6 +384,8 @@ func _setup_wake_particles(at: Vector3, radius: float) -> void:
 	var p_mesh := SphereMesh.new()
 	p_mesh.radius = radius * 0.15
 	p_mesh.height = p_mesh.radius * 2.0
+	p_mesh.radial_segments = 6
+	p_mesh.rings = 3
 	var p_mat := StandardMaterial3D.new()
 	p_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	p_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA

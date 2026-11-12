@@ -118,10 +118,13 @@ func _build_trail() -> void:
 	var p_mesh := SphereMesh.new()
 	p_mesh.radius = 0.045
 	p_mesh.height = 0.09
+	p_mesh.radial_segments = 6
+	p_mesh.rings = 3
 	var p_mat := StandardMaterial3D.new()
 	p_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	p_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	p_mat.albedo_color = Color(0.8, 0.96, 1.0, 0.65)
+	p_mesh.material = p_mat
 	trail_particles.mesh = p_mesh
 	add_child(trail_particles)
 

@@ -6,6 +6,9 @@ const OceanDepths = preload("res://scripts/ocean_depths.gd")
 const WORLD_HALF := 900.0
 const WORLD_SPAN := 1800.0
 const SURVEY_GRID := 24
+const FOG_UNSURVEYED := Color(0.012, 0.045, 0.085, 0.90)
+const FOG_SURVEYED := Color(0.012, 0.045, 0.085, 0.0)
+const RADAR_FOG_MODULATE := Color(1.0, 1.0, 1.0, 0.86 / 0.90)
 
 const CYAN := Color("38f6e8")
 const INK := Color("f4fcff")
@@ -26,6 +29,8 @@ const REGION_LABELS := [
 	{"name": "沉船幽灵浅滩", "pos": Vector2(450, -410), "sub": "GHOST FLEET"},
 	{"name": "极渊星辉圣域", "pos": Vector2(60, -670), "sub": "HADAL SANCTUM"}
 ]
+
+static var _bathy_cache: Dictionary = {}
 
 static func _bathymetry_color(depth: float, world_x: float, world_z: float) -> Color:
 	var c_surface := Color(0.10, 0.58, 0.60)
@@ -59,6 +64,10 @@ static func _bathymetry_color(depth: float, world_x: float, world_z: float) -> C
 	return base
 
 static func build_bathymetry_texture(resolution: int = 128) -> ImageTexture:
+	if _bathy_cache.has(resolution):
+		var cached: ImageTexture = _bathy_cache[resolution]
+		if is_instance_valid(cached):
+			return cached
 	var img := Image.create(resolution, resolution, false, Image.FORMAT_RGBA8)
 	for py in range(resolution):
 		var wz := lerpf(-WORLD_HALF, WORLD_HALF, (float(py) + 0.5) / float(resolution))
@@ -66,7 +75,49 @@ static func build_bathymetry_texture(resolution: int = 128) -> ImageTexture:
 			var wx := lerpf(-WORLD_HALF, WORLD_HALF, (float(px) + 0.5) / float(resolution))
 			var d := maxf(0.0, -Ocean.floor_height(wx, wz))
 			img.set_pixel(px, py, _bathymetry_color(d, wx, wz))
-	return ImageTexture.create_from_image(img)
+	var tex := ImageTexture.create_from_image(img)
+	_bathy_cache[resolution] = tex
+	return tex
+
+
+class FogOverlay extends RefCounted:
+	static var _survey_keys: PackedStringArray = PackedStringArray()
+	var fog_img: Image
+	var fog_tex: ImageTexture
+	var _last_surveyed_count: int = -1
+
+	static func _get_survey_keys() -> PackedStringArray:
+		if _survey_keys.is_empty():
+			_survey_keys.resize(SURVEY_GRID * SURVEY_GRID)
+			for gz in range(SURVEY_GRID):
+				var row_off := gz * SURVEY_GRID
+				for gx in range(SURVEY_GRID):
+					_survey_keys[row_off + gx] = "%d_%d" % [gx, gz]
+		return _survey_keys
+
+	func get_texture(surveyed_cells: Dictionary) -> ImageTexture:
+		var count := surveyed_cells.size()
+		if fog_tex == null:
+			fog_img = Image.create(SURVEY_GRID, SURVEY_GRID, false, Image.FORMAT_RGBA8)
+			_rebuild(surveyed_cells)
+			fog_tex = ImageTexture.create_from_image(fog_img)
+			_last_surveyed_count = count
+		elif count != _last_surveyed_count:
+			_rebuild(surveyed_cells)
+			fog_tex.update(fog_img)
+			_last_surveyed_count = count
+		return fog_tex
+
+	func _rebuild(surveyed_cells: Dictionary) -> void:
+		fog_img.fill(FOG_UNSURVEYED)
+		if surveyed_cells.is_empty():
+			return
+		var keys := _get_survey_keys()
+		for gz in range(SURVEY_GRID):
+			var row_off := gz * SURVEY_GRID
+			for gx in range(SURVEY_GRID):
+				if surveyed_cells.has(keys[row_off + gx]):
+					fog_img.set_pixel(gx, gz, FOG_SURVEYED)
 
 
 class CompassStrip extends Control:
@@ -161,6 +212,7 @@ class CompassStrip extends Control:
 
 class MinimapRadar extends Control:
 	var bathy_tex: ImageTexture
+	var fog_overlay := FogOverlay.new()
 	var player_pos: Vector3 = Vector3.ZERO
 	var heading_yaw: float = 0.0
 	var surveyed_cells: Dictionary = {}
@@ -229,23 +281,21 @@ class MinimapRadar extends Control:
 			draw_rect(map_rect, Color(0.02, 0.14, 0.24, 0.95), true)
 
 		# Fog of war cells in radar window
-		var cell_span := WORLD_SPAN / float(SURVEY_GRID)
-		var gx_min := maxi(0, floori((player_pos.x - radar_range + WORLD_HALF) / cell_span))
-		var gx_max := mini(SURVEY_GRID - 1, floori((player_pos.x + radar_range + WORLD_HALF) / cell_span))
-		var gz_min := maxi(0, floori((player_pos.z - radar_range + WORLD_HALF) / cell_span))
-		var gz_max := mini(SURVEY_GRID - 1, floori((player_pos.z + radar_range + WORLD_HALF) / cell_span))
-		for gz in range(gz_min, gz_max + 1):
-			for gx in range(gx_min, gx_max + 1):
-				var key := "%d_%d" % [gx, gz]
-				if surveyed_cells.has(key):
-					continue
-				var wx0 := -WORLD_HALF + float(gx) * cell_span
-				var wz0 := -WORLD_HALF + float(gz) * cell_span
-				var p0 := _world_to_radar(wx0, wz0, center, half_r)
-				var p1 := _world_to_radar(wx0 + cell_span, wz0 + cell_span, center, half_r)
-				var clipped := Rect2(p0, p1 - p0).intersection(map_rect)
-				if clipped.size.x > 0.1 and clipped.size.y > 0.1:
-					draw_rect(clipped, Color(0.01, 0.05, 0.09, 0.80), true)
+		var f_wx0 := clampf(player_pos.x - radar_range, -WORLD_HALF, WORLD_HALF)
+		var f_wz0 := clampf(player_pos.z - radar_range, -WORLD_HALF, WORLD_HALF)
+		var f_wx1 := clampf(player_pos.x + radar_range, -WORLD_HALF, WORLD_HALF)
+		var f_wz1 := clampf(player_pos.z + radar_range, -WORLD_HALF, WORLD_HALF)
+		if f_wx1 > f_wx0 and f_wz1 > f_wz0:
+			var f_tex := fog_overlay.get_texture(surveyed_cells)
+			var f_p0 := _world_to_radar(f_wx0, f_wz0, center, half_r)
+			var f_p1 := _world_to_radar(f_wx1, f_wz1, center, half_r)
+			var f_src := Rect2(
+				(f_wx0 + WORLD_HALF) / WORLD_SPAN * float(SURVEY_GRID),
+				(f_wz0 + WORLD_HALF) / WORLD_SPAN * float(SURVEY_GRID),
+				maxf(0.001, (f_wx1 - f_wx0) / WORLD_SPAN * float(SURVEY_GRID)),
+				maxf(0.001, (f_wz1 - f_wz0) / WORLD_SPAN * float(SURVEY_GRID))
+			)
+			draw_texture_rect_region(f_tex, Rect2(f_p0, f_p1 - f_p0), f_src, RADAR_FOG_MODULATE)
 
 		# Sonar rings & crosshairs
 		draw_arc(center, half_r * 0.45, 0.0, TAU, 36, Color(0.25, 0.9, 1.0, 0.16), 1.0)
@@ -339,6 +389,7 @@ class SeaChartCanvas extends Control:
 	signal selection_changed(info: Dictionary)
 
 	var bathy_tex: ImageTexture
+	var fog_overlay := FogOverlay.new()
 	var zoom: float = 1.0
 	var pan_world: Vector2 = Vector2.ZERO
 	var dragging: bool = false
@@ -548,18 +599,22 @@ class SeaChartCanvas extends Control:
 
 		# 2. Fog of War (24 x 24 survey sectors)
 		var cell_span := WORLD_SPAN / float(SURVEY_GRID)
-		for gz in range(SURVEY_GRID):
-			for gx in range(SURVEY_GRID):
-				var key := "%d_%d" % [gx, gz]
-				if surveyed_cells.has(key):
-					continue
-				var wx0 := -WORLD_HALF + float(gx) * cell_span
-				var wz0 := -WORLD_HALF + float(gz) * cell_span
-				var p0 := _world_to_canvas(wx0, wz0)
-				var p1 := _world_to_canvas(wx0 + cell_span, wz0 + cell_span)
-				var crect := Rect2(p0, p1 - p0).intersection(rect)
-				if crect.size.x > 0.2 and crect.size.y > 0.2:
-					draw_rect(crect, Color(0.012, 0.045, 0.085, 0.84), true)
+		var f_half_vis := WORLD_HALF / zoom
+		var f_wx0 := clampf(pan_world.x - f_half_vis, -WORLD_HALF, WORLD_HALF)
+		var f_wz0 := clampf(pan_world.y - f_half_vis, -WORLD_HALF, WORLD_HALF)
+		var f_wx1 := clampf(pan_world.x + f_half_vis, -WORLD_HALF, WORLD_HALF)
+		var f_wz1 := clampf(pan_world.y + f_half_vis, -WORLD_HALF, WORLD_HALF)
+		if f_wx1 > f_wx0 and f_wz1 > f_wz0:
+			var f_tex := fog_overlay.get_texture(surveyed_cells)
+			var f_p0 := _world_to_canvas(f_wx0, f_wz0)
+			var f_p1 := _world_to_canvas(f_wx1, f_wz1)
+			var f_src := Rect2(
+				(f_wx0 + WORLD_HALF) / WORLD_SPAN * float(SURVEY_GRID),
+				(f_wz0 + WORLD_HALF) / WORLD_SPAN * float(SURVEY_GRID),
+				maxf(0.001, (f_wx1 - f_wx0) / WORLD_SPAN * float(SURVEY_GRID)),
+				maxf(0.001, (f_wz1 - f_wz0) / WORLD_SPAN * float(SURVEY_GRID))
+			)
+			draw_texture_rect_region(f_tex, Rect2(f_p0, f_p1 - f_p0), f_src)
 
 		# 3. Coordinate nautical grid every 225m
 		var font: Font = get_theme_default_font()

@@ -9,6 +9,8 @@ const MarineCreature = preload("res://scripts/marine_creature.gd")
 const Submarine = preload("res://scripts/submarine.gd")
 const SeabedEcology = preload("res://scripts/seabed_ecology.gd")
 const OceanDepths = preload("res://scripts/ocean_depths.gd")
+const LABEL_FONT = preload("res://assets/fonts/NotoSansSC-Subset.otf")
+const LABEL_FONT_SIZE := 40
 const BOSS_ARENA_CENTER := Vector3(-50, -76, -170)
 const BOSS_TRIGGER_RADIUS := 36.0
 const BOSS_MAX_HEALTH := 1800.0
@@ -58,6 +60,9 @@ const RELIC_SPECS := [
 
 var environment: Environment
 var sun: DirectionalLight3D
+var water_surface: MeshInstance3D = null
+var water_surface_mat: ShaderMaterial = null
+var water_underwater_mat: ShaderMaterial = null
 var resources: Array[Node3D] = []
 var fragments: Array[Node3D] = []
 var fish: Array[Node3D] = []
@@ -66,7 +71,7 @@ var neutral_fish: Array[Node3D] = []
 var predators: Array[Node3D] = []
 var rng := RandomNumberGenerator.new()
 var clock: float = 0.0
-var cache: Dictionary = {}
+static var cache: Dictionary = {}
 var plant_materials: Dictionary = {}
 var vent_lights: Array[OmniLight3D] = []
 var jellies: Array[Node3D] = []
@@ -106,7 +111,7 @@ var boss_cycle := 0
 var boss_charge_direction := Vector3.FORWARD
 var boss_warning := ""
 var scope_view_enabled := false
-var scope_meshes: Array[MeshInstance3D] = []
+var scope_meshes: Array[GeometryInstance3D] = []
 var conquered_bosses: Dictionary = {}
 var mother_tree: Node3D = null
 var mother_tree_spawned_flag := false
@@ -127,6 +132,11 @@ var mother_tree_marker: Label3D = null
 var seabed_ecology: Node3D
 var marine_snow: MultiMeshInstance3D
 var frontier_wildlife: Array[Node3D] = []
+var _all_creatures: Array[Node3D] = []
+var _creatures_dirty: bool = true
+var _stasis_aura_mat: StandardMaterial3D = null
+var _stasis_sphere_small: SphereMesh = null
+var _stasis_sphere_boss: SphereMesh = null
 
 var plant_shader: Shader = preload("res://shaders/plant_sway.gdshader")
 
@@ -264,6 +274,67 @@ static func terrain_height(x: float, z: float) -> float:
 	var d := floor_height(x0 + step, z0 + step)
 	return d + (c - d) * (1.0 - tx) + (b - d) * (1.0 - tz)
 
+static func _floor_normal_fast(x: float, z: float, h_center: float = NAN) -> Vector3:
+	const EPS := 1.5
+	var h0: float = floor_height(x, z) if is_nan(h_center) else h_center
+	var hx: float = floor_height(x + EPS, z)
+	var hz: float = floor_height(x, z + EPS)
+	return Vector3(h0 - hx, EPS, h0 - hz).normalized()
+
+static func _build_seabed_grid_mesh(x0: int, x1: int, z0: int, z1: int, step: int) -> ArrayMesh:
+	var nx: int = (x1 - x0) / step
+	var nz: int = (z1 - z0) / step
+	var vx_count: int = nx + 1
+	var vz_count: int = nz + 1
+	var vert_count: int = vx_count * vz_count
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	vertices.resize(vert_count)
+	normals.resize(vert_count)
+	uvs.resize(vert_count)
+	var inv_step: float = 1.0 / float(step)
+	var v_idx: int = 0
+	for ix in range(vx_count):
+		var fx: float = float(x0 + ix * step)
+		var u: float = fx * inv_step
+		for iz in range(vz_count):
+			var fz: float = float(z0 + iz * step)
+			var h: float = floor_height(fx, fz)
+			vertices[v_idx] = Vector3(fx, h, fz)
+			normals[v_idx] = _floor_normal_fast(fx, fz, h)
+			uvs[v_idx] = Vector2(u, fz * inv_step)
+			v_idx += 1
+
+	var indices := PackedInt32Array()
+	indices.resize(nx * nz * 6)
+	var i_idx: int = 0
+	for ix in range(nx):
+		var row0: int = ix * vz_count
+		var row1: int = (ix + 1) * vz_count
+		for iz in range(nz):
+			var i0: int = row0 + iz
+			var i1: int = row1 + iz
+			var i2: int = row0 + iz + 1
+			var i3: int = row1 + iz + 1
+			indices[i_idx] = i0
+			indices[i_idx + 1] = i1
+			indices[i_idx + 2] = i2
+			indices[i_idx + 3] = i1
+			indices[i_idx + 4] = i3
+			indices[i_idx + 5] = i2
+			i_idx += 6
+
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
 	rng.seed = 240913
@@ -312,14 +383,17 @@ func _create_environment() -> void:
 
 	var surface := MeshInstance3D.new()
 	surface.name = "WaterSurface"
+	water_surface = surface
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(2200, 2200)
 	plane.subdivide_width = 112
 	plane.subdivide_depth = 112
 	surface.mesh = plane
 	surface.position = Vector3.ZERO
-	var water := ShaderMaterial.new()
-	water.shader = load("res://shaders/water.gdshader")
+	water_surface_mat = ShaderMaterial.new()
+	water_surface_mat.shader = load("res://shaders/water.gdshader")
+	water_underwater_mat = ShaderMaterial.new()
+	water_underwater_mat.shader = load("res://shaders/water_underwater.gdshader")
 	var noise := FastNoiseLite.new()
 	noise.seed = 240913
 	noise.frequency = 0.035
@@ -331,9 +405,12 @@ func _create_environment() -> void:
 	ripples.as_normal_map = true
 	ripples.bump_strength = 2.0
 	ripples.noise = noise
-	water.set_shader_parameter("ripple_normal", ripples)
-	water.set_shader_parameter("sun_direction", sun.transform.basis.z)
-	surface.material_override = water
+	var sun_dir := sun.transform.basis.z
+	water_surface_mat.set_shader_parameter("ripple_normal", ripples)
+	water_surface_mat.set_shader_parameter("sun_direction", sun_dir)
+	water_underwater_mat.set_shader_parameter("ripple_normal", ripples)
+	water_underwater_mat.set_shader_parameter("sun_direction", sun_dir)
+	surface.material_override = water_surface_mat
 	surface.extra_cull_margin = 0.6
 	add_child(surface)
 
@@ -373,22 +450,13 @@ func _create_environment() -> void:
 		add_child(beam)
 
 func _create_terrain() -> void:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var ix0 := -288
 	var ix1 := 288
 	var iz0 := -384
 	var iz1 := 144
-	for x in range(ix0, ix1, 6):
-		for z in range(iz0, iz1, 6):
-			var points := [Vector2(x, z), Vector2(x + 6, z), Vector2(x, z + 6), Vector2(x + 6, z + 6)]
-			for index in [0, 1, 2, 1, 3, 2]:
-				var p: Vector2 = points[index]
-				st.add_vertex(Vector3(p.x, floor_height(p.x, p.y), p.y))
-	st.generate_normals()
 	var terrain := MeshInstance3D.new()
 	terrain.name = "Seabed"
-	terrain.mesh = st.commit()
+	terrain.mesh = _build_seabed_grid_mesh(ix0, ix1, iz0, iz1, 6)
 	var material := ShaderMaterial.new()
 	material.shader = load("res://shaders/sand.gdshader")
 	var noise := FastNoiseLite.new()
@@ -413,22 +481,13 @@ func _create_terrain() -> void:
 		{"name": "OuterSeabed_East", "x0": ix1, "x1": 960, "z0": iz0, "z1": iz1}
 	]
 	for cdef in chunk_defs:
-		var cst := SurfaceTool.new()
-		cst.begin(Mesh.PRIMITIVE_TRIANGLES)
 		var cx0: int = int(cdef["x0"])
 		var cx1: int = int(cdef["x1"])
 		var cz0: int = int(cdef["z0"])
 		var cz1: int = int(cdef["z1"])
-		for x in range(cx0, cx1, 16):
-			for z in range(cz0, cz1, 16):
-				var pts := [Vector2(x, z), Vector2(x + 16, z), Vector2(x, z + 16), Vector2(x + 16, z + 16)]
-				for idx in [0, 1, 2, 1, 3, 2]:
-					var p2: Vector2 = pts[idx]
-					cst.add_vertex(Vector3(p2.x, floor_height(p2.x, p2.y), p2.y))
-		cst.generate_normals()
 		var chunk := MeshInstance3D.new()
 		chunk.name = str(cdef["name"])
-		chunk.mesh = cst.commit()
+		chunk.mesh = _build_seabed_grid_mesh(cx0, cx1, cz0, cz1, 16)
 		chunk.material_override = material
 		add_child(chunk)
 		chunk.create_trimesh_collision()
@@ -446,12 +505,12 @@ func model(asset: String, at: Vector3, size: float = 1.0, visibility_range: floa
 	# Surface overrides leave the imported PBR resources and animations intact.
 	apply_plant_shader(instance, 0.0, 0.0, asset)
 	if visibility_range > 0.0:
-		for child in instance.find_children("*", "MeshInstance3D", true, false):
-			var mi: MeshInstance3D = child
-			mi.visibility_range_end = visibility_range
-			mi.set_meta("base_visibility_range", visibility_range)
-			scope_meshes.append(mi)
-			mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+		for child in instance.find_children("*", "GeometryInstance3D", true, false):
+			var gi: GeometryInstance3D = child
+			gi.visibility_range_end = visibility_range
+			gi.set_meta("base_visibility_range", visibility_range)
+			scope_meshes.append(gi)
+			gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 	var players := instance.find_children("*", "AnimationPlayer", true, false)
 	if not players.is_empty():
 		var player: AnimationPlayer = players[0]
@@ -635,14 +694,10 @@ func _populate() -> void:
 	beacon_light.omni_range = 14
 	add_child(beacon_light)
 	var marker := Label3D.new()
-	marker.font = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 	marker.text = "◇  LIFEPOD  /  逃生舱"
 	marker.position = HOME + Vector3(0, 6.5, 0)
-	marker.font_size = 48
-	marker.pixel_size = 0.009
 	marker.modulate = Color(0.65, 1.0, 0.9)
-	marker.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	marker.no_depth_test = true
+	_configure_label_3d(marker, 48, 0.009)
 	add_child(marker)
 
 	# Central Escape Console at Lifepod (中央逃生控制台)
@@ -692,14 +747,10 @@ func _populate() -> void:
 	c_light.omni_range = 8.0
 	escape_console.add_child(c_light)
 	var c_label := Label3D.new()
-	c_label.font = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 	c_label.text = "⬡  ESCAPE CONSOLE  /  逃生控制台"
 	c_label.position = Vector3(0, 1.6, 0)
-	c_label.font_size = 32
-	c_label.pixel_size = 0.007
 	c_label.modulate = Color(0.3, 0.95, 1.0)
-	c_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	c_label.no_depth_test = true
+	_configure_label_3d(c_label, 32, 0.007)
 	escape_console.add_child(c_label)
 	add_child(escape_console)
 
@@ -777,14 +828,10 @@ func _populate() -> void:
 	bb_light.omni_range = 8.0
 	black_box.add_child(bb_light)
 	var bb_label := Label3D.new()
-	bb_label.font = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 	bb_label.text = "◈  BLACK BOX  /  失事科考日志"
 	bb_label.position = Vector3(0, 0.85, 0)
-	bb_label.font_size = 32
-	bb_label.pixel_size = 0.007
 	bb_label.modulate = Color(0.35, 0.95, 1.0)
-	bb_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	bb_label.no_depth_test = true
+	_configure_label_3d(bb_label, 32, 0.007)
 	black_box.add_child(bb_label)
 	add_child(black_box)
 
@@ -1043,6 +1090,7 @@ func _populate() -> void:
 	_spawn_extra_creatures()
 	_spawn_sea_wolves()
 	_spawn_schooling_fish()
+	_creatures_dirty = true
 	for creature in get_creatures():
 		_register_creature_hitbox(creature)
 
@@ -1323,16 +1371,20 @@ func _place_reef_element(asset: String, at: Vector3, scale_val: float, yaw: floa
 	dynamic_plants.append(node)
 	return node
 
+func _configure_label_3d(lbl: Label3D, orig_font_size: int, orig_pixel_size: float) -> void:
+	lbl.font = LABEL_FONT
+	lbl.font_size = LABEL_FONT_SIZE
+	lbl.pixel_size = orig_pixel_size * float(orig_font_size) / float(LABEL_FONT_SIZE)
+	lbl.outline_size = maxi(1, roundi(12.0 * float(LABEL_FONT_SIZE) / float(orig_font_size)))
+	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lbl.no_depth_test = true
+
 func _create_marker(text: String, at: Vector3, color: Color) -> Label3D:
 	var marker := Label3D.new()
-	marker.font = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 	marker.text = text
 	marker.position = at
-	marker.font_size = 40
-	marker.pixel_size = 0.0085
 	marker.modulate = color
-	marker.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	marker.no_depth_test = true
+	_configure_label_3d(marker, 40, 0.0085)
 	return marker
 
 func _create_nav_buoy(at: Vector3, label_text: String) -> void:
@@ -1411,6 +1463,8 @@ func _create_hydrothermal_vent(at: Vector3) -> void:
 	var bubble := SphereMesh.new()
 	bubble.radius = 0.08
 	bubble.height = 0.16
+	bubble.radial_segments = 6
+	bubble.rings = 3
 	var bubble_mat := StandardMaterial3D.new()
 	bubble_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	bubble_mat.albedo_color = Color(1.0, 0.65, 0.25)
@@ -1426,14 +1480,18 @@ func _create_hydrothermal_vent(at: Vector3) -> void:
 func _spawn_small_fish(center: Vector3, size: float) -> void:
 	var body := StaticBody3D.new()
 	body.name = "FishSmall"
-	body.position = center
+	var phase: float = rng.randf_range(0, TAU)
+	var swim_speed: float = rng.randf_range(0.9, 1.45)
+	var rad: float = rng.randf_range(3.8, 7.2)
+	body.position = center + Vector3(sin(phase) * rad, sin(phase * 2.2) * 0.8, cos(phase) * (rad * 0.7))
 	body.collision_layer = 2
 	body.set_meta("kind", "fish_small")
 	body.set_meta("name", "发光小金鱼")
 	body.set_meta("center", center)
-	body.set_meta("phase", rng.randf_range(0, TAU))
-	body.set_meta("swim_speed", rng.randf_range(0.9, 1.45))
-	body.set_meta("radius", rng.randf_range(3.8, 7.2))
+	body.set_meta("phase", phase)
+	body.set_meta("swim_speed", swim_speed)
+	body.set_meta("radius", rad)
+	body.set_meta("fish_scale", size)
 	body.set_meta("stun_timer", 0.0)
 	body.set_meta("dead", false)
 	body.set_meta("fright_timer", 0.0)
@@ -1441,6 +1499,12 @@ func _spawn_small_fish(center: Vector3, size: float) -> void:
 
 	var creature := model("fish_small", Vector3.ZERO, size, 35.0)
 	creature.reparent(body, false)
+	var init_tangent := Vector3(cos(phase) * rad, cos(phase * 2.2) * 1.76, -sin(phase) * (rad * 0.7))
+	if init_tangent.length_squared() > 0.0001:
+		var dir_norm := init_tangent.normalized()
+		var up := Vector3.UP if absf(dir_norm.y) < 0.95 else Vector3.FORWARD
+		creature.basis = (Basis.looking_at(-dir_norm, up) * Basis(Vector3.FORWARD, -sin(phase * 1.5) * 0.28)).scaled(Vector3.ONE * size)
+	body.set_meta("fish_model", creature)
 	if creature.has_meta("animation_player"):
 		body.set_meta("animation_player", creature.get_meta("animation_player"))
 		body.set_meta("base_animation", creature.get_meta("base_animation"))
@@ -1453,6 +1517,7 @@ func _spawn_small_fish(center: Vector3, size: float) -> void:
 
 	fish.append(body)
 	small_fish.append(body)
+	_creatures_dirty = true
 
 func _spawn_neutral_fish(center: Vector3, size: float) -> void:
 	var creature := model("fish", center, size, 42.0)
@@ -1467,6 +1532,7 @@ func _spawn_neutral_fish(center: Vector3, size: float) -> void:
 	creature.set_meta("fright_timer", 0.0)
 	fish.append(creature)
 	neutral_fish.append(creature)
+	_creatures_dirty = true
 
 func _spawn_predator(kind: String, center: Vector3, size: float) -> void:
 	var is_shark: bool = kind == "predator"
@@ -1491,12 +1557,15 @@ func _spawn_predator(kind: String, center: Vector3, size: float) -> void:
 	creature.set_meta("flee_timer", 0.0)
 	fish.append(creature)
 	predators.append(creature)
+	_creatures_dirty = true
 
 func remove_small_fish(body: Node3D) -> void:
+	body.set_meta("is_creature", false)
 	if small_fish.has(body):
 		small_fish.erase(body)
 	if fish.has(body):
 		fish.erase(body)
+	_creatures_dirty = true
 	body.queue_free()
 
 func tick_predators(diver_pos: Vector3, delta: float, flashlight_on: bool = false) -> Array[Dictionary]:
@@ -1515,7 +1584,7 @@ func tick_predators(diver_pos: Vector3, delta: float, flashlight_on: bool = fals
 			p.set_meta("bite_cooldown", maxf(0.0, bite_cd - delta))
 
 		var flee_t: float = float(p.get_meta("flee_timer", 0.0))
-		var dist: float = p.global_position.distance_to(diver_pos)
+		var dist_sq: float = p.global_position.distance_squared_to(diver_pos)
 		var detect_r: float = float(p.get_meta("detect_radius"))
 		var attack_r: float = float(p.get_meta("attack_radius"))
 		var speed: float = float(p.get_meta("speed"))
@@ -1531,8 +1600,8 @@ func tick_predators(diver_pos: Vector3, delta: float, flashlight_on: bool = fals
 				p.look_at(p.global_position + away, up, true)
 			continue
 
-		if dist < detect_r:
-			if dist > 11.0 and not flashlight_on:
+		if dist_sq < detect_r * detect_r:
+			if dist_sq > 11.0 * 11.0 and not flashlight_on:
 				p.set_meta("state", "warn")
 				var phase_val: float = float(p.get_meta("phase", 0.0))
 				var orbit_t: float = float(p.get_meta("motion_clock", clock)) * 1.4 + phase_val
@@ -1549,7 +1618,7 @@ func tick_predators(diver_pos: Vector3, delta: float, flashlight_on: bool = fals
 				if to_diver.length_squared() > 0.001:
 					var up := Vector3.UP if absf(to_diver.y) < 0.95 else Vector3.FORWARD
 					p.look_at(p.global_position + to_diver, up, true)
-				if dist < attack_r and bite_cd <= 0.0:
+				if dist_sq < attack_r * attack_r and bite_cd <= 0.0:
 					p.set_meta("bite_cooldown", 2.8)
 					p.set_meta("flee_timer", 1.8)
 					p.set_meta("has_attacked_player", true)
@@ -1591,6 +1660,7 @@ func _tick_status(n: Node3D, delta: float) -> bool:
 	if frozen > 0.0:
 		n.set_meta("freeze_timer", maxf(0.0, frozen - delta))
 		if frozen <= delta:
+			n.set_meta("has_stasis_aura", false)
 			var aura := n.get_node_or_null("StasisAura")
 			if is_instance_valid(aura):
 				aura.queue_free()
@@ -1600,13 +1670,17 @@ func _tick_status(n: Node3D, delta: float) -> bool:
 		var seabed := floor_height(n.position.x, n.position.z) + 0.16
 		if n.position.y > seabed:
 			n.position.y = maxf(seabed, n.position.y - 4.5 * delta)
-			n.rotation.z = move_toward(n.rotation.z, 1.15, delta * 1.8)
+			var corpse_vis: Node3D = n.get_meta("fish_model", null) if n.has_meta("fish_model") else n
+			if is_instance_valid(corpse_vis):
+				corpse_vis.rotation.z = move_toward(corpse_vis.rotation.z, 1.15, delta * 1.8)
 		return true
 	n.set_meta("motion_clock", float(n.get_meta("motion_clock", clock - delta)) + delta)
 	var stun: float = float(n.get_meta("stun_timer", 0.0))
 	if stun > 0.0:
 		n.set_meta("stun_timer", maxf(0.0, stun - delta))
-		n.rotation.z += sin(clock * 25.0) * 0.03
+		var stun_vis: Node3D = n.get_meta("fish_model", null) if n.has_meta("fish_model") else n
+		if is_instance_valid(stun_vis):
+			stun_vis.rotation.z += sin(clock * 25.0) * 0.03
 		return true
 	return false
 
@@ -1617,6 +1691,7 @@ func strike_predator(from: Vector3, dir: Vector3, max_range: float, damage: floa
 
 	var candidates: Array[Dictionary] = []
 	var living: Array[Node3D] = get_creatures()
+	var max_range_sq: float = max_range * max_range
 
 	for p: Node3D in living:
 		if not is_instance_valid(p) or bool(p.get_meta("dead", false)):
@@ -1626,9 +1701,10 @@ func strike_predator(from: Vector3, dir: Vector3, max_range: float, damage: floa
 		if p == water_dragon and not boss_active:
 			continue
 		var to_p := p.global_position - from
-		var dist := to_p.length()
-		if dist > max_range:
+		var dist_sq := to_p.length_squared()
+		if dist_sq > max_range_sq:
 			continue
+		var dist := sqrt(dist_sq)
 		var norm_to_p := to_p / maxf(dist, 0.001)
 		var angle_dot := dir.dot(norm_to_p)
 		if angle_dot >= angle_threshold:
@@ -1703,13 +1779,29 @@ func strike_predator(from: Vector3, dir: Vector3, max_range: float, damage: floa
 	return primary_target_info
 
 func get_creatures() -> Array[Node3D]:
-	var creatures: Array[Node3D] = []
-	for population in [fish, jellies, squids, rays, turtles, crabs, sea_spiders, seals, sea_wolves, schooling_fish]:
-		creatures.append_array(population)
+	var valid_bosses: int = 0
 	for b_id in boss_nodes:
 		if is_instance_valid(boss_nodes[b_id]):
-			creatures.append(boss_nodes[b_id])
-	return creatures
+			valid_bosses += 1
+	var expected_total: int = fish.size() + jellies.size() + squids.size() + rays.size() + turtles.size() + crabs.size() + sea_spiders.size() + seals.size() + sea_wolves.size() + schooling_fish.size() + valid_bosses
+	if _creatures_dirty or _all_creatures.size() != expected_total:
+		_all_creatures.clear()
+		_all_creatures.append_array(fish)
+		_all_creatures.append_array(jellies)
+		_all_creatures.append_array(squids)
+		_all_creatures.append_array(rays)
+		_all_creatures.append_array(turtles)
+		_all_creatures.append_array(crabs)
+		_all_creatures.append_array(sea_spiders)
+		_all_creatures.append_array(seals)
+		_all_creatures.append_array(sea_wolves)
+		_all_creatures.append_array(schooling_fish)
+		for b_id in boss_nodes:
+			var b_node: Node3D = boss_nodes[b_id]
+			if is_instance_valid(b_node):
+				_all_creatures.append(b_node)
+		_creatures_dirty = false
+	return _all_creatures
 
 func get_submarines() -> Array[Node3D]:
 	return submarines
@@ -1718,9 +1810,8 @@ func find_nearby_submarine(pos: Vector3, max_dist: float = 7.0) -> Node3D:
 	for sub in submarines:
 		if not is_instance_valid(sub):
 			continue
-		var dist: float = pos.distance_to(sub.global_position)
 		var threshold: float = float(sub.interact_radius) if ("interact_radius" in sub) else max_dist
-		if dist <= threshold:
+		if pos.distance_squared_to(sub.global_position) <= threshold * threshold:
 			return sub
 	return null
 
@@ -1730,6 +1821,7 @@ func _is_immobile(creature: Node3D) -> bool:
 func _register_creature_hitbox(creature: Node3D) -> void:
 	creature.set_meta("freeze_timer", 0.0)
 	creature.set_meta("motion_clock", 0.0)
+	creature.set_meta("is_creature", true)
 	if creature is CollisionObject3D:
 		return
 	var kind: String = str(creature.get_meta("kind", "fish"))
@@ -1770,7 +1862,7 @@ func trace_laser(from: Vector3, direction: Vector3, max_range: float, excluded: 
 		return {"position": finish, "creature": null}
 	var collider: Node = result["collider"]
 	var creature: Node3D = collider.get_meta("creature") if collider.has_meta("creature") else null
-	if creature == null and collider.has_meta("kind") and get_creatures().has(collider):
+	if creature == null and collider is Node3D and (bool(collider.get_meta("is_creature", false)) or (collider.has_meta("kind") and get_creatures().has(collider))):
 		creature = collider as Node3D
 	return {"position": result["position"], "creature": creature, "collider": collider}
 
@@ -1835,16 +1927,16 @@ func damage_creature(creature: Node3D, damage: float, impulse := Vector3.ZERO, i
 
 func find_nearby_oxygen_clam(pos: Vector3, max_dist: float = 4.8) -> Node3D:
 	var best: Node3D = null
-	var best_d: float = max_dist
+	var best_d_sq: float = max_dist * max_dist
 	for clam in giant_clams:
 		if not is_instance_valid(clam):
 			continue
 		if float(clam.get_meta("clam_cooldown", 0.0)) > 0.0:
 			continue
 		var clam_pos: Vector3 = clam.global_position if clam.is_inside_tree() else clam.position
-		var d: float = pos.distance_to(clam_pos)
-		if d <= best_d:
-			best_d = d
+		var d_sq: float = pos.distance_squared_to(clam_pos)
+		if d_sq <= best_d_sq:
+			best_d_sq = d_sq
 			best = clam
 	return best
 
@@ -1863,12 +1955,22 @@ func salvage_creature_with_drone(creature: Node3D) -> Dictionary:
 	creature.set_meta("dead", true)
 	creature.set_meta("can_loot", false)
 	creature.set_meta("looted", true)
+	creature.set_meta("is_creature", false)
 	creature.set_meta("catch_stars", 3)
 	predators.erase(creature)
 	small_fish.erase(creature)
+	neutral_fish.erase(creature)
 	fish.erase(creature)
+	jellies.erase(creature)
+	squids.erase(creature)
+	rays.erase(creature)
+	turtles.erase(creature)
+	crabs.erase(creature)
+	sea_spiders.erase(creature)
+	seals.erase(creature)
 	sea_wolves.erase(creature)
 	schooling_fish.erase(creature)
+	_creatures_dirty = true
 	var tree := creature.get_tree()
 	if tree:
 		var tw := creature.create_tween()
@@ -1887,29 +1989,40 @@ func salvage_creature_with_drone(creature: Node3D) -> Dictionary:
 
 func freeze_creatures(at: Vector3, radius: float, duration: float) -> int:
 	var count := 0
+	var radius_sq: float = radius * radius
 	for creature in get_creatures():
 		if not is_instance_valid(creature) or bool(creature.get_meta("dead", false)):
 			continue
-		if creature.global_position.distance_squared_to(at) > radius * radius:
+		if creature.global_position.distance_squared_to(at) > radius_sq:
 			continue
-		creature.set_meta("freeze_timer", maxf(float(creature.get_meta("freeze_timer", 0.0)), duration))
-		_update_creature_animation(creature)
-		if not creature.has_node("StasisAura"):
+		var prev_freeze: float = float(creature.get_meta("freeze_timer", 0.0))
+		if duration > prev_freeze:
+			creature.set_meta("freeze_timer", duration)
+		if prev_freeze <= 0.0:
+			_update_creature_animation(creature)
+		if not bool(creature.get_meta("has_stasis_aura", false)) and not creature.has_node("StasisAura"):
+			if _stasis_aura_mat == null:
+				_stasis_aura_mat = StandardMaterial3D.new()
+				_stasis_aura_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				_stasis_aura_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				_stasis_aura_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+				_stasis_aura_mat.albedo_color = Color(0.08, 0.4, 1.0, 0.14)
+				_stasis_sphere_small = SphereMesh.new()
+				_stasis_sphere_small.radius = 1.2
+				_stasis_sphere_small.height = 2.4
+				_stasis_sphere_small.radial_segments = 16
+				_stasis_sphere_small.rings = 8
+				_stasis_sphere_boss = SphereMesh.new()
+				_stasis_sphere_boss.radius = 6.0
+				_stasis_sphere_boss.height = 12.0
+				_stasis_sphere_boss.radial_segments = 16
+				_stasis_sphere_boss.rings = 8
 			var aura := MeshInstance3D.new()
 			aura.name = "StasisAura"
-			var sphere := SphereMesh.new()
-			sphere.radius = 6.0 if creature == water_dragon else 1.2
-			sphere.height = sphere.radius * 2.0
-			sphere.radial_segments = 16
-			sphere.rings = 8
-			aura.mesh = sphere
-			var material := StandardMaterial3D.new()
-			material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-			material.albedo_color = Color(0.08, 0.4, 1.0, 0.14)
-			aura.material_override = material
+			aura.mesh = _stasis_sphere_boss if creature == water_dragon else _stasis_sphere_small
+			aura.material_override = _stasis_aura_mat
 			creature.add_child(aura)
+			creature.set_meta("has_stasis_aura", true)
 		count += 1
 	return count
 
@@ -1986,6 +2099,7 @@ func _spawn_extra_creatures() -> void:
 	boss_nodes["colossus_turtle"] = turtle_boss
 	boss_arena_centers["colossus_turtle"] = Vector3(-140, -92, -145)
 	add_child(_create_marker("巨鳌盆地  /  远古灵龟领地", Vector3(-140, -84, -145), Color(0.2, 1.0, 0.65)))
+	_creatures_dirty = true
 
 func _tick_sea_spiders(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 	var attacks: Array[Dictionary] = []
@@ -1996,9 +2110,9 @@ func _tick_sea_spiders(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 			continue
 		var cooldown: float = maxf(0.0, float(spider.get_meta("bite_cooldown", 0.0)) - delta)
 		spider.set_meta("bite_cooldown", cooldown)
-		var distance: float = spider.global_position.distance_to(diver_pos)
+		var dist_sq: float = spider.global_position.distance_squared_to(diver_pos)
 		var target_pos: Vector3
-		if distance < 10.0 and diver_pos.y < floor_height(diver_pos.x, diver_pos.z) + 4.5:
+		if dist_sq < 10.0 * 10.0 and diver_pos.y < floor_height(diver_pos.x, diver_pos.z) + 4.5:
 			target_pos = diver_pos
 		else:
 			var center: Vector3 = spider.get_meta("center")
@@ -2010,7 +2124,7 @@ func _tick_sea_spiders(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 		if forward.length_squared() > 0.0001:
 			spider.look_at(spider.position + forward, Vector3.UP, true)
 		spider.position = next
-		if distance < 2.6 and cooldown <= 0.0:
+		if dist_sq < 2.6 * 2.6 and cooldown <= 0.0:
 			spider.set_meta("bite_cooldown", 2.0)
 			spider.set_meta("has_attacked_player", true)
 			attacks.append({"name": "海蜘蛛足刺", "damage": 12.0, "pos": spider.global_position, "attacker": spider})
@@ -2023,11 +2137,11 @@ func _tick_seals_vs_sharks(delta: float) -> void:
 		for shark in predators:
 			if not is_instance_valid(shark) or _is_immobile(shark):
 				continue
-			var dist: float = seal.global_position.distance_to(shark.global_position)
-			if dist < 14.0:
+			var dist_sq: float = seal.global_position.distance_squared_to(shark.global_position)
+			if dist_sq < 14.0 * 14.0:
 				seal.position = seal.position.move_toward(shark.global_position, delta * 3.5)
 				shark.position = shark.position.move_toward(seal.global_position, delta * 3.2)
-				if dist < 3.2:
+				if dist_sq < 3.2 * 3.2:
 					var s_hp: float = float(shark.get_meta("health", 90.0)) - delta * 28.0
 					var seal_hp: float = float(seal.get_meta("health", 160.0)) - delta * 20.0
 					shark.set_meta("health", s_hp)
@@ -2697,6 +2811,7 @@ func _tick_ambient_scene_layers() -> void:
 
 func _process(delta: float) -> void:
 	clock += delta
+	_update_water_surface_state(scope_view_enabled)
 	if is_instance_valid(seabed_ecology):
 		seabed_ecology.update_observer(last_diver_pos, delta)
 	if is_instance_valid(marine_snow):
@@ -2746,13 +2861,14 @@ func _process(delta: float) -> void:
 		var next := center + Vector3(sin(t) * rad, sin(t * 2.0) * 0.8, cos(t) * (rad * 0.66))
 
 		# 潜水员近身惊扰避让
-		var dist_diver: float = creature.global_position.distance_to(last_diver_pos)
-		if dist_diver < 4.5:
+		var dist_sq_diver: float = creature.global_position.distance_squared_to(last_diver_pos)
+		if dist_sq_diver < 4.5 * 4.5:
+			var dist_diver: float = sqrt(dist_sq_diver)
 			var away := (creature.global_position - last_diver_pos).normalized()
 			next += away * (4.5 - dist_diver) * 1.5
 
 		# 视距外（50m 外浓雾不可见）跳过朝向和横滚矩阵运算，节约 CPU
-		if dist_diver <= 50.0:
+		if dist_sq_diver <= 50.0 * 50.0:
 			var direction := next - creature.position
 			if direction.length_squared() > 0.00001:
 				var up := Vector3.UP if absf(direction.normalized().y) < 0.95 else Vector3.FORWARD
@@ -2763,20 +2879,24 @@ func _process(delta: float) -> void:
 		creature.position = next
 
 	# 2. 可食用发光小金鱼快速群游与机敏避险
+	var sfish_active_r: float = 305.0 if scope_view_enabled else 42.0
+	var sfish_active_sq: float = sfish_active_r * sfish_active_r
 	for sfish in small_fish:
 		if not is_instance_valid(sfish):
 			continue
 		if _is_immobile(sfish):
 			continue
 		var center: Vector3 = sfish.get_meta("center")
+		if last_diver_pos != Vector3.ZERO and center.distance_squared_to(last_diver_pos) > sfish_active_sq and sfish.position.distance_squared_to(last_diver_pos) > sfish_active_sq:
+			continue
 		var phase: float = float(sfish.get_meta("phase"))
 		var spd: float = float(sfish.get_meta("swim_speed"))
 		var rad: float = float(sfish.get_meta("radius"))
 
 		# 惊扰加速响应
 		var fright_t: float = float(sfish.get_meta("fright_timer", 0.0))
-		var dist_d: float = sfish.global_position.distance_to(last_diver_pos)
-		if dist_d < 3.8:
+		var dist_sq_d: float = sfish.global_position.distance_squared_to(last_diver_pos)
+		if dist_sq_d < 3.8 * 3.8:
 			fright_t = 1.6
 			sfish.set_meta("fright_timer", fright_t)
 
@@ -2786,15 +2906,17 @@ func _process(delta: float) -> void:
 
 		var t: float = float(sfish.get_meta("motion_clock", clock)) * spd * 0.45 + phase
 		var next := center + Vector3(sin(t) * rad, sin(t * 2.2) * 0.8, cos(t) * (rad * 0.7))
-		if dist_d < 3.8:
+		if dist_sq_d < 3.8 * 3.8:
 			var flee_vec := (sfish.global_position - last_diver_pos).normalized()
 			next += flee_vec * 2.4
 
 		var dir := next - sfish.position
-		if dir.length_squared() > 0.0001:
-			var up := Vector3.UP if absf(dir.normalized().y) < 0.95 else Vector3.FORWARD
-			sfish.look_at(sfish.position + dir, up, true)
-			sfish.rotate_object_local(Vector3.FORWARD, -sin(t * 1.5) * 0.28)
+		var fish_vis: Node3D = sfish.get_meta("fish_model", null)
+		if is_instance_valid(fish_vis) and dir.length_squared() > 0.0001:
+			var dir_norm := dir.normalized()
+			var up := Vector3.UP if absf(dir_norm.y) < 0.95 else Vector3.FORWARD
+			var fish_scale: float = float(sfish.get_meta("fish_scale", 1.0))
+			fish_vis.basis = (Basis.looking_at(-dir_norm, up) * Basis(Vector3.FORWARD, -sin(t * 1.5) * 0.28)).scaled(Vector3.ONE * fish_scale)
 		sfish.position = next
 
 	# 3. 巨型鬼蝠鲼：大范围开阔海域巡游与翼展倾角
@@ -2858,8 +2980,8 @@ func _process(delta: float) -> void:
 		var phase: float = float(crab.get_meta("phase"))
 		var patrol_r: float = float(crab.get_meta("patrol_radius"))
 
-		var dist_diver: float = crab.global_position.distance_to(last_diver_pos)
-		if dist_diver < 4.8:
+		var dist_sq_diver: float = crab.global_position.distance_squared_to(last_diver_pos)
+		if dist_sq_diver < 4.8 * 4.8:
 			# 潜水员近身防御警戒状态：转向玩家，微幅抬起前身
 			crab.set_meta("defensive", true)
 			var to_diver := (last_diver_pos - crab.global_position)
@@ -2884,9 +3006,9 @@ func _process(delta: float) -> void:
 	for colony in tubeworm_colonies:
 		if not is_instance_valid(colony):
 			continue
-		var dist_to_d: float = colony.global_position.distance_to(last_diver_pos)
+		var dist_sq_d: float = colony.global_position.distance_squared_to(last_diver_pos)
 		var cur_retract: float = float(colony.get_meta("retract_progress", 0.0))
-		var target_retract: float = 1.0 if dist_to_d < 3.8 else 0.0
+		var target_retract: float = 1.0 if dist_sq_d < 3.8 * 3.8 else 0.0
 		cur_retract = move_toward(cur_retract, target_retract, delta * (3.5 if target_retract > 0.5 else 0.8))
 		colony.set_meta("retract_progress", cur_retract)
 		var last_applied: float = float(colony.get_meta("last_retract_applied", -1.0))
@@ -2904,9 +3026,9 @@ func _process(delta: float) -> void:
 		var clam_cd: float = float(clam.get_meta("clam_cooldown", 0.0))
 		if clam_cd > 0.0:
 			clam.set_meta("clam_cooldown", maxf(0.0, clam_cd - delta))
-		var dist_to_c: float = clam.global_position.distance_to(last_diver_pos)
+		var dist_sq_c: float = clam.global_position.distance_squared_to(last_diver_pos)
 		var cur_c: float = float(clam.get_meta("retract_progress", 0.0))
-		var target_c: float = 0.65 if dist_to_c < 4.2 else 0.0
+		var target_c: float = 0.65 if dist_sq_c < 4.2 * 4.2 else 0.0
 		cur_c = move_toward(cur_c, target_c, delta * (2.8 if target_c > 0.1 else 0.7))
 		clam.set_meta("retract_progress", cur_c)
 		var last_c: float = float(clam.get_meta("last_retract_applied", -1.0))
@@ -2944,7 +3066,6 @@ func _process(delta: float) -> void:
 		else:
 			frag.position.y = sin(clock * 1.8 + bphase) * 0.15
 		frag.rotate_y(delta * 1.5)
-	_tick_sea_wolves(last_diver_pos, delta)
 	_tick_schooling_fish(last_diver_pos, delta)
 	_tick_ambient_scene_layers()
 	for relic in explorer_relics:
@@ -2963,12 +3084,23 @@ func get_laser_color() -> Color:
 static func sample_depth_profile(depth: float) -> Dictionary:
 	return OceanDepths.light_profile(depth)
 
+func _update_water_surface_state(is_scoped: bool) -> void:
+	if not is_instance_valid(water_surface):
+		return
+	var cam: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	var use_underwater: bool = cam != null and cam.global_position.y < -0.75
+	var target_mat: ShaderMaterial = water_underwater_mat if use_underwater else water_surface_mat
+	if target_mat != null and water_surface.material_override != target_mat:
+		water_surface.material_override = target_mat
+	water_surface.visible = not (cam != null and cam.global_position.y < -245.0 and not is_scoped)
+
 func set_depth(depth: float, scoped: bool = false) -> void:
 	if scoped != scope_view_enabled:
 		scope_view_enabled = scoped
 		for mesh in scope_meshes:
 			if is_instance_valid(mesh):
-				mesh.visibility_range_end = 300.0 if scoped else float(mesh.get_meta("base_visibility_range"))
+				mesh.visibility_range_end = 300.0 if scoped else float(mesh.get_meta("base_visibility_range", mesh.visibility_range_end))
+	_update_water_surface_state(scoped)
 	var profile := sample_depth_profile(depth)
 	environment.fog_density = float(profile["fog_density"])
 	if scoped:
@@ -3028,6 +3160,7 @@ func _spawn_sea_wolves() -> void:
 			wolf.set_meta("tamed", false)
 			wolf.set_meta("dead", false)
 			sea_wolves.append(wolf)
+	_creatures_dirty = true
 
 func _tick_sea_wolves(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 	var bites: Array[Dictionary] = []
@@ -3043,17 +3176,18 @@ func _tick_sea_wolves(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 		var spd: float = float(wolf.get_meta("speed", 13.5))
 		var cd: float = maxf(0.0, float(wolf.get_meta("bite_cooldown", 0.0)) - delta)
 		wolf.set_meta("bite_cooldown", cd)
-		var dist: float = wolf.global_position.distance_to(diver_pos)
+		var dist_sq: float = wolf.global_position.distance_squared_to(diver_pos)
+		var detect_r: float = float(wolf.get_meta("detect_radius", 26.0))
 		var target_pos := center
-		var clock_val: float = float(wolf.get_meta("motion_clock", clock)) + delta
-		wolf.set_meta("motion_clock", clock_val)
+		var clock_val: float = float(wolf.get_meta("motion_clock", clock))
 		var phase: float = float(wolf.get_meta("phase", 0.0))
-		if dist < float(wolf.get_meta("detect_radius", 26.0)):
+		if dist_sq < detect_r * detect_r:
 			var pack_idx: int = int(wolf.get_meta("pack_index", 0))
 			var angle: float = clock_val * 1.2 + pack_idx * (TAU / 3.0)
 			var orbit_dist: float = 10.0 if (pack_idx != 0 or cd > 0.0) else 2.5
 			target_pos = diver_pos + Vector3(cos(angle) * orbit_dist, sin(clock_val * 2.0) * 1.5, sin(angle) * orbit_dist)
-			if dist < float(wolf.get_meta("attack_radius", 4.2)) and cd <= 0.0:
+			var attack_r: float = float(wolf.get_meta("attack_radius", 4.2))
+			if dist_sq < attack_r * attack_r and cd <= 0.0:
 				wolf.set_meta("bite_cooldown", 2.2)
 				wolf.set_meta("has_attacked_player", true)
 				bites.append({"name": "海狼撕咬", "damage": float(wolf.get_meta("damage", 22.0)), "pos": wolf.global_position, "attacker": wolf})
@@ -3097,6 +3231,7 @@ func _spawn_schooling_fish() -> void:
 			"speed": float(def["speed"]),
 			"orbit_angle": rng.randf_range(0, TAU)
 		})
+	_creatures_dirty = true
 
 func _tick_schooling_fish(diver_pos: Vector3, delta: float) -> void:
 	for s_idx in range(fish_schools.size()):
@@ -3127,8 +3262,8 @@ func _tick_schooling_fish(diver_pos: Vector3, delta: float) -> void:
 			var scatter_t: float = maxf(0.0, float(f.get_meta("scatter_timer", 0.0)) - delta)
 			f.set_meta("scatter_timer", scatter_t)
 
-			var d_dist: float = f.global_position.distance_to(diver_pos)
-			if d_dist < 6.0:
+			var d_dist_sq: float = f.global_position.distance_squared_to(diver_pos)
+			if d_dist_sq < 6.0 * 6.0:
 				var away: Vector3 = (f.global_position - diver_pos).normalized()
 				vel += away * 16.0
 				f.set_meta("scatter_timer", 1.8)
@@ -3260,9 +3395,12 @@ func _build_mother_tree_structure(awakened: bool) -> Node3D:
 	var p_mesh := SphereMesh.new()
 	p_mesh.radius = 0.22
 	p_mesh.height = 0.44
+	p_mesh.radial_segments = 6
+	p_mesh.rings = 3
 	particles.mesh = p_mesh
 	var p_mat := StandardMaterial3D.new()
 	p_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	p_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	p_mat.albedo_color = Color(0.3, 1.0, 0.8, 0.85)
 	particles.material_override = p_mat
 	particles.position = Vector3(0, 45.0, 0)
@@ -3324,14 +3462,10 @@ func _spawn_mother_item(kind: String, item_name: String, at: Vector3, color: Col
 	light.omni_range = 8.0
 	item.add_child(light)
 	var lbl := Label3D.new()
-	lbl.font = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 	lbl.text = "✦  [E] 采摘 " + item_name
 	lbl.position = Vector3(0, 1.4, 0)
-	lbl.font_size = 28
-	lbl.pixel_size = 0.007
 	lbl.modulate = color
-	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lbl.no_depth_test = true
+	_configure_label_3d(lbl, 28, 0.007)
 	item.add_child(lbl)
 	add_child(item)
 	mother_tree_items.append(item)
@@ -3450,6 +3584,8 @@ func _populate_open_world_frontiers() -> void:
 			rib.position = Vector3(-480.0 + side * 12.0, ry + 9.0, rz)
 			rib.rotation.z = side * 0.52
 			rib.visibility_range_end = 160.0
+			rib.set_meta("base_visibility_range", 160.0)
+			scope_meshes.append(rib)
 			add_child(rib)
 
 	# 10. Southwest — Obsidian Volcanic Caldera (-440, -420)
@@ -3499,6 +3635,7 @@ func _populate_open_world_frontiers() -> void:
 
 	# Appending to separate species arrays changes their concatenated indices.
 	# Register by identity instead of skipping the old combined array length.
+	_creatures_dirty = true
 	for creature in get_creatures():
 		if not creature.has_meta("motion_clock"):
 			_register_creature_hitbox(creature)
@@ -3572,6 +3709,7 @@ func _spawn_frontier_wildlife(hub: Vector2, life_rng: RandomNumberGenerator) -> 
 		creature.set_meta("depth_zone", zone)
 		creature.set_meta("habitat_depth", depth)
 		frontier_wildlife.append(creature)
+	_creatures_dirty = true
 
 func _spawn_research_outpost(spec: Dictionary) -> Node3D:
 	var xz: Vector2 = spec["xz"]
@@ -3640,14 +3778,10 @@ func _spawn_research_outpost(spec: Dictionary) -> Node3D:
 
 	var lbl := Label3D.new()
 	lbl.name = "OutpostLabel"
-	lbl.font = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 	lbl.text = "⬡  %s\n[E 激活声呐塔与跃迁网 · 补氧制造]" % str(spec["name"])
 	lbl.position = Vector3(0, 12.6, 0)
-	lbl.font_size = 38
-	lbl.pixel_size = 0.009
 	lbl.modulate = Color(1.0, 0.84, 0.36)
-	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lbl.no_depth_test = true
+	_configure_label_3d(lbl, 38, 0.009)
 	root_node.add_child(lbl)
 
 	outposts.append(root_node)
@@ -3675,12 +3809,12 @@ func set_outpost_activated_visual(outpost: Node3D) -> void:
 
 func find_nearby_outpost(pos: Vector3, max_dist: float = 9.5) -> Node3D:
 	var best: Node3D = null
-	var best_d: float = max_dist
+	var best_d_sq: float = max_dist * max_dist
 	for out in outposts:
 		if is_instance_valid(out):
-			var d := pos.distance_to(out.global_position + Vector3(0, 2.0, 0))
-			if d <= best_d:
-				best_d = d
+			var d_sq := pos.distance_squared_to(out.global_position + Vector3(0, 2.0, 0))
+			if d_sq <= best_d_sq:
+				best_d_sq = d_sq
 				best = out
 	return best
 
@@ -3732,14 +3866,10 @@ func _spawn_explorer_relic(spec: Dictionary) -> Node3D:
 	body.add_child(core)
 
 	var lbl := Label3D.new()
-	lbl.font = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 	lbl.text = "◆  [E] 收集遗珍：" + str(spec["name"])
 	lbl.position = Vector3(0, 2.65, 0)
-	lbl.font_size = 30
-	lbl.pixel_size = 0.008
 	lbl.modulate = Color(1.0, 0.68, 0.96)
-	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lbl.no_depth_test = true
+	_configure_label_3d(lbl, 30, 0.008)
 	body.add_child(lbl)
 
 	explorer_relics.append(body)
@@ -3747,12 +3877,12 @@ func _spawn_explorer_relic(spec: Dictionary) -> Node3D:
 
 func find_nearby_relic(pos: Vector3, max_dist: float = 4.6) -> Node3D:
 	var best: Node3D = null
-	var best_d: float = max_dist
+	var best_d_sq: float = max_dist * max_dist
 	for rel in explorer_relics:
 		if is_instance_valid(rel) and not bool(rel.get_meta("collected", false)):
-			var d := pos.distance_to(rel.global_position + Vector3(0, 1.2, 0))
-			if d <= best_d:
-				best_d = d
+			var d_sq := pos.distance_squared_to(rel.global_position + Vector3(0, 1.2, 0))
+			if d_sq <= best_d_sq:
+				best_d_sq = d_sq
 				best = rel
 	return best
 

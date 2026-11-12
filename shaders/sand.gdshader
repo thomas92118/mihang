@@ -119,15 +119,20 @@ void fragment() {
 	base_color *= 1.0 - stones * 0.20;
 	base_color *= 1.0 - (1.0 - ridge) * 0.08 * ripple_fade;
 
-	float a = sin(world_pos.x * 2.3 + sin(world_pos.z * 1.7 + TIME * 0.5) + patch * 2.0 + TIME * 0.4);
-	float b = sin(world_pos.z * 2.6 - sin(world_pos.x * 1.4 - TIME * 0.4) + patch * 1.7);
-	float caustic = 1.0 - smoothstep(0.04, 0.08 + fwidth(a + b), abs(a + b));
-	float a2 = sin(world_pos.x * 4.1 - cos(world_pos.z * 3.2 - TIME * 0.65) + meso * 3.0);
-	float b2 = cos(world_pos.z * 3.8 + sin(world_pos.x * 2.9 + TIME * 0.55) - patch * 2.2);
-	float caustic_fine = (1.0 - smoothstep(0.05, 0.12 + fwidth(a2 + b2), abs(a2 + b2))) * 0.52;
-	float caustic_fade = exp(-depth * 0.075) * (1.0 - smoothstep(22.0, 46.0, depth))
-		* max(world_normal.y, 0.0);
-	ALBEDO = base_color * (1.0 + (caustic + caustic_fine) * caustic_fade * 0.24);
+	float fw_xz = length(fwidth(world_pos.xz));
+	float caustic_lit = 0.0;
+	if (depth < 46.0 && world_normal.y > 0.0) {
+		float a = sin(world_pos.x * 2.3 + sin(world_pos.z * 1.7 + TIME * 0.5) + patch * 2.0 + TIME * 0.4);
+		float b = sin(world_pos.z * 2.6 - sin(world_pos.x * 1.4 - TIME * 0.4) + patch * 1.7);
+		float caustic = 1.0 - smoothstep(0.04, 0.08 + fw_xz * 3.4713, abs(a + b));
+		float a2 = sin(world_pos.x * 4.1 - cos(world_pos.z * 3.2 - TIME * 0.65) + meso * 3.0);
+		float b2 = cos(world_pos.z * 3.8 + sin(world_pos.x * 2.9 + TIME * 0.55) - patch * 2.2);
+		float caustic_fine = (1.0 - smoothstep(0.05, 0.12 + fw_xz * 5.5902, abs(a2 + b2))) * 0.52;
+		float caustic_fade = exp(-depth * 0.075) * (1.0 - smoothstep(22.0, 46.0, depth))
+			* world_normal.y;
+		caustic_lit = (caustic + caustic_fine) * caustic_fade * 0.24;
+	}
+	ALBEDO = base_color * (1.0 + caustic_lit);
 	EMISSION = vec3(0.0);
 	ROUGHNESS = clamp(0.86 + basin * 0.06 - stones * 0.10 - nodules * 0.24, 0.64, 0.96);
 	SPECULAR = 0.22;

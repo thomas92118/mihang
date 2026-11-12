@@ -3,6 +3,7 @@
 class_name UnderwaterAudio
 
 static var _cache: Dictionary = {}
+static var _poly_player: AudioStreamPlayer = null
 
 static func get_stream(sound_name: String) -> AudioStreamWAV:
 	if _cache.has(sound_name):
@@ -71,16 +72,28 @@ static func get_stream(sound_name: String) -> AudioStreamWAV:
 
 static func play_sound(tree: SceneTree, sound_name: String, volume_db: float = -6.0, pitch_scale: float = 1.0) -> AudioStreamPlayer:
 	var stream := get_stream(sound_name)
-	if not stream or not tree:
+	if not stream or not tree or not is_instance_valid(tree.root):
 		return null
-	var player := AudioStreamPlayer.new()
-	player.stream = stream
-	player.volume_db = volume_db
-	player.pitch_scale = pitch_scale
-	tree.root.add_child(player)
-	player.finished.connect(player.queue_free)
-	player.play()
-	return player
+	var host: Node = tree.current_scene if is_instance_valid(tree.current_scene) else (tree.root.get_child(tree.root.get_child_count() - 1) if tree.root.get_child_count() > 0 else tree.root)
+	if not is_instance_valid(_poly_player) or _poly_player.get_parent() != host:
+		if is_instance_valid(_poly_player):
+			_poly_player.stop()
+			_poly_player.stream = null
+			_poly_player.queue_free()
+		var poly := AudioStreamPolyphonic.new()
+		poly.polyphony = 24
+		_poly_player = AudioStreamPlayer.new()
+		_poly_player.name = "UnderwaterPolyphonicSFX"
+		_poly_player.process_mode = Node.PROCESS_MODE_ALWAYS
+		_poly_player.stream = poly
+		_poly_player.tree_exiting.connect(_poly_player.stop)
+		host.add_child(_poly_player)
+	if not _poly_player.playing:
+		_poly_player.play()
+	var playback := _poly_player.get_stream_playback() as AudioStreamPlaybackPolyphonic
+	if playback:
+		playback.play_stream(stream, 0.0, volume_db, pitch_scale)
+	return _poly_player
 
 static func _create_wav(samples: PackedFloat32Array, mix_rate: int = 22050) -> AudioStreamWAV:
 	var wav := AudioStreamWAV.new()

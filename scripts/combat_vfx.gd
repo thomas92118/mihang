@@ -2,6 +2,111 @@
 # Spawns cavitation bubbles, bioluminescent fluid bursts, impact shockwaves and 3D damage numbers
 class_name CombatVFX
 
+const COMBAT_FONT = preload("res://assets/fonts/NotoSansSC-Subset.otf")
+
+static var _stasis_shell_mesh: SphereMesh = null
+static var _blood_particle_meshes: Dictionary = {}
+static var _hit_bubble_mesh: SphereMesh = null
+static var _slash_box_axe: BoxMesh = null
+static var _slash_box_knife: BoxMesh = null
+static var _red_dot_sphere_mesh: SphereMesh = null
+static var _salvage_bag_sphere_mesh: SphereMesh = null
+static var _clam_bubble_mesh: SphereMesh = null
+
+static func _get_stasis_shell_mesh() -> SphereMesh:
+	if _stasis_shell_mesh == null:
+		var sphere := SphereMesh.new()
+		sphere.radius = 1.0
+		sphere.height = 2.0
+		sphere.radial_segments = 48
+		sphere.rings = 24
+		_stasis_shell_mesh = sphere
+	return _stasis_shell_mesh
+
+static func _get_blood_particle_mesh(weapon_type: String, is_predator: bool) -> SphereMesh:
+	var is_axe := weapon_type == "axe"
+	var is_sonic := weapon_type == "sonic"
+	var key: int = (1 if is_axe else 0) | (2 if is_predator else 0) | (4 if is_sonic else 0)
+	if _blood_particle_meshes.has(key):
+		return _blood_particle_meshes[key] as SphereMesh
+	var p_mesh := SphereMesh.new()
+	p_mesh.radius = 0.032 if is_axe else 0.022
+	p_mesh.height = p_mesh.radius * 2.0
+	p_mesh.radial_segments = 6
+	p_mesh.rings = 3
+	var p_mat := StandardMaterial3D.new()
+	p_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	p_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	p_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	if is_predator:
+		p_mat.albedo_color = Color(1.0, 0.32, 0.28, 0.85) if not is_sonic else Color(0.85, 0.42, 1.0, 0.9)
+	else:
+		p_mat.albedo_color = Color(0.35, 0.95, 0.9, 0.8)
+	p_mesh.material = p_mat
+	_blood_particle_meshes[key] = p_mesh
+	return p_mesh
+
+static func _get_hit_bubble_mesh() -> SphereMesh:
+	if _hit_bubble_mesh == null:
+		var b_mesh := SphereMesh.new()
+		b_mesh.radius = 0.025
+		b_mesh.height = 0.05
+		b_mesh.radial_segments = 6
+		b_mesh.rings = 3
+		var b_mat := StandardMaterial3D.new()
+		b_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		b_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		b_mat.albedo_color = Color(0.82, 0.96, 1.0, 0.6)
+		b_mesh.material = b_mat
+		_hit_bubble_mesh = b_mesh
+	return _hit_bubble_mesh
+
+static func _get_slash_box_mesh(is_axe: bool) -> BoxMesh:
+	if is_axe:
+		if _slash_box_axe == null:
+			var q_box := BoxMesh.new()
+			q_box.size = Vector3(1.85, 0.045, 0.045)
+			_slash_box_axe = q_box
+		return _slash_box_axe
+	if _slash_box_knife == null:
+		var k_box := BoxMesh.new()
+		k_box.size = Vector3(1.15, 0.028, 0.045)
+		_slash_box_knife = k_box
+	return _slash_box_knife
+
+static func _get_red_dot_sphere_mesh() -> SphereMesh:
+	if _red_dot_sphere_mesh == null:
+		var s := SphereMesh.new()
+		s.radius = 0.08
+		s.height = 0.16
+		s.radial_segments = 16
+		s.rings = 8
+		_red_dot_sphere_mesh = s
+	return _red_dot_sphere_mesh
+
+static func _get_salvage_bag_sphere_mesh() -> SphereMesh:
+	if _salvage_bag_sphere_mesh == null:
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.72
+		sphere.height = 1.65
+		_salvage_bag_sphere_mesh = sphere
+	return _salvage_bag_sphere_mesh
+
+static func _get_clam_bubble_mesh() -> SphereMesh:
+	if _clam_bubble_mesh == null:
+		var bubble_mesh := SphereMesh.new()
+		bubble_mesh.radius = 0.09
+		bubble_mesh.height = 0.18
+		bubble_mesh.radial_segments = 6
+		bubble_mesh.rings = 3
+		var b_mat := StandardMaterial3D.new()
+		b_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		b_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		b_mat.albedo_color = Color(0.45, 0.98, 1.0, 0.85)
+		bubble_mesh.material = b_mat
+		_clam_bubble_mesh = bubble_mesh
+	return _clam_bubble_mesh
+
 static func spawn_laser(root_node: Node, from: Vector3, to: Vector3, color := Color(0.08, 0.6, 1.0)) -> Node3D:
 	if not root_node or not root_node.is_inside_tree():
 		return null
@@ -70,12 +175,7 @@ static func spawn_stasis_burst(root_node: Node, at: Vector3, radius: float, dura
 	root_node.add_child(field)
 	field.global_position = at
 	var shell := MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = 1.0
-	sphere.height = 2.0
-	sphere.radial_segments = 48
-	sphere.rings = 24
-	shell.mesh = sphere
+	shell.mesh = _get_stasis_shell_mesh()
 	shell.scale = Vector3.ONE * radius
 	var material := ShaderMaterial.new()
 	material.shader = preload("res://shaders/stasis.gdshader")
@@ -133,21 +233,7 @@ static func spawn_hit_burst(root_node: Node, pos: Vector3, normal: Vector3, weap
 	blood_particles.damping_max = 8.5
 	blood_particles.gravity = Vector3(0, 0.25, 0) # 悬浮微上浮
 
-	var p_mesh := SphereMesh.new()
-	p_mesh.radius = 0.032 if weapon_type == "axe" else 0.022
-	p_mesh.height = p_mesh.radius * 2.0
-	var p_mat := StandardMaterial3D.new()
-	p_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	p_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	p_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-
-	# 色彩策略：深渊巨兽与掠食鲨鱼喷散暗金猩红与紫光，浅海生物喷散青蓝与翠绿荧光
-	if is_predator:
-		p_mat.albedo_color = Color(1.0, 0.32, 0.28, 0.85) if weapon_type != "sonic" else Color(0.85, 0.42, 1.0, 0.9)
-	else:
-		p_mat.albedo_color = Color(0.35, 0.95, 0.9, 0.8)
-	p_mesh.material = p_mat
-	blood_particles.mesh = p_mesh
+	blood_particles.mesh = _get_blood_particle_mesh(weapon_type, is_predator)
 	root_node.add_child(blood_particles)
 	_auto_free(blood_particles, 0.65)
 
@@ -171,14 +257,7 @@ static func spawn_hit_burst(root_node: Node, pos: Vector3, normal: Vector3, weap
 	bubbles.damping_max = 6.0
 	bubbles.gravity = Vector3(0, 1.8, 0) # 气泡浮力加速上浮
 
-	var b_mesh := SphereMesh.new()
-	b_mesh.radius = 0.025
-	b_mesh.height = 0.05
-	var b_mat := StandardMaterial3D.new()
-	b_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	b_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	b_mat.albedo_color = Color(0.82, 0.96, 1.0, 0.6)
-	bubbles.mesh = b_mesh
+	bubbles.mesh = _get_hit_bubble_mesh()
 	root_node.add_child(bubbles)
 	_auto_free(bubbles, 0.95)
 
@@ -212,13 +291,11 @@ static func spawn_hit_burst(root_node: Node, pos: Vector3, normal: Vector3, weap
 		root_node.add_child(slash_cross)
 		if normal.length_squared() > 0.01:
 			slash_cross.look_at(pos + normal, Vector3.UP if absf(normal.y) < 0.9 else Vector3.FORWARD)
-		var fin_len := 1.85 if weapon_type == "axe" else 1.15
+		var streak_mesh := _get_slash_box_mesh(weapon_type == "axe")
 		var fin_col := Color(1.0, 0.78, 0.28, 0.95) if weapon_type == "axe" else Color(0.45, 0.98, 1.0, 0.95)
 		for idx in range(2):
 			var streak := MeshInstance3D.new()
-			var q_box := BoxMesh.new()
-			q_box.size = Vector3(fin_len, 0.045 if weapon_type == "axe" else 0.028, 0.045)
-			streak.mesh = q_box
+			streak.mesh = streak_mesh
 			streak.rotation_degrees = Vector3(0.0, 0.0, 38.0 if idx == 0 else -42.0)
 			var st_mat := StandardMaterial3D.new()
 			st_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -250,11 +327,14 @@ static func spawn_damage_number(root_node: Node, pos: Vector3, damage: float, we
 	var label := Label3D.new()
 	label.process_mode = Node.PROCESS_MODE_PAUSABLE
 	label.name = "DmgNumber"
-	label.font = preload("res://assets/fonts/NotoSansSC-Subset.otf")
+	label.font = COMBAT_FONT
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.fixed_size = true
-	label.font_size = 28 if is_crit or weapon_type == "axe" else 22
+	var old_font_size := 28 if is_crit or weapon_type == "axe" else 22
+	var old_pixel_size := label.pixel_size
+	label.font_size = 28
+	label.pixel_size = old_pixel_size * (float(old_font_size) / 28.0)
 
 	# 伤害数字配色
 	var col := Color(0.42, 0.96, 1.0)
@@ -266,7 +346,7 @@ static func spawn_damage_number(root_node: Node, pos: Vector3, damage: float, we
 		col = Color(1.0, 0.35, 0.3)
 	label.modulate = col
 	label.outline_modulate = Color(0.01, 0.05, 0.08, 0.95)
-	label.outline_size = 4
+	label.outline_size = roundi(4.0 * 28.0 / float(old_font_size))
 
 	var prefix := "💥 " if is_crit else ""
 	label.text = "%s-%d" % [prefix, int(damage)]
@@ -282,10 +362,7 @@ static func _auto_free(node: Node, delay: float) -> void:
 	if not tree:
 		node.queue_free()
 		return
-	tree.create_timer(delay, false).timeout.connect(func():
-		if is_instance_valid(node):
-			node.queue_free()
-	)
+	tree.create_timer(delay, false).timeout.connect(node.queue_free)
 
 static func _animate_shockwave(shock: MeshInstance3D, duration: float, target_scale: float) -> void:
 	var tree := shock.get_tree()
@@ -348,12 +425,7 @@ static func spawn_persistent_red_dot(pos: Vector3, parent_node: Node = null) -> 
 	var dot_root := Node3D.new()
 	dot_root.name = "MarkerRedDot"
 	var dot_mesh := MeshInstance3D.new()
-	var s := SphereMesh.new()
-	s.radius = 0.08
-	s.height = 0.16
-	s.radial_segments = 16
-	s.rings = 8
-	dot_mesh.mesh = s
+	dot_mesh.mesh = _get_red_dot_sphere_mesh()
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.albedo_color = Color(1.0, 0.05, 0.05)
@@ -431,14 +503,17 @@ static func spawn_star_rating(root_node: Node, pos: Vector3, stars: int, species
 	var label := Label3D.new()
 	label.process_mode = Node.PROCESS_MODE_PAUSABLE
 	label.name = "StarRatingLabel"
-	label.font = preload("res://assets/fonts/NotoSansSC-Subset.otf")
+	label.font = COMBAT_FONT
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.fixed_size = true
-	label.font_size = 26 if clamped_stars == 3 else 21
+	var old_font_size := 26 if clamped_stars == 3 else 21
+	var old_pixel_size := label.pixel_size
+	label.font_size = 28
+	label.pixel_size = old_pixel_size * (float(old_font_size) / 28.0)
 	label.modulate = Color(1.0, 0.86, 0.22) if clamped_stars == 3 else (Color(0.35, 0.96, 1.0) if clamped_stars == 2 else Color(0.82, 0.86, 0.9))
 	label.outline_modulate = Color(0.01, 0.05, 0.09, 0.95)
-	label.outline_size = 5
+	label.outline_size = roundi(5.0 * 28.0 / float(old_font_size))
 	label.text = "%s %s %s" % [star_str, species_name, quality_tag] if not species_name.is_empty() else "%s %s" % [star_str, quality_tag]
 	label.position = pos + Vector3(0.0, 1.15, 0.0)
 	label.scale = Vector3.ONE * 0.45
@@ -455,10 +530,7 @@ static func spawn_salvage_balloon(root_node: Node, pos: Vector3) -> void:
 
 	# 柯布拉橙黄充气浮力袋
 	var bag := MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.72
-	sphere.height = 1.65
-	bag.mesh = sphere
+	bag.mesh = _get_salvage_bag_sphere_mesh()
 	var bag_mat := StandardMaterial3D.new()
 	bag_mat.albedo_color = Color(1.0, 0.48, 0.12)
 	bag_mat.emission_enabled = true
@@ -510,15 +582,7 @@ static func spawn_clam_bubbles(root_node: Node, pos: Vector3) -> void:
 	particles.explosiveness = 0.45
 	particles.amount = 28
 	particles.lifetime = 1.35
-	var bubble_mesh := SphereMesh.new()
-	bubble_mesh.radius = 0.09
-	bubble_mesh.height = 0.18
-	var b_mat := StandardMaterial3D.new()
-	b_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	b_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	b_mat.albedo_color = Color(0.45, 0.98, 1.0, 0.85)
-	bubble_mesh.material = b_mat
-	particles.mesh = bubble_mesh
+	particles.mesh = _get_clam_bubble_mesh()
 	particles.direction = Vector3.UP
 	particles.spread = 24.0
 	particles.gravity = Vector3(0.0, 4.2, 0.0)

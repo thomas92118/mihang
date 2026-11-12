@@ -32,6 +32,20 @@ function findGodotBinary() {
 	return "godot";
 }
 
+const SMALL_PROP_TEXTURE_PREFIXES = [
+	"anemone_",
+	"crab_",
+	"fish_small_",
+	"resource_copper_",
+	"resource_kelp_",
+	"resource_quartz_",
+	"resource_titanium_",
+	"sea_lily_",
+	"starfish_urchin_",
+	"tube_coral_",
+	"tubeworms_",
+];
+
 function ensureLossyModelTextures() {
 	const modelsDir = path.join(ROOT, "assets", "models");
 	if (!fs.existsSync(modelsDir)) return;
@@ -40,17 +54,19 @@ function ensureLossyModelTextures() {
 		if (!name.endsWith(".png.import")) continue;
 		const fullPath = path.join(modelsDir, name);
 		let content = fs.readFileSync(fullPath, "utf8");
+		const isSmallProp = SMALL_PROP_TEXTURE_PREFIXES.some((prefix) => name.startsWith(prefix));
+		const targetLimit = isSmallProp ? "256" : "512";
 		const next = content
 			.replace("compress/mode=0", "compress/mode=1")
-			.replace("mipmaps/generate=true", "mipmaps/generate=false")
-			.replace("process/size_limit=0", "process/size_limit=512");
+			.replace("mipmaps/generate=false", "mipmaps/generate=true")
+			.replace(/process\/size_limit=\d+/, `process/size_limit=${targetLimit}`);
 		if (next !== content) {
 			fs.writeFileSync(fullPath, next, "utf8");
 			updated++;
 		}
 	}
 	if (updated > 0) {
-		console.log(`[build_web] Optimized ${updated} model texture imports (lossy WebP, 512px)`);
+		console.log(`[build_web] Optimized ${updated} model texture imports (lossy WebP + mipmaps, tiered 256/512px)`);
 	}
 }
 
