@@ -1,0 +1,36 @@
+{
+  "target": "Faithfully reconstruct all visible design details from the frozen GPT Image concepts",
+  "status": "ready_for_human_visual_review",
+  "claimed_percentage": null,
+  "character": {
+    "reference": "assets/source/art-v3/concepts/diver.png",
+    "geometry": "117578 triangles, 76 draw-group parts, 12 bone skin",
+    "model_sha256": "b507d3ef55477d92f5fbdd5996a517267fa31ada94cba777a6dc32b059f44542",
+    "fidelity_accepted": false,
+    "remaining_differences": [
+      "2D painterly brushwork vs real-time PBR shading under underwater OpenGL lighting",
+      "individual loose hair wisps approximated as sculpted curtain-bang locks and coiled bun",
+      "unseen rear/occluded concept angles extrapolated symmetrically for 3D gameplay"
+    ],
+    "technical_checks_passed": true
+  },
+  "other_categories": {
+    "reference_files": [
+      "creatures.png",
+      "creatures_large.png",
+      "environment.png",
+      "equipment.png",
+      "submarines.png",
+      "ocean.png"
+    ],
+    "standalone_assets_rebuilt": 34,
+    "standalone_triangles": 356314,
+    "expedition_library_parts": 76,
+    "expedition_library_triangles": 52214,
+    "ocean_surface_triangles": 19328,
+    "fidelity_accepted": false,
+    "technical_checks_passed": true,
+    "status": "All 34 standalone GLBs, 76 hero submarine/colossal-creature parts, concentric ocean surface, and underwater shaders rebuilt and verified in Blender 5.2.2 + Godot 4.7.2; awaiting final human visual sign-off"
+  },
+  "technical_tests_are_not_visual_acceptance": true
+}

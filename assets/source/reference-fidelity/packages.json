@@ -1,0 +1,20 @@
+{
+  "results": [
+    {
+      "job": "desktop",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "job": "web",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "job": "packaged-smoke",
+      "passed": true,
+      "errors": []
+    }
+  ],
+  "fidelity_accepted": false
+}

@@ -1,0 +1,32 @@
+{
+	"adapter": "AMD Radeon(TM) Graphics",
+	"adapter_vendor": "ATI Technologies Inc.",
+	"capture_mode": "static_protagonist_pose",
+	"deterministic_scope": "review_time shader uniforms and imported animation poses; static scene processing disabled",
+	"display_server": "Windows",
+	"engine": {
+		"build": "official",
+		"hash": "ed1daf0bf001b61586d9930840f2f1394092c079",
+		"hex": 263938,
+		"major": 4,
+		"minor": 7,
+		"patch": 2,
+		"status": "stable",
+		"string": "4.7.2-stable (official)",
+		"timestamp": 0
+	},
+	"max_fps": 0,
+	"platform": "Windows",
+	"pose_delta": 0.0166666666666667,
+	"pose_steps": 120,
+	"renderer": "gl_compatibility",
+	"rendering_driver": "opengl3",
+	"resolution": [
+		1280,
+		800
+	],
+	"review_phase_seconds": 12.0,
+	"scope_note": "Poses are sampled with the production animator; riding is a posture-only view. Movement/control correctness and actual mounts are verified separately.",
+	"views_captured": 12,
+	"vsync_mode": 1
+}

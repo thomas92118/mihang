@@ -11,26 +11,29 @@
       2.355,
       2.065
     ],
-    "triangles": 1420,
+    "triangles": 12184,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1442,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 14000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://coral_albedo.png",
       "normal": "embedded://coral_normal.png",
       "orm": "embedded://coral_orm.png",
       "emission": "embedded://coral_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "5266341963edb5f5e8fc52eb0cc152e04fe3edf331533972a2d7166d2c83b88d"
   },
   "tube_coral": {
     "file": "assets/models/tube_coral.glb",
@@ -44,26 +47,29 @@
       2.635,
       1.392
     ],
-    "triangles": 1420,
+    "triangles": 7824,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1969,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 14000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://tube_coral_albedo.png",
       "normal": "embedded://tube_coral_normal.png",
       "orm": "embedded://tube_coral_orm.png",
       "emission": "embedded://tube_coral_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "30bebae4c3489b3627fb3426c980d11ec341a34d93bfa6a773d8473baa518ee6"
   },
   "kelp": {
     "file": "assets/models/kelp.glb",
@@ -77,26 +83,29 @@
       5.114,
       2.304
     ],
-    "triangles": 1420,
+    "triangles": 8728,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1341,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 12000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://kelp_albedo.png",
       "normal": "embedded://kelp_normal.png",
       "orm": "embedded://kelp_orm.png",
       "emission": "embedded://kelp_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "999c90c3f64f375fd4c4b0d1fd60d6036787a36cdadd60af6440824ebc457809"
   },
   "rock": {
     "file": "assets/models/rock.glb",
@@ -110,26 +119,29 @@
       1.784,
       2.16
     ],
-    "triangles": 560,
+    "triangles": 1276,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1344,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 590,
+    "triangle_budget": 6500,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://rock_albedo.png",
       "normal": "embedded://rock_normal.png",
       "orm": "embedded://rock_orm.png",
       "emission": "embedded://rock_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "1ed78e9ad7ec75a5a3c1faeb9de81cbc3069ab499d89195431d75c7c2847c181"
   },
   "fish": {
     "file": "assets/models/fish.glb",
@@ -143,28 +155,31 @@
       0.54,
       0.84
     ],
-    "triangles": 1870,
+    "triangles": 9058,
     "bones": 6,
     "animations": [
       "swim"
     ],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1339,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1900,
+    "triangle_budget": 18000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://fish_albedo.png",
       "normal": "embedded://fish_normal.png",
       "orm": "embedded://fish_orm.png",
       "emission": "embedded://fish_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/creatures.png",
+    "reference_sha256": "abc84f1902fb67cb431e5c602e360e6597375ae6bee5a4123ee50d416de9664a",
+    "model_sha256": "c8b6070fbf5d0a3276478dd93f3f1b66485ae783e00d6a3a55ea069ed5cb9d48"
   },
   "pod": {
     "file": "assets/models/pod.glb",
@@ -178,26 +193,29 @@
       4.215,
       4.894
     ],
-    "triangles": 5828,
+    "triangles": 34838,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1236,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 11000,
+    "triangle_budget": 48000,
     "external_sources": [],
     "texture_resolution": 1024,
-    "materials": 1,
+    "materials": 2,
     "textures": {
       "albedo": "embedded://pod_albedo.png",
       "normal": "embedded://pod_normal.png",
       "orm": "embedded://pod_orm.png",
       "emission": "embedded://pod_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/equipment.png",
+    "reference_sha256": "8bbe103a03bd47ece7e369d3076259c6237c59174effaaf9e12ed601928b07f2",
+    "model_sha256": "ee4df569541c8b4e822c6ae40b9e0e54cbf433d65c112c44f057b1b493e4f209"
   },
   "ruins": {
     "file": "assets/models/ruins.glb",
@@ -211,17 +229,17 @@
       6.211,
       1.8
     ],
-    "triangles": 2268,
+    "triangles": 38566,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1474,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 10000,
+    "triangle_budget": 44000,
     "external_sources": [],
     "texture_resolution": 1024,
     "materials": 1,
@@ -230,7 +248,10 @@
       "normal": "embedded://ruins_normal.png",
       "orm": "embedded://ruins_orm.png",
       "emission": "embedded://ruins_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "38463b2e9fa3bf22f70dd1a6c37026932f7905d449ecb60b0808ffdb35ca6981"
   },
   "shipwreck": {
     "file": "assets/models/shipwreck.glb",
@@ -244,26 +265,29 @@
       6.43,
       10.139
     ],
-    "triangles": 7100,
+    "triangles": 32526,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1889,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 11000,
+    "triangle_budget": 48000,
     "external_sources": [],
     "texture_resolution": 1024,
-    "materials": 1,
+    "materials": 2,
     "textures": {
       "albedo": "embedded://shipwreck_albedo.png",
       "normal": "embedded://shipwreck_normal.png",
       "orm": "embedded://shipwreck_orm.png",
       "emission": "embedded://shipwreck_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/equipment.png",
+    "reference_sha256": "8bbe103a03bd47ece7e369d3076259c6237c59174effaaf9e12ed601928b07f2",
+    "model_sha256": "a3da491f7f67d678a4379ed3cf4e2bd2271604c69846abd87cf6a3cb012d6741"
   },
   "anemone": {
     "file": "assets/models/anemone.glb",
@@ -277,26 +301,29 @@
       2.01,
       2.982
     ],
-    "triangles": 1419,
+    "triangles": 9048,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1652,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 15000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://anemone_albedo.png",
       "normal": "embedded://anemone_normal.png",
       "orm": "embedded://anemone_orm.png",
       "emission": "embedded://anemone_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "13c05432939be6a8a6d3204db526c6b807a9fdf0f54ab4df8fb6a6f2990ac01b"
   },
   "crystal_spire": {
     "file": "assets/models/crystal_spire.glb",
@@ -310,26 +337,29 @@
       5.5,
       2.915
     ],
-    "triangles": 1469,
+    "triangles": 1336,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2325,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1500,
+    "triangle_budget": 12000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://crystal_spire_albedo.png",
       "normal": "embedded://crystal_spire_normal.png",
       "orm": "embedded://crystal_spire_orm.png",
       "emission": "embedded://crystal_spire_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "cf16f82d2784acd2a1a2fc81a8eab800afecdf58ac1b702f894ca3988de687e4"
   },
   "jellyfish": {
     "file": "assets/models/jellyfish.glb",
@@ -343,19 +373,19 @@
       2.935,
       1.57
     ],
-    "triangles": 4469,
-    "bones": 38,
+    "triangles": 12912,
+    "bones": 9,
     "animations": [
       "pulse"
     ],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1883,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 4500,
+    "triangle_budget": 26000,
     "external_sources": [],
     "texture_resolution": 1024,
     "materials": 1,
@@ -364,7 +394,10 @@
       "normal": "embedded://jellyfish_normal.png",
       "orm": "embedded://jellyfish_orm.png",
       "emission": "embedded://jellyfish_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/creatures.png",
+    "reference_sha256": "abc84f1902fb67cb431e5c602e360e6597375ae6bee5a4123ee50d416de9664a",
+    "model_sha256": "59ec48104ed81ad693dbb1ed89e712aba1c6a107a074d1fd2206a20bba79c8d2"
   },
   "resource_titanium": {
     "file": "assets/models/resource_titanium.glb",
@@ -378,26 +411,29 @@
       0.593,
       0.476
     ],
-    "triangles": 870,
+    "triangles": 1640,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2755,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 900,
+    "triangle_budget": 8500,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://resource_titanium_albedo.png",
       "normal": "embedded://resource_titanium_normal.png",
       "orm": "embedded://resource_titanium_orm.png",
       "emission": "embedded://resource_titanium_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/equipment.png",
+    "reference_sha256": "8bbe103a03bd47ece7e369d3076259c6237c59174effaaf9e12ed601928b07f2",
+    "model_sha256": "00e30450ee877808493707e7bba697681355aefd2dc35443ffee4bb35265ae4c"
   },
   "resource_copper": {
     "file": "assets/models/resource_copper.glb",
@@ -411,26 +447,29 @@
       0.593,
       0.476
     ],
-    "triangles": 869,
+    "triangles": 4020,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2529,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 900,
+    "triangle_budget": 8500,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://resource_copper_albedo.png",
       "normal": "embedded://resource_copper_normal.png",
       "orm": "embedded://resource_copper_orm.png",
       "emission": "embedded://resource_copper_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/equipment.png",
+    "reference_sha256": "8bbe103a03bd47ece7e369d3076259c6237c59174effaaf9e12ed601928b07f2",
+    "model_sha256": "57fd5d374c4e0144b3c5627265fe336dadad4d90f2faa10c66bcbfa0a64f32ae"
   },
   "resource_quartz": {
     "file": "assets/models/resource_quartz.glb",
@@ -444,26 +483,29 @@
       0.74,
       0.408
     ],
-    "triangles": 380,
+    "triangles": 1020,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2559,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 600,
+    "triangle_budget": 8500,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://resource_quartz_albedo.png",
       "normal": "embedded://resource_quartz_normal.png",
       "orm": "embedded://resource_quartz_orm.png",
       "emission": "embedded://resource_quartz_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/equipment.png",
+    "reference_sha256": "8bbe103a03bd47ece7e369d3076259c6237c59174effaaf9e12ed601928b07f2",
+    "model_sha256": "3d9ec3d9abb348677487b45b2e6c42223b658b6ebf0807123c0821aab09e5f7e"
   },
   "resource_kelp": {
     "file": "assets/models/resource_kelp.glb",
@@ -477,26 +519,29 @@
       0.7,
       0.353
     ],
-    "triangles": 512,
+    "triangles": 5700,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2308,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 900,
+    "triangle_budget": 8500,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://resource_kelp_albedo.png",
       "normal": "embedded://resource_kelp_normal.png",
       "orm": "embedded://resource_kelp_orm.png",
       "emission": "embedded://resource_kelp_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/equipment.png",
+    "reference_sha256": "8bbe103a03bd47ece7e369d3076259c6237c59174effaaf9e12ed601928b07f2",
+    "model_sha256": "2f58841f8e8c46c2ffc1b57979a8d0ca639b5fd41a89345413f6274d9a67ea03"
   },
   "fish_small": {
     "file": "assets/models/fish_small.glb",
@@ -510,28 +555,31 @@
       0.43,
       0.61
     ],
-    "triangles": 1469,
+    "triangles": 7598,
     "bones": 6,
     "animations": [
       "swim"
     ],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1971,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1500,
+    "triangle_budget": 14000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://fish_small_albedo.png",
       "normal": "embedded://fish_small_normal.png",
       "orm": "embedded://fish_small_orm.png",
       "emission": "embedded://fish_small_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/creatures.png",
+    "reference_sha256": "abc84f1902fb67cb431e5c602e360e6597375ae6bee5a4123ee50d416de9664a",
+    "model_sha256": "7ff41e2bd7f59ecada4ead7c069d7cb98e189c5724a083c373495ded7880e238"
   },
   "fish_predator": {
     "file": "assets/models/fish_predator.glb",
@@ -545,20 +593,20 @@
       1.75,
       4.08
     ],
-    "triangles": 4869,
+    "triangles": 12228,
     "bones": 7,
     "animations": [
       "swim",
       "bite"
     ],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2299,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 4900,
+    "triangle_budget": 26000,
     "external_sources": [],
     "texture_resolution": 1024,
     "materials": 1,
@@ -567,7 +615,10 @@
       "normal": "embedded://fish_predator_normal.png",
       "orm": "embedded://fish_predator_orm.png",
       "emission": "embedded://fish_predator_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/creatures.png",
+    "reference_sha256": "abc84f1902fb67cb431e5c602e360e6597375ae6bee5a4123ee50d416de9664a",
+    "model_sha256": "6015c514a9d57def80f3f7e15e36b05ed307e5baf2dc8072b53cf5e8a11707e1"
   },
   "fish_abyss": {
     "file": "assets/models/fish_abyss.glb",
@@ -581,20 +632,20 @@
       1.716,
       3.214
     ],
-    "triangles": 4869,
+    "triangles": 14174,
     "bones": 7,
     "animations": [
       "swim",
       "bite"
     ],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1980,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 4900,
+    "triangle_budget": 28000,
     "external_sources": [],
     "texture_resolution": 1024,
     "materials": 1,
@@ -603,7 +654,10 @@
       "normal": "embedded://fish_abyss_normal.png",
       "orm": "embedded://fish_abyss_orm.png",
       "emission": "embedded://fish_abyss_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/creatures.png",
+    "reference_sha256": "abc84f1902fb67cb431e5c602e360e6597375ae6bee5a4123ee50d416de9664a",
+    "model_sha256": "434aec00bfa54303fddf269a27fed1699fbb9002d9bee375c875e863e2cfd633"
   },
   "weapon_knife": {
     "file": "assets/models/weapon_knife.glb",
@@ -617,17 +671,17 @@
       0.072,
       0.421
     ],
-    "triangles": 2296,
+    "triangles": 3536,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2183,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 3500,
+    "triangle_budget": 18000,
     "external_sources": [],
     "texture_resolution": 1024,
     "materials": 1,
@@ -636,7 +690,10 @@
       "normal": "embedded://weapon_knife_normal.png",
       "orm": "embedded://weapon_knife_orm.png",
       "emission": "embedded://weapon_knife_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/equipment.png",
+    "reference_sha256": "8bbe103a03bd47ece7e369d3076259c6237c59174effaaf9e12ed601928b07f2",
+    "model_sha256": "6d430de118d644875d857207cd0926c89785c105178f69bc7642d9bc4d7a6415"
   },
   "weapon_axe": {
     "file": "assets/models/weapon_axe.glb",
@@ -650,17 +707,17 @@
       0.3,
       0.553
     ],
-    "triangles": 1390,
+    "triangles": 3580,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1976,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 3500,
+    "triangle_budget": 18000,
     "external_sources": [],
     "texture_resolution": 1024,
     "materials": 1,
@@ -669,7 +726,10 @@
       "normal": "embedded://weapon_axe_normal.png",
       "orm": "embedded://weapon_axe_orm.png",
       "emission": "embedded://weapon_axe_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/equipment.png",
+    "reference_sha256": "8bbe103a03bd47ece7e369d3076259c6237c59174effaaf9e12ed601928b07f2",
+    "model_sha256": "f5d5991dfc58b116f85c828b3662dbd0b0fd1c3b3c3d4f263ee7148faefabe73"
   },
   "weapon_sonic": {
     "file": "assets/models/weapon_sonic.glb",
@@ -683,26 +743,29 @@
       0.348,
       0.87
     ],
-    "triangles": 3060,
+    "triangles": 4960,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2198,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 3800,
+    "triangle_budget": 22000,
     "external_sources": [],
     "texture_resolution": 1024,
-    "materials": 1,
+    "materials": 2,
     "textures": {
       "albedo": "embedded://weapon_sonic_albedo.png",
       "normal": "embedded://weapon_sonic_normal.png",
       "orm": "embedded://weapon_sonic_orm.png",
       "emission": "embedded://weapon_sonic_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/equipment.png",
+    "reference_sha256": "8bbe103a03bd47ece7e369d3076259c6237c59174effaaf9e12ed601928b07f2",
+    "model_sha256": "fae1e847add27693ac3b2c0e7ecf3aba243794cefcf889fc9dd6e03dbac2c9c7"
   },
   "manta_ray": {
     "file": "assets/models/manta_ray.glb",
@@ -716,19 +779,19 @@
       0.5,
       4.841
     ],
-    "triangles": 3948,
+    "triangles": 11618,
     "bones": 5,
     "animations": [
       "swim"
     ],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1869,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 4500,
+    "triangle_budget": 24000,
     "external_sources": [],
     "texture_resolution": 1024,
     "materials": 1,
@@ -737,7 +800,10 @@
       "normal": "embedded://manta_ray_normal.png",
       "orm": "embedded://manta_ray_orm.png",
       "emission": "embedded://manta_ray_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/creatures.png",
+    "reference_sha256": "abc84f1902fb67cb431e5c602e360e6597375ae6bee5a4123ee50d416de9664a",
+    "model_sha256": "4ad1ca4d58fe95364360490706a97f4a68503802b477103d7f97abf284fc28fc"
   },
   "sea_turtle": {
     "file": "assets/models/sea_turtle.glb",
@@ -751,19 +817,19 @@
       0.71,
       2.338
     ],
-    "triangles": 3170,
-    "bones": 5,
+    "triangles": 9072,
+    "bones": 6,
     "animations": [
       "swim"
     ],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1993,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 4500,
+    "triangle_budget": 28000,
     "external_sources": [],
     "texture_resolution": 1024,
     "materials": 1,
@@ -772,7 +838,10 @@
       "normal": "embedded://sea_turtle_normal.png",
       "orm": "embedded://sea_turtle_orm.png",
       "emission": "embedded://sea_turtle_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/creatures.png",
+    "reference_sha256": "abc84f1902fb67cb431e5c602e360e6597375ae6bee5a4123ee50d416de9664a",
+    "model_sha256": "68be430fa72998c4c472c725c3b7e7a92bbdd9d0a6b90d7dace2bc9bf4df3f1c"
   },
   "squid": {
     "file": "assets/models/squid.glb",
@@ -786,19 +855,19 @@
       0.775,
       4.39
     ],
-    "triangles": 4470,
-    "bones": 33,
+    "triangles": 13972,
+    "bones": 11,
     "animations": [
       "swim"
     ],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1463,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 4500,
+    "triangle_budget": 28000,
     "external_sources": [],
     "texture_resolution": 1024,
     "materials": 1,
@@ -807,7 +876,10 @@
       "normal": "embedded://squid_normal.png",
       "orm": "embedded://squid_orm.png",
       "emission": "embedded://squid_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/creatures.png",
+    "reference_sha256": "abc84f1902fb67cb431e5c602e360e6597375ae6bee5a4123ee50d416de9664a",
+    "model_sha256": "3de5cb9f0927c008035a4703e36d00f98f601993136f83ebea0987e557c390d8"
   },
   "crab": {
     "file": "assets/models/crab.glb",
@@ -821,29 +893,32 @@
       0.509,
       1.683
     ],
-    "triangles": 3970,
-    "bones": 27,
+    "triangles": 11808,
+    "bones": 11,
     "animations": [
       "walk",
       "defend"
     ],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1321,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 4000,
+    "triangle_budget": 28000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://crab_albedo.png",
       "normal": "embedded://crab_normal.png",
       "orm": "embedded://crab_orm.png",
       "emission": "embedded://crab_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/creatures.png",
+    "reference_sha256": "abc84f1902fb67cb431e5c602e360e6597375ae6bee5a4123ee50d416de9664a",
+    "model_sha256": "ff0d782172e70492f05d075b394916e0818c8b0b6b1646dc3a3a61a40f12e227"
   },
   "sea_fan": {
     "file": "assets/models/sea_fan.glb",
@@ -857,26 +932,29 @@
       2.652,
       0.84
     ],
-    "triangles": 1419,
+    "triangles": 6916,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1630,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 16000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://sea_fan_albedo.png",
       "normal": "embedded://sea_fan_normal.png",
       "orm": "embedded://sea_fan_orm.png",
       "emission": "embedded://sea_fan_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "a1a4afae0b931b51ef6f58e948f914a0884165ad109f80c1761eb64591ef7fc4"
   },
   "tubeworms": {
     "file": "assets/models/tubeworms.glb",
@@ -890,26 +968,29 @@
       2.376,
       1.478
     ],
-    "triangles": 1419,
+    "triangles": 13970,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1913,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 14000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://tubeworms_albedo.png",
       "normal": "embedded://tubeworms_normal.png",
       "orm": "embedded://tubeworms_orm.png",
       "emission": "embedded://tubeworms_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "83c3d38de2528a2e45a2cb08d6830c85625f18e788aecb3b24faf7ecacafb019"
   },
   "starfish_urchin": {
     "file": "assets/models/starfish_urchin.glb",
@@ -923,26 +1004,29 @@
       0.607,
       1.24
     ],
-    "triangles": 1418,
+    "triangles": 6616,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2525,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 14000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://starfish_urchin_albedo.png",
       "normal": "embedded://starfish_urchin_normal.png",
       "orm": "embedded://starfish_urchin_orm.png",
       "emission": "embedded://starfish_urchin_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "1a1c5d186d94fa53bc6dc6ec4079c06fbcafcf1ba15bca2276f6e55ca81ffb88"
   },
   "brain_coral": {
     "file": "assets/models/brain_coral.glb",
@@ -956,26 +1040,29 @@
       1.56,
       2.22
     ],
-    "triangles": 1419,
+    "triangles": 12560,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2061,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 14000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://brain_coral_albedo.png",
       "normal": "embedded://brain_coral_normal.png",
       "orm": "embedded://brain_coral_orm.png",
       "emission": "embedded://brain_coral_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "78ee922913b0d35c16dd55f71502083240b2f791131fd62e5fe639cf25bd2273"
   },
   "staghorn_coral": {
     "file": "assets/models/staghorn_coral.glb",
@@ -989,26 +1076,29 @@
       2.32,
       2.38
     ],
-    "triangles": 1419,
+    "triangles": 6584,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2407,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 16000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://staghorn_coral_albedo.png",
       "normal": "embedded://staghorn_coral_normal.png",
       "orm": "embedded://staghorn_coral_orm.png",
       "emission": "embedded://staghorn_coral_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "7b8f8e0bf0c83d36055dd21bb9f76c5cc4e483a17b5d6c9916c32df9477a1467"
   },
   "table_coral": {
     "file": "assets/models/table_coral.glb",
@@ -1022,26 +1112,29 @@
       1.74,
       2.72
     ],
-    "triangles": 1420,
+    "triangles": 8594,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2057,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 16000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://table_coral_albedo.png",
       "normal": "embedded://table_coral_normal.png",
       "orm": "embedded://table_coral_orm.png",
       "emission": "embedded://table_coral_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "99db980b85402417afa8a920dd173b75db527fd18e3f59c0f87bc250cd76f4ef"
   },
   "barrel_sponge": {
     "file": "assets/models/barrel_sponge.glb",
@@ -1055,26 +1148,29 @@
       2.52,
       2.12
     ],
-    "triangles": 1420,
+    "triangles": 6384,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 2292,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 16000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://barrel_sponge_albedo.png",
       "normal": "embedded://barrel_sponge_normal.png",
       "orm": "embedded://barrel_sponge_orm.png",
       "emission": "embedded://barrel_sponge_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "c076a00a4b31235f721682e2c27b32430d770b23141b67d06c051f2d4b83cd08"
   },
   "giant_clam": {
     "file": "assets/models/giant_clam.glb",
@@ -1088,26 +1184,29 @@
       1.44,
       1.84
     ],
-    "triangles": 1420,
+    "triangles": 14144,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1952,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 18000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://giant_clam_albedo.png",
       "normal": "embedded://giant_clam_normal.png",
       "orm": "embedded://giant_clam_orm.png",
       "emission": "embedded://giant_clam_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "832babba18cbc0e01984f63342bd94fbdfba721cb126352a214787663c9507e1"
   },
   "sea_lily": {
     "file": "assets/models/sea_lily.glb",
@@ -1121,25 +1220,28 @@
       2.64,
       2.08
     ],
-    "triangles": 1419,
+    "triangles": 7324,
     "bones": 0,
     "animations": [],
-    "source": "tools/create_assets.py",
-    "generator_version": "luminous-ocean-2",
+    "source": "tools/create_art_v3.py",
+    "generator_version": "luminous-ocean-3",
     "seed": 1763,
     "license": "MIT",
     "author": "Abyssal Echo Contributors",
     "forward": "-Y (Blender) / +Z (Godot)",
     "up": "+Z (Blender) / +Y (Godot)",
-    "triangle_budget": 1450,
+    "triangle_budget": 15000,
     "external_sources": [],
-    "texture_resolution": 512,
+    "texture_resolution": 1024,
     "materials": 1,
     "textures": {
       "albedo": "embedded://sea_lily_albedo.png",
       "normal": "embedded://sea_lily_normal.png",
       "orm": "embedded://sea_lily_orm.png",
       "emission": "embedded://sea_lily_emission.png"
-    }
+    },
+    "reference_image": "assets/source/art-v3/concepts/environment.png",
+    "reference_sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d",
+    "model_sha256": "8719d5d6611eed72094a5d25b920e316d451575f748729af7edbc67955d6ab16"
   }
 }

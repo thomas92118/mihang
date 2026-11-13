@@ -1,4 +1,5 @@
 # 《深蓝回声 · Abyssal Echo》美术与渲染技术规范
+> 当前资产为 GPT Image → Blender 重建版。五套概念图、提示词、可编辑源文件、实机验证与复现命令见 [v3 制作记录](art-v3-production.md)。本文后部原有 ABZÛ 阶段性能与截图为历史基线，新版证据位于 ssets/source/art-v3/verification/。
 
 本文档定义《深蓝回声 · Abyssal Echo》通透风格化海洋科考冒险（Luminous Stylized Ocean Adventure，参考 ABZÛ 空间构图与色彩韵律原创设计）的视觉基准、九大海域场景构图、材质光照与性能法则、界面架构、资产契约及可复现双端构建管线。所有色彩令牌、着色方程、批处理预算与碰撞约束均与运行时代码及离线生产工具严格对齐。
 
@@ -9,7 +10,7 @@
 项目摒弃高噪点均匀撒点、卡通描边（`rim_enabled`）与泛滥的霓虹自发光，确立**通透蓝绿、大尺度剪影、韵律鱼流与留白呼吸感兼具的海洋冒险美学**：
 
 - **三层空间构图与约三分之一负空间留白**：每片海域由 `scripts/presentation/ocean_composition.gd` 固定编排**前景框景、中景主景、远景轮廓**三层空间关系，并与 `SeabedEcology` 的沙谷留白通道协同，在主景周围保留约 `1/3` 的纯净沙地与开阔水体，替代重复环形装饰。
-- **琢面层积色料与多轨迹群游鱼流**：离线资产（`tools/create_assets.py`，34 项 `.glb` 均保持版本 `luminous-ocean-2`）、主角流线科考服（`scripts/presentation/diver_silhouette.gd`，契约 `expedition-silhouette-1`）、程序化精修（`scripts/presentation/model_finish.gd`）与琢面礁石着色器（`shaders/scenery.gdshader`）均采用空气固有色料，统一使用 `DIFFUSE_BURLEY` 漫反射与 `SPECULAR_SCHLICK_GGX` 高光（强制 `rim_enabled = false`）；九大海域主景上方均配置由 `shaders/fish_ribbon.gdshader` 顶点驱动的 8 棱放样立体鱼群（支持椭圆、交叉 S 流、新月回环 3 类 `curve_mode` 及双簇留空相位），无需 CPU 逐帧骨骼开销即可建立有机生命律动。
+- **琢面层积色料与多轨迹群游鱼流**：离线资产（`tools/create_art_v3.py`，34 项 `.glb` 均保持版本 `luminous-ocean-3`）、主角流线科考服（`scripts/presentation/diver_silhouette.gd`，契约 `gpt-blender-expedition-3`）、程序化精修（`scripts/presentation/model_finish.gd`）与琢面礁石着色器（`shaders/scenery.gdshader`）均采用空气固有色料，统一使用 `DIFFUSE_BURLEY` 漫反射与 `SPECULAR_SCHLICK_GGX` 高光（强制 `rim_enabled = false`）；九大海域主景上方均配置由 `shaders/fish_ribbon.gdshader` 顶点驱动的 8 棱放样立体鱼群（支持椭圆、交叉 S 流、新月回环 3 类 `curve_mode` 及双簇留空相位），无需 CPU 逐帧骨骼开销即可建立有机生命律动。
 - **沉浸式海图玻璃与金线镶嵌 UI**：
   - **实时海底主菜单（`scripts/game.gd`）**：主界面直接置入实时海底构图，`title_camera`（`fov = 62°`, `far = 280m`）锚定于 `(-19.5, -6.2, 9.5)` 微幅呼吸漂移并朝向 `(-4.5, -8.6, -34.0)`，隐藏全部 3D 世界标签（`Ocean.set_world_labels_visible(false)`），避开近处逃生舱对右上画面的压迫；标题与两个模式入口靠左排布，中右部完整留给远景石拱、光束与 S 形鱼带，并由 `ExpeditionPlate` 绘制呼应古都星象仪的细金线轨迹。
   - **安静探索态情境 HUD 与防重叠提示（`scripts/hud.gd`）**：平静巡游（`quiet_explore`）下，任务、货舱、武器提示在触发 `3.5s` 后自动隐退，日志标题与金线降至 `0.28 / 0.26`，常驻仪表按层次柔化不透明度（生命支持 `0.88`、航向罗盘 `0.72`、深度 `0.90`、生态带状态 `0.68`、雷达 `0.80`、母港距离 `0.68`、底栏键位 `0.48`）；低氧或生命 `< 30` 时立即切回高对比告警。`_layout_toast()` 动态计算 `status_value` 与 `boss_panel` 全局底边并保持 `>= 12px` 净空（长句自动换行扩展为 `66px` 高），彻底消除地标发现横幅与深度告警、Boss 血条重叠。
@@ -116,9 +117,9 @@
 
 ## 4. 资产规格、面数/贴图预算与碰撞解耦契约
 
-### 4.1 原创离线资产契约（`tools/create_assets.py` & `assets/source/asset-contract.json`）
+### 4.1 原创离线资产契约（`tools/create_art_v3.py` & `assets/source/asset-contract.json`）
 
-全部 `34` 项 3D `.glb` 资产均由 `tools/create_assets.py`（生成器版本 `luminous-ocean-2`，`MIT` 许可，`external_sources = []`）确定性离线生成，包含明快分层的色料贴图及完整四通道 PBR 纹理（`albedo`、`normal`、`orm`、`emission`）：
+全部 `34` 项 3D `.glb` 资产均由 `tools/create_art_v3.py`（生成器版本 `luminous-ocean-3`，`MIT` 许可，`external_sources = []`）确定性离线生成，包含明快分层的色料贴图及完整四通道 PBR 纹理（`albedo`、`normal`、`orm`、`emission`）：
 
 - **坐标轴与包围盒契约**：Blender `(X, Y, Z)` 导出至 Godot 自动映射为 `(X, Z, Y)`；每项资产在 Godot 内的实测世界 `AABB` 各轴尺寸必须与 `assets/source/asset-contract.json` 中的 `dimensions_godot_xyz` 误差 `< 10%`（下限容差 `5mm`）。
 - **骨骼与动画契约**：带骨骼生物（`fish` `6` 骨、`fish_small` `6` 骨、`fish_predator` `7` 骨、`fish_abyss` `7` 骨、`manta_ray` `5` 骨、`sea_turtle` `5` 骨、`crab` `27` 骨、`squid` `33` 骨、`jellyfish` `38` 骨）骨骼总数均 `<= 64` 根，包含 `30 FPS` 有效关节形变动画片段（`swim` / `bite` / `pulse` / `walk` / `defend`）。
@@ -140,7 +141,7 @@
 ### 4.3 视觉网格与物理碰撞/动画枢轴解耦契约
 
 - **地标冻结碰撞体（Frozen Landmark Collisions）**：`ruins` 与 `shipwreck` 的高细节视觉 `.glb` 与物理碰撞严格分离。`tools/freeze_landmark_collision.gd` 将局部空间 `StaticBody3D` + `ConcavePolygonShape3D` 预冻结为 `res://assets/collision/ruins.tscn` 与 `res://assets/collision/shipwreck.tscn`，由 `Ocean` 在生成地标实例时挂载，确保视觉模型重拓扑或细分不会破坏探索通道与遗迹可拾取性。
-- **主角流线科考服剪影契约（`scripts/presentation/diver_silhouette.gd` & `scripts/diver.gd`）**：全部 `34` 项离线 `.glb` 资产保持 `luminous-ocean-2` 不变，第三人称主角则采用纯代码缓存生成的 `expedition-silhouette-1` 紧凑流线科考服（实测 `3,272 / 3,600` 三角面，全部 `ArrayMesh` 静态缓存复用并满足顺时针非退化法线契约）：
+- **主角流线科考服剪影契约（`scripts/presentation/diver_silhouette.gd` & `scripts/diver.gd`）**：全部 `34` 项离线 `.glb` 资产保持 `luminous-ocean-3` 不变，第三人称主角则采用纯代码缓存生成的 `gpt-blender-expedition-3` 紧凑流线科考服（实测 `3,272 / 3,600` 三角面，全部 `ArrayMesh` 静态缓存复用并满足顺时针非退化法线契约）：
   - **分段放样轮廓与三叶燕尾长脚蹼**：躯干、胸甲、流线头盔、面罩、领环、导航腰带、贴合背囊、双气瓶及四肢均由截面放样生成，脚蹼采用中脊加双侧长翼的三叶燕尾流线叶片（`fin().get_aabb().size.z > 0.49m`），配合默认第三人称机位 `THIRD_PERSON_DEFAULT_DIST = 3.05`（缩放范围 `1.6–6.5m`，精准瞄准 `1.45m`，开镜/入舱自动隐藏）建立清晰修长的游泳剪影。
   - **膝踝相位滞后与枢轴零侵入**：完整保留 `body_pivot`、`head_pivot`、肩肘枢轴与 `left_hand_socket` / `right_hand_socket` 武器挂点，并在大腿下挂载关节化膝枢轴（`LeftKneePivot` / `RightKneePivot`）与柔性踝枢轴（`LeftFinPivot` / `RightFinPivot`）；巡游时躯干随水流速度矢量俯仰侧倾，膝盖（`cos(phase - 0.20)`）与脚蹼（`sin(phase - 1.15)`）依次相位滞后摆动，不改动任何物理速度或胶囊碰撞体。
   - **`diver_pigment` 主次色保护**：潜水服材质显式标记 `diver_pigment = true`，使 `ModelFinish` 原样保留深海军蓝主体（`#17354b`）、青灰护甲/气瓶（`#527d88` / `#345969`）与暖金点缀（`#d5b566` 腰带、领环、面罩框、腕环与脚蹼），强制 `rim_enabled = false` 且自发光倍增严格限制在 `emission_energy_multiplier <= 0.12`（背脊/气表指示 `0.09`、面罩 `0.07`）。
@@ -154,25 +155,21 @@
 
 1. **Blender 离线暂存生成**
    ```bash
-   blender --background --factory-startup --python tools/create_assets.py
+   blender --background --factory-startup --python tools/create_art_v3.py
    ```
-   在 `.tools/art-staging/` 下确定性生成 34 项 `luminous-ocean-2` `.glb` 模型与 `asset-manifest.json`，不直接覆盖生产目录。若界面新增中文字符，可通过 `python tools/subset_font.py .tools/NotoSansCJKsc-Regular.otf` 重建 `assets/fonts/NotoSansSC-Subset.otf`（配合仓库内置的 `Controls-CJK-Subset.otf` 与 `Symbols-Subset.ttf` 组成完整回退链）。
+   在 `.tools/art-staging/` 下确定性生成 34 项 `luminous-ocean-3` `.glb` 模型与 `asset-manifest.json`，不直接覆盖生产目录。若界面新增中文字符，可通过 `python tools/subset_font.py .tools/NotoSansCJKsc-Regular.otf` 重建 `assets/fonts/NotoSansSC-Subset.otf`（配合仓库内置的 `Controls-CJK-Subset.otf` 与 `Symbols-Subset.ttf` 组成完整回退链）。
 
-2. **Godot 契约与回归校验**
-   ```bash
-   godot --headless --path . -s tests/asset_pipeline.gd -- --staging
-   godot --headless --path . -s tests/art_regression.gd
-   godot --headless --path . -s tests/art_composition.gd
-   godot --headless --path . -s tests/character_art.gd
-   godot --headless --path . -s tests/presentation_context.gd
-   python -X utf8 -m unittest tests/test_art_report.py
-   python -X utf8 .tools/abzu-refinement/run_jobs.py .tools/abzu-refinement/full-regression-jobs.json
-   ```
-   `tests/asset_pipeline.gd -- --staging` 校验全部资产的许可证、面数/贴图上限、四通道 PBR 绑定、Godot 空间 `AABB` 尺寸契约与骨骼动画形变，通过后写入 `SHA-256` 校验摘要 `.tools/art-staging/validated.sha256`。`tests/art_regression.gd`、`tests/art_composition.gd`、`tests/character_art.gd` 与 `tests/presentation_context.gd` 分别验证冻结碰撞、九大海域构图与拱门开放碰撞链、`expedition-silhouette-1` 主角面数/法线/脚蹼相位滞后契约，以及安静探索 HUD、低氧/Boss/发现横幅零重叠与超时消隐；`tests/test_art_report.py` 校验性能门禁对比逻辑，`.tools/abzu-refinement/run_jobs.py` 串联执行全量玩法、生态、视觉与桌面导出批处理回归并扫描 `SCRIPT ERROR` / `SHADER ERROR`。
+2. **Godot 暂存契约校验**
+   `ash
+   rtk proxy godot --headless --path . -s tests/asset_pipeline.gd -- --staging
+   `
+   检查34项暂存资产的PBR、尺寸、面数、骨骼及动作，成功后写入清单哈希签名。人物、海洋及装配体回归在下步晋升并导入后执行。
 
 3. **生产目录受控晋升**
    ```bash
-   blender --background --python tools/create_assets.py -- --promote
+   rtk proxy blender --background --python tools/create_art_v3.py -- --promote
+   rtk proxy godot --headless --path . --import
+   rtk proxy python -X utf8 tools/verify_art_v3.py --visual
    ```
    核对 `.tools/art-staging/validated.sha256` 与暂存清单哈希完全一致后，才将验证通过的 `.glb` 晋升至 `assets/models/` 并同步更新 `assets/source/asset-manifest.json`。桌面端工作区始终保留完整的 `512/1024px` 源级纹理质量。
 

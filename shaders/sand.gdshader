@@ -50,6 +50,34 @@ float sediment(vec3 position, vec3 weights) {
 		+ texture(sediment_noise, position.xy).r * weights.z;
 }
 
+vec2 caustic_hash2(vec2 p) {
+	return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453123);
+}
+
+// Cellular Voronoi ridge distance (f2 - f1) yields natural interconnected sunlit caustic webs.
+float voronoi_caustic(vec2 uv, float clock) {
+	vec2 cell = floor(uv);
+	vec2 frac_uv = fract(uv);
+	float min1 = 8.0;
+	float min2 = 8.0;
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			vec2 neighbor = vec2(float(i), float(j));
+			vec2 rnd = caustic_hash2(cell + neighbor);
+			vec2 anim = 0.5 + 0.40 * sin(clock * vec2(0.75, 0.92) + rnd * 6.2831853);
+			vec2 diff = neighbor + anim - frac_uv;
+			float dist = length(diff);
+			if (dist < min1) {
+				min2 = min1;
+				min1 = dist;
+			} else if (dist < min2) {
+				min2 = dist;
+			}
+		}
+	}
+	return max(min2 - min1, 0.0);
+}
+
 void fragment() {
 	vec3 world_normal = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	vec3 weights = pow(abs(world_normal), vec3(4.0));
@@ -107,14 +135,15 @@ void fragment() {
 	// Half-meter sand ridges stay fixed on the seabed; only the light moves.
 	float ripple_fade = 0.0;
 	float ridge = 0.5;
-	if (sand > 0.05 && distance_to_camera < 65.0) {
-		float phase = dot(world_pos.xz, vec2(0.92, 0.39)) * 8.0 + patch * 5.0 + detail * 0.9;
-		ripple_fade = (1.0 - smoothstep(18.0, 65.0, distance_to_camera))
+	if (sand > 0.05 && distance_to_camera < 72.0) {
+		float bend = sin(dot(world_pos.xz, vec2(-0.34, 0.94)) * 0.42 + patch * 4.2) * 1.35;
+		float phase = dot(world_pos.xz, vec2(0.92, 0.39)) * 6.8 + bend + patch * 4.5 + detail * 0.75;
+		ripple_fade = (1.0 - smoothstep(22.0, 72.0, distance_to_camera))
 			* (1.0 - smoothstep(0.4, 2.0, fwidth(phase))) * sand;
-		ridge = pow(0.5 + 0.5 * sin(phase), 2.0);
+		ridge = pow(0.5 + 0.5 * sin(phase), 1.65);
 	}
 	float exposed_rock = max(steep, slope_band * smoothstep(0.28, 0.64, meso));
-	float height = ridge * 0.0035 * ripple_fade + detail * mix(0.0025, 0.013, exposed_rock)
+	float height = ridge * 0.0095 * ripple_fade + detail * mix(0.0028, 0.014, exposed_rock)
 		+ strata_band * 0.022 * exposed_rock
 		+ stones * mix(0.002, 0.008, shelf_band) + grain * 0.00018 * grain_fade
 		+ pow(nodule_shape, 1.5) * nodule_patch * 0.018;
@@ -133,7 +162,7 @@ void fragment() {
 	// Keep the sediment's actual pigment neutral. Blue-green water comes from
 	// light absorption, so a diver's lamp can reveal the original warm colour.
 	float sediment_mix = smoothstep(0.24, 0.78, patch * 0.65 + meso * 0.35);
-	vec3 shallow_sand = mix(vec3(0.35, 0.29, 0.19), vec3(0.50, 0.43, 0.30), sediment_mix);
+	vec3 shallow_sand = mix(vec3(0.45, 0.36, 0.24), vec3(0.62, 0.52, 0.35), sediment_mix);
 	float algae_mask = smoothstep(0.57, 0.82, meso + detail * 0.24)
 		* (1.0 - smoothstep(20.0, 52.0, depth));
 	float coralline_mask = smoothstep(0.63, 0.90, (1.0 - meso) + patch * 0.18)
@@ -153,7 +182,9 @@ void fragment() {
 	vec3 cliff_light = vec3(0.50, 0.57, 0.50);
 	vec3 rock = mix(cliff_dark, cliff_light, detail * 0.64 + strata_band * 0.36);
 	if (use_region_palette) {
-		seabed_palette = mix(seabed_palette, v_regional_sand * (0.72 + sediment_mix * 0.10), 0.78);
+		float sunlit_warmth = 1.0 - smoothstep(10.0, 38.0, depth);
+		vec3 warm_sand_tint = mix(vec3(1.0), vec3(1.0, 0.91, 0.77), sunlit_warmth);
+		seabed_palette = mix(seabed_palette, v_regional_sand * warm_sand_tint * (mix(0.68, 0.74, sunlit_warmth) + sediment_mix * 0.08), 0.68);
 		rock = mix(rock, v_regional_rock * (0.68 + strata_band * 0.18 + detail * 0.08), 0.82);
 	}
 	rock = mix(rock, rock * vec3(0.83, 0.87, 0.89), basin * 0.6);
@@ -166,26 +197,32 @@ void fragment() {
 	base_color = mix(base_color, mix(vec3(0.14, 0.15, 0.14), vec3(0.29, 0.27, 0.23), detail), caldera * 0.84);
 	base_color *= 0.98 + detail * 0.04 + (grain - 0.5) * 0.018 * grain_fade;
 	base_color *= 1.0 - stones * 0.09;
-	base_color *= 1.0 - (1.0 - ridge) * 0.028 * ripple_fade;
+	base_color *= 1.0 - (1.0 - ridge) * 0.075 * ripple_fade;
+	base_color += vec3(0.026, 0.020, 0.009) * ridge * ripple_fade * (1.0 - smoothstep(8.0, 36.0, depth));
 
 	float caustic_lit = 0.0;
-	if (depth < 46.0 && world_normal.y > 0.0) {
+	float caustic_nodes = 0.0;
+	if (depth < 52.0 && world_normal.y > 0.0 && distance_to_camera < 95.0) {
+		float clock = review_time >= 0.0 ? review_time : TIME;
 		float fw_xz = length(fwidth(world_pos.xz));
-		float a = sin(world_pos.x * 2.3 + sin(world_pos.z * 1.7 + (review_time >= 0.0 ? review_time : TIME) * 0.5) + patch * 2.0 + (review_time >= 0.0 ? review_time : TIME) * 0.4);
-		float b = sin(world_pos.z * 2.6 - sin(world_pos.x * 1.4 - (review_time >= 0.0 ? review_time : TIME) * 0.4) + patch * 1.7);
-		float caustic = 1.0 - smoothstep(0.04, 0.08 + fw_xz * 3.4713, abs(a + b));
-		float a2 = sin(world_pos.x * 4.1 - cos(world_pos.z * 3.2 - (review_time >= 0.0 ? review_time : TIME) * 0.65) + meso * 3.0);
-		float b2 = cos(world_pos.z * 3.8 + sin(world_pos.x * 2.9 + (review_time >= 0.0 ? review_time : TIME) * 0.55) - patch * 2.2);
-		float caustic_fine = (1.0 - smoothstep(0.05, 0.12 + fw_xz * 5.5902, abs(a2 + b2))) * 0.52;
-		float caustic_fade = exp(-depth * 0.075) * (1.0 - smoothstep(22.0, 46.0, depth))
-			* world_normal.y;
-		caustic_lit = (caustic + caustic_fine * 0.55) * caustic_fade * 0.15;
+		vec2 warp = vec2(sin(world_pos.z * 0.42 + clock * 0.35), cos(world_pos.x * 0.38 - clock * 0.28)) * 0.28;
+		float d1 = voronoi_caustic(world_pos.xz * 0.42 + warp + vec2(patch * 0.8), clock * 0.85);
+		float d2 = voronoi_caustic(world_pos.xz * 0.78 - warp * 0.7 + vec2(meso * 1.1, 3.7), -clock * 0.62 + 1.9);
+		float web1 = 1.0 - smoothstep(0.006, 0.058 + fw_xz * 0.55, d1);
+		float web2 = 1.0 - smoothstep(0.008, 0.072 + fw_xz * 0.80, d2);
+		caustic_nodes = pow(max(web1, 0.0), 2.6) * 0.72 + web1 * web2 * 0.92;
+		float dist_fade = 1.0 - smoothstep(48.0, 95.0, distance_to_camera);
+		float caustic_fade = exp(-depth * 0.052) * (1.0 - smoothstep(26.0, 52.0, depth))
+			* clamp(world_normal.y, 0.0, 1.0) * dist_fade;
+		caustic_lit = (web1 * 0.82 + web2 * 0.38 + caustic_nodes * 0.62) * caustic_fade;
 	}
-	ALBEDO = base_color * (0.79 + caustic_lit * 0.48);
+	vec3 golden_caustic = vec3(1.0, 0.84, 0.46) * caustic_lit;
+	ALBEDO = clamp(base_color * 0.76 + golden_caustic * 0.34, vec3(0.0), vec3(1.0));
 	float caldera_glow = 1.0 - smoothstep(8.0, 44.0, length(world_pos.xz - vec2(-440.0, -434.0)));
 	float hadal_glow = 1.0 - smoothstep(10.0, 48.0, length(world_pos.xz - vec2(60.0, -658.0)));
 	EMISSION = vec3(0.085, 0.028, 0.008) * caldera_glow * (0.75 + detail * 0.5)
-		+ vec3(0.012, 0.036, 0.058) * hadal_glow * (0.8 + meso * 0.4);
+		+ vec3(0.012, 0.036, 0.058) * hadal_glow * (0.8 + meso * 0.4)
+		+ vec3(0.15, 0.10, 0.028) * caustic_lit * 0.36;
 	ROUGHNESS = clamp(0.86 + basin * 0.06 - stones * 0.10 - nodules * 0.24, 0.64, 0.96);
 	SPECULAR = 0.15;
 	AO = 1.0 - (1.0 - ridge) * 0.10 * ripple_fade - stones * 0.08

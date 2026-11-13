@@ -4,6 +4,10 @@
 
 采用**绘画感半写实海洋科考冒险风**（九大海域色彩体系、水体连续光谱吸收与头灯色彩还原、四通道 PBR 笔触肌理材质与静谧海图仪器 UI）。详见 [美术与渲染技术规范](docs/art-direction.md) 与 [美术重构前后对比图](docs/art-comparison.png)。
 
+**GPT Image → Blender 当前状态**：已生成五套高保真概念图，并接入34项简化模型、主角/大型生物/潜艇共享部件及海面网格；参考图的高保真造型还原尚未完成，尤其人物仍有明显差异。查看 [制作记录与复现](docs/art-v3-production.md)、[模型画廊](assets/source/art-v3/model-gallery.png) 与 [实机画面](assets/source/art-v3/verification/regions/core-detail.png)。
+
+人物现已进入[高精度蒙皮返工阶段](docs/reference-fidelity-status.md)，包含可见五官、头发和透明头盔；仍未通过参考图还原验收。
+
 ![实际游戏画面](docs/gameplay.png)
 
 | 标题界面 | 逃生舱制造台 | 失事科考潜艇 | 深渊热液喷口 |

@@ -515,11 +515,14 @@ func _create_environment() -> void:
 	var surface := MeshInstance3D.new()
 	surface.name = "WaterSurface"
 	water_surface = surface
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(2200, 2200)
-	plane.subdivide_width = 112
-	plane.subdivide_depth = 112
-	surface.mesh = plane
+	# Blender-authored radial topology resolves nearby wave crests while spending
+	# fewer vertices on the distant horizon. Its shader remains world anchored.
+	var ocean_patch: Node3D = load("res://assets/models/ocean_surface.glb").instantiate()
+	var ocean_meshes := ocean_patch.find_children("*", "MeshInstance3D", true, false)
+	assert(ocean_meshes.size() == 1, "Authored ocean patch must contain one mesh")
+	surface.mesh = (ocean_meshes[0] as MeshInstance3D).mesh
+	ocean_patch.free()
+	surface.set_meta("authored_model", "ocean-surface-3")
 	surface.position = Vector3.ZERO
 	water_surface_mat = ShaderMaterial.new()
 	water_surface_mat.shader = load("res://shaders/water.gdshader")
@@ -542,7 +545,7 @@ func _create_environment() -> void:
 	water_underwater_mat.set_shader_parameter("ripple_normal", ripples)
 	water_underwater_mat.set_shader_parameter("sun_direction", sun_dir)
 	surface.material_override = water_surface_mat
-	surface.extra_cull_margin = 0.6
+	surface.extra_cull_margin = 1.2
 	add_child(surface)
 
 	var shaft_material := ShaderMaterial.new()
@@ -724,6 +727,20 @@ func apply_plant_shader(node: Node3D, sway_str: float = 0.35, sway_freq: float =
 			continue
 		for s in range(mesh_inst.mesh.get_surface_count()):
 			var orig_mat = mesh_inst.mesh.surface_get_material(s)
+			if orig_mat is BaseMaterial3D and orig_mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+				var glass_key := "glass_%s_%d_%d" % [palette_key, orig_mat.get_instance_id(), s]
+				var gmat: StandardMaterial3D = plant_materials.get(glass_key, null)
+				if gmat == null or not share_material:
+					gmat = orig_mat.duplicate() as StandardMaterial3D
+					if gmat != null:
+						gmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+						if gmat.emission_enabled:
+							gmat.emission_energy_multiplier *= _asset_emission_scale(palette_key)
+						if share_material:
+							plant_materials[glass_key] = gmat
+				if gmat != null:
+					mesh_inst.set_surface_override_material(s, gmat)
+				continue
 			var material_id: int = orig_mat.get_instance_id() if orig_mat != null else 0
 			var cache_key := "%s_%s_%d_%d_%.2f_%.2f" % [palette_key, region_id, material_id, s, sway_str, sway_freq]
 			var sm: ShaderMaterial = plant_materials.get(cache_key, null)
@@ -829,38 +846,59 @@ func _populate() -> void:
 	escape_console.add_child(console_body)
 	var c_base := MeshInstance3D.new()
 	var b_box := CylinderMesh.new()
-	b_box.bottom_radius = 0.68
-	b_box.top_radius = 0.52
-	b_box.height = 1.08
-	b_box.radial_segments = 16
+	b_box.bottom_radius = 0.42
+	b_box.top_radius = 0.30
+	b_box.height = 1.04
+	b_box.radial_segments = 24
 	c_base.mesh = b_box
 	var c_mat := StandardMaterial3D.new()
-	c_mat.albedo_color = ArtDirection.INK.lightened(0.14)
-	c_mat.metallic = 0.36
-	c_mat.roughness = 0.48
+	c_mat.albedo_color = Color("ebe3d0")
+	c_mat.metallic = 0.12
+	c_mat.roughness = 0.34
 	c_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 	c_mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
 	c_base.material_override = c_mat
 	escape_console.add_child(c_base)
+	var c_brass_mat := StandardMaterial3D.new()
+	c_brass_mat.albedo_color = Color("cba052")
+	c_brass_mat.metallic = 0.76
+	c_brass_mat.roughness = 0.28
+	for foot_i in range(3):
+		var fa := float(foot_i) * TAU / 3.0 + 0.4
+		var foot_strut := MeshInstance3D.new()
+		foot_strut.mesh = _make_organic_limb_mesh([
+			Vector3(cos(fa) * 0.34, -0.15, sin(fa) * 0.34),
+			Vector3(cos(fa) * 0.58, -0.38, sin(fa) * 0.58),
+			Vector3(cos(fa) * 0.66, -0.54, sin(fa) * 0.66)
+		], [0.06, 0.05, 0.075], 8, 4, 0.02, 0.0)
+		foot_strut.material_override = c_brass_mat
+		escape_console.add_child(foot_strut)
+	for ring_h: float in [-0.28, 0.28, 0.50]:
+		var c_ring := MeshInstance3D.new()
+		var ct := TorusMesh.new()
+		var rr := lerpf(0.42, 0.32, (ring_h + 0.28) / 0.8)
+		ct.inner_radius = rr - 0.028
+		ct.outer_radius = rr + 0.028
+		ct.rings = 24
+		ct.ring_segments = 8
+		c_ring.mesh = ct
+		c_ring.position.y = ring_h
+		c_ring.material_override = c_brass_mat
+		escape_console.add_child(c_ring)
 	var c_collar := MeshInstance3D.new()
 	var collar_box := BoxMesh.new()
-	collar_box.size = Vector3(1.06, 0.26, 0.82)
+	collar_box.size = Vector3(0.88, 0.16, 0.64)
 	c_collar.mesh = collar_box
 	c_collar.position = Vector3(0, 0.54, 0.10)
-	c_collar.rotation_degrees = Vector3(-18, 0, 0)
-	var collar_mat := StandardMaterial3D.new()
-	collar_mat.albedo_color = ArtDirection.PAPER.darkened(0.08)
-	collar_mat.metallic = 0.24
-	collar_mat.roughness = 0.44
-	collar_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
-	c_collar.material_override = collar_mat
+	c_collar.rotation_degrees = Vector3(-24, 0, 0)
+	c_collar.material_override = c_brass_mat
 	escape_console.add_child(c_collar)
 	var screen_mesh := MeshInstance3D.new()
 	var s_quad := QuadMesh.new()
-	s_quad.size = Vector2(0.86, 0.50)
+	s_quad.size = Vector2(0.76, 0.46)
 	screen_mesh.mesh = s_quad
-	screen_mesh.position = Vector3(0, 0.70, 0.24)
-	screen_mesh.rotation_degrees = Vector3(-35, 0, 0)
+	screen_mesh.position = Vector3(0, 0.64, 0.14)
+	screen_mesh.rotation_degrees = Vector3(-24, 0, 0)
 	var s_mat := StandardMaterial3D.new()
 	s_mat.albedo_color = ArtDirection.INK
 	s_mat.emission_enabled = true
@@ -2690,6 +2728,10 @@ func _update_water_surface_state(is_scoped: bool) -> void:
 	if not is_instance_valid(water_surface):
 		return
 	var cam: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	if cam != null:
+		# Move topology only; world-space phases and normals remain continuous.
+		water_surface.position.x = snappedf(cam.global_position.x, 4.0)
+		water_surface.position.z = snappedf(cam.global_position.z, 4.0)
 	var use_underwater: bool = cam != null and cam.global_position.y < -0.75
 	var target_mat: ShaderMaterial = water_underwater_mat if use_underwater else water_surface_mat
 	if target_mat != null and water_surface.material_override != target_mat:
@@ -2919,6 +2961,12 @@ func spawn_mother_tree() -> Node3D:
 	if is_instance_valid(mother_tree):
 		mother_tree_spawned_flag = true
 		mother_tree.set_meta("awakened", true)
+		var canopy_mat := mother_tree.get_meta("canopy_material", null) as StandardMaterial3D
+		if canopy_mat != null:
+			canopy_mat.emission_energy_multiplier = 0.72
+		var vein_mat := mother_tree.get_meta("vein_material", null) as StandardMaterial3D
+		if vein_mat != null:
+			vein_mat.emission_energy_multiplier = 1.15
 		if is_instance_valid(mother_tree_marker):
 			mother_tree_marker.text = "◈ 远古深海母树 · 觉醒圣所\n游入内部收集三大生命核心"
 			mother_tree_marker.modulate = Color(0.35, 1.0, 0.85)
@@ -2934,6 +2982,79 @@ func spawn_mother_tree() -> Node3D:
 	mother_tree_spawned.emit()
 	return mother_tree
 
+func _make_organic_limb_mesh(points: Array[Vector3], radii: Array[float], radial_segs: int = 16, flute_count: int = 7, flute_amp: float = 0.14, twist: float = 1.4) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_smooth_group(-1)
+	var rings: Array[PackedVector3Array] = []
+	var count := points.size()
+	for i in range(count):
+		var p := points[i]
+		var dir := (points[mini(i + 1, count - 1)] - points[maxi(i - 1, 0)]).normalized()
+		var ref := Vector3.UP if absf(dir.dot(Vector3.UP)) < 0.92 else Vector3.RIGHT
+		var tangent := dir.cross(ref).normalized()
+		var bitangent := tangent.cross(dir).normalized()
+		var t := float(i) / float(maxi(1, count - 1))
+		var r_base := radii[i]
+		var ring := PackedVector3Array()
+		for j in range(radial_segs):
+			var ang := float(j) / float(radial_segs) * TAU
+			var flute := 1.0 + flute_amp * cos(ang * float(flute_count) + t * twist * TAU)
+			var rad := r_base * flute
+			ring.append(p + (tangent * cos(ang) + bitangent * sin(ang)) * rad)
+		rings.append(ring)
+	for i in range(count - 1):
+		for j in range(radial_segs):
+			var jn := (j + 1) % radial_segs
+			var a: Vector3 = rings[i][j]
+			var b: Vector3 = rings[i][jn]
+			var c: Vector3 = rings[i + 1][j]
+			var d: Vector3 = rings[i + 1][jn]
+			st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
+			st.add_vertex(b); st.add_vertex(d); st.add_vertex(c)
+	var tip_c := points[-1]
+	for j in range(radial_segs):
+		var jn := (j + 1) % radial_segs
+		st.add_vertex(rings[-1][j]); st.add_vertex(rings[-1][jn]); st.add_vertex(tip_c)
+	st.generate_normals()
+	return st.commit()
+
+func _make_scalloped_canopy_dome(radius: float, height: float, lobes: int = 12) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_smooth_group(-1)
+	var segs := 36
+	var r_steps := 7
+	for side in [0, 1]:
+		var rings: Array[PackedVector3Array] = []
+		for ri in range(r_steps + 1):
+			var u := float(ri) / float(r_steps)
+			var ring := PackedVector3Array()
+			for si in range(segs):
+				var ang := float(si) / float(segs) * TAU
+				var scallop := 1.0 + 0.11 * cos(ang * float(lobes)) * u
+				var r := radius * u * scallop
+				var dome_y := height * (1.0 - pow(u, 1.75)) + 0.08 * height * cos(ang * float(lobes)) * u * (1.0 - u * 0.4)
+				if side == 1:
+					dome_y -= height * (0.14 * (1.0 - u * 0.72) + 0.05 * maxf(0.0, cos(ang * float(lobes) * 2.0)))
+				ring.append(Vector3(cos(ang) * r, dome_y, sin(ang) * r))
+			rings.append(ring)
+		for ri in range(r_steps):
+			for si in range(segs):
+				var sn := (si + 1) % segs
+				var a: Vector3 = rings[ri][si]
+				var b: Vector3 = rings[ri][sn]
+				var c: Vector3 = rings[ri + 1][si]
+				var d: Vector3 = rings[ri + 1][sn]
+				if side == 0:
+					st.add_vertex(a); st.add_vertex(c); st.add_vertex(b)
+					st.add_vertex(b); st.add_vertex(c); st.add_vertex(d)
+				else:
+					st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
+					st.add_vertex(b); st.add_vertex(d); st.add_vertex(c)
+	st.generate_normals()
+	return st.commit()
+
 func _build_mother_tree_structure(awakened: bool) -> Node3D:
 	mother_tree = Node3D.new()
 	mother_tree.name = "AncientMotherTree"
@@ -2944,64 +3065,137 @@ func _build_mother_tree_structure(awakened: bool) -> Node3D:
 	mother_tree_spawned_flag = awakened
 
 	var mat_bark := StandardMaterial3D.new()
-	mat_bark.albedo_color = Color("46586e")
-	mat_bark.roughness = 0.78
+	mat_bark.albedo_color = Color("3c5163")
+	mat_bark.roughness = 0.82
 	mat_bark.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 	mat_bark.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
 	mat_bark.rim_enabled = false
 	mat_bark.emission_enabled = true
-	mat_bark.emission = Color("86b9cc")
-	mat_bark.emission_energy_multiplier = 0.16
+	mat_bark.emission = Color("64a8be")
+	mat_bark.emission_energy_multiplier = 0.12
 
 	var mat_canopy := StandardMaterial3D.new()
-	mat_canopy.albedo_color = Color("7fb8c6")
+	mat_canopy.albedo_color = Color("76d4cd")
 	mat_canopy.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat_canopy.albedo_color.a = 0.68
-	mat_canopy.roughness = 0.56
+	mat_canopy.albedo_color.a = 0.62
+	mat_canopy.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat_canopy.roughness = 0.36
 	mat_canopy.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 	mat_canopy.emission_enabled = true
-	mat_canopy.emission = Color("99cdd8")
-	mat_canopy.emission_energy_multiplier = 0.38
+	mat_canopy.emission = Color("8cf0e4")
+	mat_canopy.emission_energy_multiplier = 0.68 if awakened else 0.42
+	mother_tree.set_meta("canopy_material", mat_canopy)
 
-	# 1. Colossal Ancient Trunk (Rising from seabed up 70 meters)
+	var mat_vein := StandardMaterial3D.new()
+	mat_vein.albedo_color = Color("b8f6ec")
+	mat_vein.roughness = 0.28
+	mat_vein.emission_enabled = true
+	mat_vein.emission = Color("74ebd9")
+	mat_vein.emission_energy_multiplier = 1.05 if awakened else 0.55
+	mother_tree.set_meta("vein_material", mat_vein)
+
+	# 1. Colossal Twisting Fluted Ancient Trunk (Rising organically up 68 meters)
+	var trunk_pts: Array[Vector3] = []
+	var trunk_radii: Array[float] = []
+	for step in range(15):
+		var t := float(step) / 14.0
+		var sway_x := sin(t * PI * 1.65) * 3.4 * t
+		var sway_z := cos(t * PI * 1.35 + 0.6) * 2.8 * t
+		var flare := pow(maxf(0.0, 1.0 - t * 2.6), 2.0) * 4.8
+		trunk_pts.append(Vector3(sway_x, t * 67.0, sway_z))
+		trunk_radii.append(lerpf(8.2, 3.4, pow(t, 0.75)) + flare)
 	var trunk := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.bottom_radius = 8.5
-	cyl.top_radius = 4.2
-	cyl.height = 70.0
-	cyl.radial_segments = 24
-	trunk.mesh = cyl
-	trunk.position = Vector3(0, 35.0, 0)
+	trunk.mesh = _make_organic_limb_mesh(trunk_pts, trunk_radii, 24, 9, 0.16, 1.25)
 	trunk.material_override = mat_bark
 	mother_tree.add_child(trunk)
 
-	# 8 Twisted Massive Roots
-	for i in range(8):
-		var ang: float = i * TAU / 8.0
-		var r_end := Vector3(cos(ang) * 36.0, 0.5, sin(ang) * 36.0)
-		var root_cyl := MeshInstance3D.new()
-		var r_mesh := CylinderMesh.new()
-		r_mesh.bottom_radius = 3.6
-		r_mesh.top_radius = 1.2
-		r_mesh.height = 38.0
-		root_cyl.mesh = r_mesh
-		root_cyl.position = (Vector3(0, 4.0, 0) + r_end) * 0.5
-		root_cyl.material_override = mat_bark
-		mother_tree.add_child(root_cyl)
-		root_cyl.look_at(mother_tree.global_position + r_end, Vector3.UP)
-		root_cyl.rotate_object_local(Vector3.RIGHT, PI * 0.5)
+	# Helical bioluminescent sap veins climbing the fluted trunk
+	for v_idx in range(4):
+		var v_pts: Array[Vector3] = []
+		var v_rad: Array[float] = []
+		var base_a := float(v_idx) * TAU / 4.0
+		for step in range(18):
+			var t := float(step) / 17.0
+			var center := Vector3(sin(t * PI * 1.65) * 3.4 * t, t * 65.0 + 1.5, cos(t * PI * 1.35 + 0.6) * 2.8 * t)
+			var r_trunk := lerpf(8.2, 3.4, pow(t, 0.75)) + pow(maxf(0.0, 1.0 - t * 2.6), 2.0) * 4.8
+			var ang := base_a + t * TAU * 1.15
+			v_pts.append(center + Vector3(cos(ang) * (r_trunk * 0.96), 0.0, sin(ang) * (r_trunk * 0.96)))
+			v_rad.append(lerpf(0.55, 0.22, t))
+		var vein := MeshInstance3D.new()
+		vein.mesh = _make_organic_limb_mesh(v_pts, v_rad, 8, 3, 0.05, 0.5)
+		vein.material_override = mat_vein
+		mother_tree.add_child(vein)
 
-	# 2. Glowing Bioluminescent Canopy Foliage Clusters
+	# 10 Cathedral Buttress Roots arching out into the seabed
+	for i in range(10):
+		var ang: float = float(i) * TAU / 10.0 + sin(float(i) * 1.7) * 0.14
+		var reach := 36.0 + float(i % 3) * 5.5
+		var r_pts: Array[Vector3] = []
+		var r_rad: Array[float] = []
+		for s in range(9):
+			var t := float(s) / 8.0
+			var curve_ang := ang + sin(t * PI) * (0.22 if i % 2 == 0 else -0.18)
+			var dist := lerpf(5.8, reach, pow(t, 0.86))
+			var arch_h := lerpf(19.5, -1.2, pow(t, 0.72)) + sin(t * PI) * 5.8
+			r_pts.append(Vector3(cos(curve_ang) * dist, arch_h, sin(curve_ang) * dist))
+			r_rad.append(lerpf(3.4, 0.65, pow(t, 0.82)))
+		var root_limb := MeshInstance3D.new()
+		root_limb.mesh = _make_organic_limb_mesh(r_pts, r_rad, 12, 5, 0.14, 0.8)
+		root_limb.material_override = mat_bark
+		mother_tree.add_child(root_limb)
+
+	# 2. Sweeping Primary & Crown Boughs + Multi-Tiered Scalloped Bioluminescent Sea-Canopy Domes
+	var top_center := trunk_pts[-1]
+	var crown_dome := MeshInstance3D.new()
+	crown_dome.mesh = _make_scalloped_canopy_dome(22.0, 9.5, 16)
+	crown_dome.position = top_center + Vector3(0, 3.5, 0)
+	crown_dome.material_override = mat_canopy
+	mother_tree.add_child(crown_dome)
+
 	for i in range(12):
-		var c_ang: float = i * TAU / 12.0
+		var c_ang: float = float(i) * TAU / 12.0 + (0.18 if i % 2 == 1 else 0.0)
+		var upper_tier := (i % 3) == 0
+		var start_t := 0.78 if upper_tier else (0.62 + float(i % 2) * 0.08)
+		var trunk_anchor := Vector3(sin(start_t * PI * 1.65) * 3.4 * start_t, start_t * 67.0, cos(start_t * PI * 1.35 + 0.6) * 2.8 * start_t)
+		var out_reach := (20.0 if upper_tier else 31.0) + float(i % 4) * 3.2
+		var end_y := (73.0 if upper_tier else 63.0) + float(i % 3) * 3.2
+		var b_pts: Array[Vector3] = []
+		var b_rad: Array[float] = []
+		for s in range(8):
+			var t := float(s) / 7.0
+			var b_ang := c_ang + sin(t * PI) * 0.16
+			var dist := out_reach * pow(t, 0.88)
+			var y := lerpf(trunk_anchor.y, end_y, pow(t, 0.76)) + sin(t * PI) * 3.6
+			b_pts.append(Vector3(trunk_anchor.x * (1.0 - t) + cos(b_ang) * dist, y, trunk_anchor.z * (1.0 - t) + sin(b_ang) * dist))
+			b_rad.append(lerpf(2.3, 0.58, t))
+		var bough := MeshInstance3D.new()
+		bough.mesh = _make_organic_limb_mesh(b_pts, b_rad, 10, 5, 0.11, 0.6)
+		bough.material_override = mat_bark
+		mother_tree.add_child(bough)
+
 		var foliage := MeshInstance3D.new()
-		var s_mesh := SphereMesh.new()
-		s_mesh.radius = 8.5 + (i % 3) * 2.5
-		s_mesh.height = s_mesh.radius * 1.8
-		foliage.mesh = s_mesh
-		foliage.position = Vector3(cos(c_ang) * 24.0, 68.0 + (i % 4) * 3.0, sin(c_ang) * 24.0)
+		var dome_r := (12.5 if upper_tier else 15.0) + float(i % 3) * 2.2
+		foliage.mesh = _make_scalloped_canopy_dome(dome_r, dome_r * 0.42, 12)
+		foliage.position = b_pts[-1] + Vector3(0, 0.6, 0)
+		foliage.rotation = Vector3(sin(c_ang) * 0.08, c_ang, -cos(c_ang) * 0.08)
 		foliage.material_override = mat_canopy
 		mother_tree.add_child(foliage)
+
+		# Hanging luminous curtain tendrils under each canopy bell
+		for tendril_k in range(2):
+			var t_ang := c_ang + (float(tendril_k) - 0.5) * 0.45
+			var t_origin := b_pts[-1] + Vector3(cos(t_ang) * (dome_r * 0.48), -0.4, sin(t_ang) * (dome_r * 0.48))
+			var t_pts: Array[Vector3] = []
+			var t_rad: Array[float] = []
+			var drop_len := 11.0 + float((i + tendril_k) % 3) * 3.5
+			for ts in range(6):
+				var u := float(ts) / 5.0
+				t_pts.append(t_origin + Vector3(sin(u * PI * 1.5 + float(i)) * 1.1 * u, -u * drop_len, cos(u * PI * 1.3 + float(tendril_k)) * 1.1 * u))
+				t_rad.append(lerpf(0.24, 0.04, u))
+			var tendril := MeshInstance3D.new()
+			tendril.mesh = _make_organic_limb_mesh(t_pts, t_rad, 6, 3, 0.04, 0.4)
+			tendril.material_override = mat_vein
+			mother_tree.add_child(tendril)
 
 	# 3. Skyward Ascending Luminous Beacon Light Pillar
 	var beacon := OmniLight3D.new()
@@ -3251,27 +3445,69 @@ func _spawn_research_outpost(spec: Dictionary) -> Node3D:
 	pod_inst.reparent(root_node, false)
 	pod_inst.position = Vector3(0, 0.2, 0)
 
-	# Tall Sonar Relay Mast
+	# Sculpted Ivory-Ceramic & Antique-Brass Sonar Relay Mast Assembly
+	var m_mat := StandardMaterial3D.new()
+	m_mat.albedo_color = Color("e8dfd0")
+	m_mat.metallic = 0.15
+	m_mat.roughness = 0.36
+	m_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+
+	var brass_mat := StandardMaterial3D.new()
+	brass_mat.albedo_color = Color("cba052")
+	brass_mat.metallic = 0.76
+	brass_mat.roughness = 0.28
+	brass_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+
 	var mast := MeshInstance3D.new()
 	var mcyl := CylinderMesh.new()
-	mcyl.bottom_radius = 0.28
-	mcyl.top_radius = 0.12
-	mcyl.height = 8.5
+	mcyl.bottom_radius = 0.24
+	mcyl.top_radius = 0.11
+	mcyl.height = 6.6
+	mcyl.radial_segments = 16
 	mast.mesh = mcyl
-	mast.position = Vector3(0, 6.2, 0)
-	var m_mat := StandardMaterial3D.new()
-	m_mat.albedo_color = Color("496879")
-	m_mat.metallic = 0.45
-	m_mat.roughness = 0.44
-	m_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+	mast.position = Vector3(0, 7.1, 0)
 	mast.material_override = m_mat
 	root_node.add_child(mast)
+
+	for ring_y: float in [4.6, 6.8, 9.0, 10.1]:
+		var collar := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		var r_ring := lerpf(0.68, 0.42, (ring_y - 4.6) / 5.6)
+		torus.inner_radius = r_ring - 0.055
+		torus.outer_radius = r_ring + 0.055
+		torus.rings = 24
+		torus.ring_segments = 10
+		collar.mesh = torus
+		collar.position = Vector3(0, ring_y, 0)
+		collar.material_override = brass_mat
+		root_node.add_child(collar)
+
+	for leg_i in range(3):
+		var la := float(leg_i) * TAU / 3.0
+		var strut := MeshInstance3D.new()
+		strut.mesh = _make_organic_limb_mesh([
+			Vector3(cos(la) * 0.92, 3.85, sin(la) * 0.92),
+			Vector3(cos(la) * 0.56, 6.6, sin(la) * 0.56),
+			Vector3(cos(la) * 0.34, 9.9, sin(la) * 0.34)
+		], [0.065, 0.05, 0.038], 8, 4, 0.02, 0.0)
+		strut.material_override = brass_mat
+		root_node.add_child(strut)
+
+	for dish_side: float in [-1.0, 1.0]:
+		var dish := MeshInstance3D.new()
+		dish.mesh = _make_scalloped_canopy_dome(0.62, 0.22, 8)
+		dish.position = Vector3(dish_side * 0.52, 8.2, 0.0)
+		dish.rotation = Vector3(0.0, 0.0, -dish_side * PI * 0.42)
+		dish.material_override = m_mat
+		root_node.add_child(dish)
 
 	var core := MeshInstance3D.new()
 	core.name = "BeaconCore"
 	var sph := SphereMesh.new()
-	sph.radius = 0.72
-	sph.height = 1.44
+	sph.radius = 0.56
+	sph.height = 1.24
+	sph.radial_segments = 24
+	sph.rings = 12
 	core.mesh = sph
 	core.position = Vector3(0, 10.6, 0)
 	var b_mat := StandardMaterial3D.new()
@@ -3356,23 +3592,62 @@ func _spawn_explorer_relic(spec: Dictionary) -> Node3D:
 
 	var ped := MeshInstance3D.new()
 	var pcyl := CylinderMesh.new()
-	pcyl.bottom_radius = 0.95
-	pcyl.top_radius = 0.65
-	pcyl.height = 0.8
+	pcyl.bottom_radius = 1.08
+	pcyl.top_radius = 0.78
+	pcyl.height = 0.52
+	pcyl.radial_segments = 16
 	ped.mesh = pcyl
-	ped.position.y = 0.4
+	ped.position.y = 0.26
 	var p_mat := StandardMaterial3D.new()
-	p_mat.albedo_color = Color("7b8982")
-	p_mat.roughness = 0.86
+	p_mat.albedo_color = Color("d4cbb4")
+	p_mat.roughness = 0.82
 	p_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 	ped.material_override = p_mat
 	body.add_child(ped)
 
+	var ped_upper := MeshInstance3D.new()
+	var ucyl := CylinderMesh.new()
+	ucyl.bottom_radius = 0.72
+	ucyl.top_radius = 0.54
+	ucyl.height = 0.42
+	ucyl.radial_segments = 16
+	ped_upper.mesh = ucyl
+	ped_upper.position.y = 0.72
+	ped_upper.material_override = p_mat
+	body.add_child(ped_upper)
+
+	var relic_brass := StandardMaterial3D.new()
+	relic_brass.albedo_color = Color("cfa24e")
+	relic_brass.metallic = 0.78
+	relic_brass.roughness = 0.28
+	for ring_tilt: Vector3 in [Vector3(0.45, 0.2, 0.0), Vector3(-0.45, 1.2, 0.55)]:
+		var astro_ring := MeshInstance3D.new()
+		var atorus := TorusMesh.new()
+		atorus.inner_radius = 0.60
+		atorus.outer_radius = 0.66
+		atorus.rings = 28
+		atorus.ring_segments = 10
+		astro_ring.mesh = atorus
+		astro_ring.position.y = 1.55
+		astro_ring.rotation = ring_tilt
+		astro_ring.material_override = relic_brass
+		body.add_child(astro_ring)
+
 	var core := MeshInstance3D.new()
 	core.name = "RelicCore"
-	var prism := PrismMesh.new()
-	prism.size = Vector3(0.82, 1.18, 0.82)
-	core.mesh = prism
+	var oct_st := SurfaceTool.new()
+	oct_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var top_v := Vector3(0, 0.56, 0)
+	var bot_v := Vector3(0, -0.56, 0)
+	for f_i in range(6):
+		var a0 := float(f_i) / 6.0 * TAU
+		var a1 := float(f_i + 1) / 6.0 * TAU
+		var m0 := Vector3(cos(a0) * 0.36, 0.0, sin(a0) * 0.36)
+		var m1 := Vector3(cos(a1) * 0.36, 0.0, sin(a1) * 0.36)
+		oct_st.add_vertex(top_v); oct_st.add_vertex(m1); oct_st.add_vertex(m0)
+		oct_st.add_vertex(bot_v); oct_st.add_vertex(m0); oct_st.add_vertex(m1)
+	oct_st.generate_normals()
+	core.mesh = oct_st.commit()
 	core.position.y = 1.55
 	var c_mat := StandardMaterial3D.new()
 	c_mat.albedo_color = ArtDirection.AMBER.lerp(ArtDirection.PAPER, 0.28)

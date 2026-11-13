@@ -1,0 +1,57 @@
+{
+  "technical_checks_passed": true,
+  "results": [
+    {
+      "test": "reference_diver",
+      "passed": true,
+      "exit_code": 0,
+      "errors": [],
+      "log": ".tools/reference-verification/reference_diver.log"
+    },
+    {
+      "test": "character_art",
+      "passed": true,
+      "exit_code": 0,
+      "errors": [],
+      "log": ".tools/reference-verification/character_art.log"
+    },
+    {
+      "test": "art_regression",
+      "passed": true,
+      "exit_code": 0,
+      "errors": [],
+      "log": ".tools/reference-verification/art_regression.log"
+    },
+    {
+      "test": "smoke",
+      "passed": true,
+      "exit_code": 0,
+      "errors": [],
+      "log": ".tools/reference-verification/smoke.log"
+    },
+    {
+      "test": "submarines_and_booster",
+      "passed": true,
+      "exit_code": 0,
+      "errors": [],
+      "log": ".tools/reference-verification/submarines_and_booster.log"
+    },
+    {
+      "test": "mount_tame_mothertree_schools",
+      "passed": true,
+      "exit_code": 0,
+      "errors": [],
+      "log": ".tools/reference-verification/mount_tame_mothertree_schools.log"
+    },
+    {
+      "test": "character_visual",
+      "passed": true,
+      "exit_code": 0,
+      "errors": [],
+      "log": ".tools/reference-verification/character_visual.log"
+    }
+  ],
+  "model_sha256": "b507d3ef55477d92f5fbdd5996a517267fa31ada94cba777a6dc32b059f44542",
+  "visual_fidelity_accepted": false,
+  "scope": "Technical checks do not certify likeness or 100 percent reconstruction."
+}

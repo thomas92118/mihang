@@ -1,0 +1,102 @@
+{
+  "version": "luminous-ocean-3",
+  "image_generation": "built-in GPT Image",
+  "workflow": [
+    "GPT Image reference",
+    "authored Blender mesh",
+    "PBR/UV/rigged glTF",
+    "Godot contract validation",
+    "promotion"
+  ],
+  "concepts": {
+    "diver": {
+      "file": "assets/source/art-v3/concepts/diver.png",
+      "sha256": "4c046c20ba52f3f1ef6df565243a8618ce848edff01291e69d9b9d6c52c4fa47"
+    },
+    "creatures": {
+      "file": "assets/source/art-v3/concepts/creatures.png",
+      "sha256": "abc84f1902fb67cb431e5c602e360e6597375ae6bee5a4123ee50d416de9664a"
+    },
+    "creatures_large": {
+      "file": "assets/source/art-v3/concepts/creatures_large.png",
+      "sha256": "28c38153deb171eea21aa7c93e2cef196b4c2b56558161a5c23401cf8c071dda"
+    },
+    "environment": {
+      "file": "assets/source/art-v3/concepts/environment.png",
+      "sha256": "c99db3d2906fcea29bd4c37e27c05805067162c9fb0ea741d09bfb5259e34d2d"
+    },
+    "equipment": {
+      "file": "assets/source/art-v3/concepts/equipment.png",
+      "sha256": "8bbe103a03bd47ece7e369d3076259c6237c59174effaaf9e12ed601928b07f2"
+    },
+    "submarines": {
+      "file": "assets/source/art-v3/concepts/submarines.png",
+      "sha256": "6d46c17ce5aff059ee25cfafe27588505ed2953e221cccf05a7668582095c8e2"
+    },
+    "ocean": {
+      "file": "assets/source/art-v3/concepts/ocean.png",
+      "sha256": "1133bd8404930e30a5c8e18a27961832fbc617f7e7afeb7364a4dbeed02985f1"
+    }
+  },
+  "ocean": {
+    "file": "assets/models/ocean_surface.glb",
+    "triangles": 19328,
+    "vertices": 9729,
+    "radius": 2200,
+    "near_ring_spacing": 0.75,
+    "reference": "assets/source/art-v3/concepts/ocean.png"
+  },
+  "asset_ids": [
+    "coral",
+    "tube_coral",
+    "kelp",
+    "rock",
+    "fish",
+    "pod",
+    "ruins",
+    "shipwreck",
+    "anemone",
+    "crystal_spire",
+    "jellyfish",
+    "resource_titanium",
+    "resource_copper",
+    "resource_quartz",
+    "resource_kelp",
+    "fish_small",
+    "fish_predator",
+    "fish_abyss",
+    "weapon_knife",
+    "weapon_axe",
+    "weapon_sonic",
+    "manta_ray",
+    "sea_turtle",
+    "squid",
+    "crab",
+    "sea_fan",
+    "tubeworms",
+    "starfish_urchin",
+    "brain_coral",
+    "staghorn_coral",
+    "table_coral",
+    "barrel_sponge",
+    "giant_clam",
+    "sea_lily"
+  ],
+  "tools": {
+    "art_v3_creatures.py": "b30b092e5f331ab0afe967db53a4f0f35599356fd72203c8ea5756e71333c66a",
+    "art_v3_environment.py": "52aa526d97d0d4110b9b66e31884cc1892c5b367264589fdf29c766822f03c9e",
+    "art_v3_equipment.py": "c23a9103bfeb5b68f7416f791e3a77761143eba6fa2b58cd9be0705dd5b47fe9",
+    "art_v3_hero.py": "315dc9af8ef751b008ab88f49091f21c0abe76c456054c5d14c5c39b49f151d5",
+    "create_art_v3.py": "39026e74d61a99f1a77a713bee56a00df8cac4ec191e94ed749557eb393dbf49"
+  },
+  "libraries": {
+    "ocean_surface.glb": {
+      "file": "assets/source/art-v3/ocean_surface.glb",
+      "sha256": "2af1c546b9d220982738eff8b17817ad043a98206bd2bf37bc62642f696d9a09"
+    },
+    "expedition_library.glb": {
+      "file": "assets/source/art-v3/expedition_library.glb",
+      "sha256": "a4ef09002c843025eab87baa4593b8f66eb030640844d0400a0a6069ae03f840"
+    }
+  }
+}

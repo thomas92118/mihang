@@ -13,6 +13,7 @@ var _arch_meshes: Dictionary = {}
 var _pillar_meshes: Dictionary = {}
 var _terrace_mesh: ArrayMesh
 var _spire_mesh: ArrayMesh
+var _sun_compass_mesh: ArrayMesh
 var _cube := BoxMesh.new()
 var _column := CylinderMesh.new()
 var _reserved: Array[Vector2] = []
@@ -24,10 +25,11 @@ func configure(world: Node3D) -> void:
 	_seed.seed = 671112
 	_terrace_mesh = _make_terrace()
 	_spire_mesh = _make_spire()
+	_sun_compass_mesh = _make_sun_compass_emblem()
 	_column.top_radius = 0.92
 	_column.bottom_radius = 1.0
 	_column.height = 1.0
-	_column.radial_segments = 10
+	_column.radial_segments = 20
 	for spec: Dictionary in ocean.OUTPOST_SPECS:
 		_reserved.append(spec["xz"])
 	for spec: Dictionary in ocean.RELIC_SPECS:
@@ -67,8 +69,9 @@ func _material(region: String, role: String = "rock") -> ShaderMaterial:
 		var top_pigment: Color = profile["sand"].lerp(pigment, 0.36)
 		var glow_strength := 0.0
 		if role == "stone":
-			pigment = profile["rock"].darkened(0.08).lerp(profile["sand"], 0.24)
-			top_pigment = profile["sand"].darkened(0.05).lerp(pigment, 0.38)
+			var warm_limestone := Color("dcd2b6") if region in ["core", "atoll", "kelp", "citadel"] else Color("b6bcb0")
+			pigment = profile["rock"].lerp(warm_limestone, 0.62)
+			top_pigment = warm_limestone.lightened(0.10).lerp(profile["sand"], 0.28)
 		elif role == "bone":
 			pigment = profile["accent"].lerp(profile["rock"], 0.16)
 			top_pigment = profile["accent"].lightened(0.10)
@@ -77,9 +80,10 @@ func _material(region: String, role: String = "rock") -> ShaderMaterial:
 			pigment = profile["sand"].darkened(0.12)
 			top_pigment = profile["sand"]
 		elif glow or role == "accent":
-			pigment = profile["accent"]
-			top_pigment = profile["accent"].lightened(0.18)
-			glow_strength = 0.65 if glow else 0.18
+			var gilded := Color("d8ab4e")
+			pigment = profile["accent"] if glow else gilded.lerp(profile["accent"], 0.24)
+			top_pigment = pigment.lightened(0.24)
+			glow_strength = 0.65 if glow else 0.20
 		material.set_shader_parameter("pigment", pigment)
 		material.set_shader_parameter("top_pigment", top_pigment)
 		material.set_shader_parameter("shadow_pigment", profile["shadow"])
@@ -197,16 +201,24 @@ func _arch(center: Vector2, width: float, requested_height: float, yaw: float, r
 		var bottom := _height(Vector2(foot.x, foot.z)) - 0.65
 		if bottom < at.y:
 			_record(region + "_footings", _column, _material(region, "stone"), Vector3(foot.x, (bottom + at.y) * 0.5, foot.z), Vector3(width * 0.043, at.y - bottom + 0.2, thickness * 0.43), yaw, Color.WHITE, true)
-	# A gold keystone emblem links ancient architecture to the interface inlays.
-	var emblem := TorusMesh.new()
-	emblem.inner_radius = 0.65
-	emblem.outer_radius = 0.85
-	emblem.rings = 24
-	emblem.ring_segments = 6
-	var emblem_at := at + turn * Vector3(0, height - thickness * 0.3, thickness * 0.76)
+	# Sculpted gilded astronomical sun-compass wheels at the arch keystone and flanking piers.
 	var emblem_role := "glow" if region in ["citadel", "hadal"] else "accent"
-	_record(region + "_emblems", emblem, _material(region, emblem_role), emblem_at, Vector3.ONE)
-	_batches[region + "_emblems"].transforms[-1] = Transform3D(turn * Basis(Vector3.RIGHT, PI * 0.5), emblem_at)
+	var crown_scale := clampf(width * 0.068, 1.05, 2.35)
+	for face_sign: float in [1.0, -1.0]:
+		var emblem_at := at + turn * Vector3(0, height * 0.922, face_sign * thickness * 0.62)
+		var face_basis := turn * (Basis.IDENTITY if face_sign > 0.0 else Basis(Vector3.UP, PI))
+		_record(region + "_emblems", _sun_compass_mesh, _material(region, emblem_role), emblem_at, Vector3.ONE * crown_scale)
+		_batches[region + "_emblems"].transforms[-1] = Transform3D(face_basis.scaled_local(Vector3.ONE * crown_scale), emblem_at)
+		for pier_side: float in [-1.0, 1.0]:
+			var pier_medallion_at := at + turn * Vector3(pier_side * width * 0.50, height * 0.34, face_sign * thickness * 0.58)
+			var pier_scale := crown_scale * 0.48
+			_record(region + "_emblems", _sun_compass_mesh, _material(region, emblem_role), pier_medallion_at, Vector3.ONE * pier_scale)
+			_batches[region + "_emblems"].transforms[-1] = Transform3D(face_basis.scaled_local(Vector3.ONE * pier_scale), pier_medallion_at)
+	if not _pillar_meshes.has(false):
+		_pillar_meshes[false] = _make_pillar(false)
+	for pier_side: float in [-1.0, 1.0]:
+		var pier_pos := at + turn * Vector3(pier_side * width * 0.535, -0.35, 0.0)
+		_record(region + "_stone_pillars", _pillar_meshes[false], _material(region, "stone"), pier_pos, Vector3(thickness * 0.52, height * 0.68, thickness * 0.56), yaw)
 
 func _pillar(xz: Vector2, height: float, region: String, broken: bool = false) -> void:
 	if not _clear(xz, 2.0):
@@ -525,7 +537,15 @@ func _make_arch_band(style: int) -> ArrayMesh:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	surface.set_smooth_group(-1)
-	var sections := _arch_sections(style)
+	var raw_sections := _arch_sections(style)
+	var sections: Array[PackedVector3Array] = []
+	for i in range(raw_sections.size() - 1):
+		sections.append(raw_sections[i])
+		var mid := PackedVector3Array()
+		for k in range(4):
+			mid.append(raw_sections[i][k].lerp(raw_sections[i + 1][k], 0.5))
+		sections.append(mid)
+	sections.append(raw_sections[-1])
 	var profiles: Array[PackedVector3Array] = []
 	for i in range(sections.size()):
 		var s: PackedVector3Array = sections[i]
@@ -534,24 +554,35 @@ func _make_arch_band(style: int) -> ArrayMesh:
 		var center := (inner + outer) * 0.5
 		var half_span := (outer - inner) * 0.5
 		var phase := float(i) / float(sections.size() - 1)
-		var keystone := 1.09 if absf(phase - 0.5) < 0.08 else (1.03 if i % 2 == 0 else 0.98)
-		var w := half_span * keystone
-		var wc := w * 0.58
+		var is_plinth := phase < 0.055 or phase > 0.945
+		var is_spring := (phase > 0.085 and phase < 0.135) or (phase > 0.865 and phase < 0.915)
+		var is_keystone := absf(phase - 0.5) < 0.045
+		var voussoir := 1.045 if (i % 2 == 0) else 0.975
+		var keystone := 1.32 if is_plinth else (1.22 if is_spring else (1.18 if is_keystone else voussoir))
+		var w := half_span * (keystone * 1.18)
+		var wm := w * 0.78
+		var wc := w * 0.46
 		var d := absf(s[2].z) * keystone
-		var dc := d * 0.62
+		var dm := d * 0.82
+		var dc := d * 0.54
 		profiles.append(PackedVector3Array([
 			Vector3(center.x - w.x, center.y - w.y, -dc),
+			Vector3(center.x - wm.x, center.y - wm.y, -dm),
 			Vector3(center.x - wc.x, center.y - wc.y, -d),
 			Vector3(center.x + wc.x, center.y + wc.y, -d),
+			Vector3(center.x + wm.x, center.y + wm.y, -dm),
 			Vector3(center.x + w.x, center.y + w.y, -dc),
 			Vector3(center.x + w.x, center.y + w.y, dc),
+			Vector3(center.x + wm.x, center.y + wm.y, dm),
 			Vector3(center.x + wc.x, center.y + wc.y, d),
 			Vector3(center.x - wc.x, center.y - wc.y, d),
+			Vector3(center.x - wm.x, center.y - wm.y, dm),
 			Vector3(center.x - w.x, center.y - w.y, dc),
 		]))
+	var edge_count := 12
 	for i in range(sections.size() - 1):
-		for edge in range(8):
-			var next_edge := (edge + 1) % 8
+		for edge in range(edge_count):
+			var next_edge := (edge + 1) % edge_count
 			var a: Vector3 = profiles[i][edge]
 			var b: Vector3 = profiles[i][next_edge]
 			var c: Vector3 = profiles[i + 1][edge]
@@ -563,39 +594,103 @@ func _make_arch_band(style: int) -> ArrayMesh:
 		for p: Vector3 in profile:
 			cap_center += p
 		cap_center /= float(profile.size())
-		for edge in range(8):
-			var next_edge := (edge + 1) % 8
+		for edge in range(edge_count):
+			var next_edge := (edge + 1) % edge_count
 			if end == 0:
 				_add_tri(surface, cap_center, profile[edge], profile[next_edge])
 			else:
 				_add_tri(surface, cap_center, profile[next_edge], profile[edge])
 	return surface.commit()
 
+func _make_sun_compass_emblem() -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	surface.set_smooth_group(-1)
+	# Two concentric graduated astrolabe rings in XY plane
+	for ring_spec: Vector3 in [Vector3(0.92, 1.08, 0.085), Vector3(0.48, 0.59, 0.075)]:
+		var r_in := ring_spec.x
+		var r_out := ring_spec.y
+		var hz := ring_spec.z
+		var segs := 32
+		for s in range(segs):
+			var a0 := float(s) / float(segs) * TAU
+			var a1 := float(s + 1) / float(segs) * TAU
+			var p00 := Vector3(cos(a0) * r_in, sin(a0) * r_in, -hz)
+			var p01 := Vector3(cos(a0) * r_out, sin(a0) * r_out, -hz)
+			var p02 := Vector3(cos(a0) * r_out, sin(a0) * r_out, hz)
+			var p03 := Vector3(cos(a0) * r_in, sin(a0) * r_in, hz)
+			var p10 := Vector3(cos(a1) * r_in, sin(a1) * r_in, -hz)
+			var p11 := Vector3(cos(a1) * r_out, sin(a1) * r_out, -hz)
+			var p12 := Vector3(cos(a1) * r_out, sin(a1) * r_out, hz)
+			var p13 := Vector3(cos(a1) * r_in, sin(a1) * r_in, hz)
+			_add_quad(surface, p03, p13, p02, p12)
+			_add_quad(surface, p00, p01, p10, p11)
+			_add_quad(surface, p02, p12, p01, p11)
+			_add_quad(surface, p00, p10, p03, p13)
+	# 16 faceted compass-rose star rays + central sunburst boss
+	for ray in range(16):
+		var ang := float(ray) / 16.0 * TAU
+		var cardinal := (ray % 2) == 0
+		var tip_r := (1.28 if (ray % 4 == 0) else 1.12) if cardinal else 0.86
+		var base_w := 0.11 if cardinal else 0.065
+		var ridge_z := 0.14 if cardinal else 0.095
+		var dir := Vector2(cos(ang), sin(ang))
+		var perp := Vector2(-dir.y, dir.x)
+		var root_c := Vector3(dir.x * 0.18, dir.y * 0.18, ridge_z)
+		var tip := Vector3(dir.x * tip_r, dir.y * tip_r, 0.0)
+		var left := Vector3(dir.x * 0.34 + perp.x * base_w, dir.y * 0.34 + perp.y * base_w, 0.0)
+		var right := Vector3(dir.x * 0.34 - perp.x * base_w, dir.y * 0.34 - perp.y * base_w, 0.0)
+		var root_back := Vector3(dir.x * 0.18, dir.y * 0.18, -ridge_z)
+		_add_tri(surface, root_c, right, tip)
+		_add_tri(surface, root_c, tip, left)
+		_add_tri(surface, root_back, tip, right)
+		_add_tri(surface, root_back, left, tip)
+	var boss_segs := 16
+	var apex_f := Vector3(0, 0, 0.22)
+	var apex_b := Vector3(0, 0, -0.22)
+	for s in range(boss_segs):
+		var a0 := float(s) / float(boss_segs) * TAU
+		var a1 := float(s + 1) / float(boss_segs) * TAU
+		var rim0 := Vector3(cos(a0) * 0.28, sin(a0) * 0.28, 0.0)
+		var rim1 := Vector3(cos(a1) * 0.28, sin(a1) * 0.28, 0.0)
+		_add_tri(surface, apex_f, rim0, rim1)
+		_add_tri(surface, apex_b, rim1, rim0)
+	return surface.commit()
+
 func _make_pillar(broken: bool) -> ArrayMesh:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	surface.set_smooth_group(-1)
-	var sides := 8
+	var sides := 24
+	var levels: Array[Vector2] = [
+		Vector2(0.0, 1.18), Vector2(0.06, 1.16), Vector2(0.10, 1.02),
+		Vector2(0.32, 0.94), Vector2(0.62, 0.88), Vector2(0.88, 0.82),
+		Vector2(0.94, 0.98), Vector2(1.0, 1.06)
+	]
 	var rings: Array[PackedVector3Array] = []
-	for level in range(5):
-		var y := float(level) / 4.0
-		var radius := lerpf(1.0, 0.74, y) * (1.0 + sin(y * PI) * 0.04)
+	for level in range(levels.size()):
+		var y := levels[level].x
+		var radius := levels[level].y
+		var on_shaft := level >= 2 and level <= 5
 		var ring := PackedVector3Array()
 		for index in range(sides):
-			var angle := (float(index) + 0.5) / float(sides) * TAU
-			var chamfer := 1.0 + (0.04 if index % 2 == 0 else -0.02)
+			var angle := float(index) / float(sides) * TAU
+			var flute := (1.0 - 0.055 * maxf(0.0, cos(angle * 12.0))) if on_shaft else 1.0
 			var top := y
-			if broken and level == 4:
-				top += cos(angle - 0.55) * 0.09 + sin(angle * 2.0) * 0.03
-			ring.append(Vector3(cos(angle) * radius * chamfer + y * 0.04, top, sin(angle) * radius * chamfer))
+			if broken and level >= 5:
+				var frac_y := 0.86 + cos(angle - 0.55) * 0.11 + sin(angle * 3.0) * 0.035
+				top = minf(y, frac_y)
+				radius = levels[4].y
+			ring.append(Vector3(cos(angle) * radius * flute + y * 0.02, top, sin(angle) * radius * flute))
 		rings.append(ring)
-	for level in range(4):
+	for level in range(levels.size() - 1):
 		for index in range(sides):
 			var next := (index + 1) % sides
 			_add_quad(surface, rings[level][index], rings[level][next], rings[level + 1][index], rings[level + 1][next])
-	var cap_apex := Vector3(0.04, 1.03 if broken else 1.0, -0.02)
+	var last_idx := levels.size() - 1
+	var cap_apex := Vector3(0.02, 0.90 if broken else 1.01, -0.01)
 	for index in range(sides):
-		_add_tri(surface, rings[4][index], rings[4][(index + 1) % sides], cap_apex)
+		_add_tri(surface, rings[last_idx][index], rings[last_idx][(index + 1) % sides], cap_apex)
 	return surface.commit()
 
 func _flush() -> void:
@@ -633,10 +728,10 @@ func _make_terrace() -> ArrayMesh:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	surface.set_smooth_group(-1)
-	var sides := 9
+	var sides := 16
 	var vertices: Array[Vector3] = []
-	var radii: Array[float] = [1.04, 0.95, 0.72, 0.65, 0.50, 0.45]
-	var heights: Array[float] = [0.0, 0.36, 0.41, 0.77, 0.82, 0.97]
+	var radii: Array[float] = [1.06, 0.98, 1.03, 0.76, 0.81, 0.56, 0.59, 0.40]
+	var heights: Array[float] = [0.0, 0.28, 0.33, 0.56, 0.62, 0.80, 0.85, 0.98]
 	for level in range(radii.size()):
 		var radius: float = radii[level]
 		var y: float = heights[level]
@@ -644,9 +739,9 @@ func _make_terrace() -> ArrayMesh:
 		var shift := Vector2(0.035 * float(tier), -0.025 * float(tier))
 		for i in range(sides):
 			var angle := float(i) / float(sides) * TAU + float(tier) * 0.11
-			var jag := 1.0 + sin(float(i) * 2.1 + 0.5) * 0.14 + cos(float(i) * 3.4 - float(tier) * 0.8) * 0.08
+			var jag := 1.0 + sin(angle * 3.0 + 0.5) * 0.12 + cos(angle * 5.0 - float(tier) * 0.8) * 0.07
 			var r := radius * jag
-			var ledge := y + (sin(float(i) * 2.0 + float(tier)) * 0.014 if level in [1, 2, 3, 4] else 0.0)
+			var ledge := y + (sin(angle * 4.0 + float(tier)) * 0.014 if level > 0 and level < radii.size() - 1 else 0.0)
 			vertices.append(Vector3(cos(angle) * r + shift.x, ledge, sin(angle) * r + shift.y))
 	for level in range(radii.size() - 1):
 		for i in range(sides):
@@ -663,18 +758,18 @@ func _make_spire() -> ArrayMesh:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	surface.set_smooth_group(-1)
-	var sides := 7
+	var sides := 14
 	var vertices: Array[Vector3] = []
-	var radii: Array[float] = [1.02, 0.86, 0.69, 0.56, 0.36, 0.17]
-	var heights: Array[float] = [0.0, 0.28, 0.33, 0.63, 0.84, 0.95]
+	var radii: Array[float] = [1.04, 0.88, 0.92, 0.68, 0.54, 0.36, 0.22, 0.09]
+	var heights: Array[float] = [0.0, 0.22, 0.26, 0.48, 0.68, 0.83, 0.93, 0.98]
 	for level in range(radii.size()):
 		var radius: float = radii[level]
 		var y: float = heights[level]
 		var lean := Vector2(0.08 * y, -0.06 * y)
 		for i in range(sides):
 			var angle := float(i) / float(sides) * TAU + float(level >> 1) * 0.12
-			var flute := 1.0 + sin(float(i) * 2.4 + 0.7) * 0.17 + cos(float(i) * 3.1 + float(level) * 0.5) * 0.09
-			var crest := y + (0.025 * sin(float(i) * 2.0) if level == radii.size() - 1 else 0.0)
+			var flute := 1.0 + sin(angle * 3.0 + 0.7) * 0.14 + cos(angle * 5.0 + float(level) * 0.5) * 0.08
+			var crest := y + (0.022 * sin(angle * 3.0) if level == radii.size() - 1 else 0.0)
 			vertices.append(Vector3(cos(angle) * radius * flute + lean.x, crest, sin(angle) * radius * flute + lean.y))
 	for level in range(radii.size() - 1):
 		for i in range(sides):

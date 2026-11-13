@@ -56,7 +56,7 @@ void fragment() {
 	float luma = dot(raw_albedo, vec3(0.299, 0.587, 0.114));
 	// Preserve the imported pigments without the old saturation boost. Absorption
 	// belongs to incident sunlight, not albedo: a nearby lamp restores warm hues.
-	ALBEDO = clamp(raw_albedo * 0.80, vec3(0.0), vec3(1.0));
+	ALBEDO = clamp(raw_albedo * 0.89, vec3(0.0), vec3(1.0));
 	if (natural_palette) {
 		// Texture samples are linear. Lift their dark range smoothly rather than
 		// flattening it into bands or preserving the source's artificial colours.
@@ -64,14 +64,14 @@ void fragment() {
 		vec3 pigment = mix(palette_dark, palette_light, pigment_value);
 		ALBEDO = mix(ALBEDO, pigment, palette_strength);
 	}
-	float detail_weight = 1.0 - smoothstep(9.0, 29.0, length(VERTEX));
+	float detail_weight = 1.0 - smoothstep(12.0, 38.0, length(VERTEX));
 	if (detail_weight > 0.001) {
 		vec3 orm = texture(orm_texture, material_uv).rgb;
 		AO = orm.r;
 		ROUGHNESS = clamp(roughness * mix(0.72, 1.0, orm.g), 0.18, 1.0);
 		METALLIC = metallic * orm.b;
 		NORMAL_MAP = texture(normal_texture, material_uv).rgb;
-		NORMAL_MAP_DEPTH = normal_scale * 0.36 * detail_weight;
+		NORMAL_MAP_DEPTH = normal_scale * 0.68 * detail_weight;
 	} else {
 		ROUGHNESS = clamp(roughness, 0.18, 1.0);
 		METALLIC = metallic;

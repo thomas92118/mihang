@@ -433,7 +433,7 @@ func _natural_material(source: Material, asset: String) -> ShaderMaterial:
 		material.set_shader_parameter("metallic", 0.0)
 		material.set_shader_parameter("albedo_texture", base.albedo_texture)
 		material.set_shader_parameter("normal_texture", base.normal_texture)
-		material.set_shader_parameter("normal_scale", base.normal_scale * 0.32)
+		material.set_shader_parameter("normal_scale", base.normal_scale * 0.88)
 		material.set_shader_parameter("orm_texture", base.roughness_texture)
 		material.set_shader_parameter("uv_scale", base.uv1_scale)
 		material.set_shader_parameter("uv_offset", base.uv1_offset)

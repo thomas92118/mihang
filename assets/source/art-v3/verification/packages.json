@@ -1,0 +1,33 @@
+{
+  "results": [
+    {
+      "job": "desktop-export",
+      "passed": true,
+      "exit_code": 0,
+      "errors": [],
+      "log": ".tools/art-v3-desktop-export.log"
+    },
+    {
+      "job": "web-build",
+      "passed": true,
+      "exit_code": 0,
+      "errors": [],
+      "log": ".tools/art-v3-web-build.log"
+    },
+    {
+      "job": "package-smoke",
+      "passed": true,
+      "exit_code": 0,
+      "errors": [],
+      "log": ".tools/art-v3-package-smoke.log"
+    }
+  ],
+  "desktop": {
+    "file": "build/深蓝回声.exe",
+    "sha256": "c4791a4d1b1306a55aa6f7707be2a7eead138623b3b9e64599169cf838fe9d8c"
+  },
+  "web": {
+    "file": "build/web/index.html",
+    "browser_runtime_verified": false
+  }
+}

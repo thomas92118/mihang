@@ -1,0 +1,128 @@
+[
+	{
+		"camera_position": [
+			20.0,
+			-2.63629007339478,
+			26.0
+		],
+		"draw_calls": 629.0,
+		"p50_ms": 19.081,
+		"p95_ms": 32.439,
+		"region": "core",
+		"samples": 20,
+		"video_memory": 821847328.0,
+		"warmup_frames": 20
+	},
+	{
+		"camera_position": [
+			65.0,
+			-5.20571517944336,
+			378.0
+		],
+		"draw_calls": 217.0,
+		"p50_ms": 16.116,
+		"p95_ms": 40.522,
+		"region": "atoll",
+		"samples": 20,
+		"video_memory": 821843040.0,
+		"warmup_frames": 20
+	},
+	{
+		"camera_position": [
+			-235.0,
+			-17.6609802246094,
+			320.0
+		],
+		"draw_calls": 73.0,
+		"p50_ms": 18.365,
+		"p95_ms": 28.651,
+		"region": "kelp",
+		"samples": 20,
+		"video_memory": 821838560.0,
+		"warmup_frames": 20
+	},
+	{
+		"camera_position": [
+			410.0,
+			-64.7480392456055,
+			335.0
+		],
+		"draw_calls": 56.0,
+		"p50_ms": 11.041,
+		"p95_ms": 23.442,
+		"region": "ridge",
+		"samples": 20,
+		"video_memory": 821849216.0,
+		"warmup_frames": 20
+	},
+	{
+		"camera_position": [
+			487.0,
+			-118.408615112305,
+			-15.0
+		],
+		"draw_calls": 75.0,
+		"p50_ms": 11.536,
+		"p95_ms": 24.051,
+		"region": "citadel",
+		"samples": 20,
+		"video_memory": 821879884.0,
+		"warmup_frames": 20
+	},
+	{
+		"camera_position": [
+			450.0,
+			-160.008712768555,
+			-340.0
+		],
+		"draw_calls": 58.0,
+		"p50_ms": 13.344,
+		"p95_ms": 24.39,
+		"region": "wreck",
+		"samples": 20,
+		"video_memory": 821900940.0,
+		"warmup_frames": 20
+	},
+	{
+		"camera_position": [
+			-445.0,
+			-225.939819335938,
+			-34.0
+		],
+		"draw_calls": 65.0,
+		"p50_ms": 11.434,
+		"p95_ms": 20.61,
+		"region": "bones",
+		"samples": 20,
+		"video_memory": 821897484.0,
+		"warmup_frames": 20
+	},
+	{
+		"camera_position": [
+			-408.0,
+			-336.753814697266,
+			-372.0
+		],
+		"draw_calls": 85.0,
+		"p50_ms": 11.837,
+		"p95_ms": 27.793,
+		"region": "caldera",
+		"samples": 20,
+		"video_memory": 822383264.0,
+		"warmup_frames": 20
+	},
+	{
+		"camera_position": [
+			92.0,
+			-506.278930664063,
+			-592.0
+		],
+		"draw_calls": 65.0,
+		"p50_ms": 14.056,
+		"p95_ms": 24.236,
+		"region": "hadal",
+		"samples": 20,
+		"video_memory": 822423616.0,
+		"warmup_frames": 20
+	}
+]

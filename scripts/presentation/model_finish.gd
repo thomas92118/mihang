@@ -14,6 +14,8 @@ static func apply(root: Node3D, category: String) -> void:
 
 static func _finish_node(node: Node, root: Node3D, category: String, seen: Dictionary) -> void:
 	if node != root and bool(node.get_meta("art_finished", false)):
+		if node is MeshInstance3D and category in ["school_fish", "sea_spider"]:
+			(node as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		return
 	if node is MeshInstance3D:
 		var part := node as MeshInstance3D
@@ -40,6 +42,8 @@ static func _finish_material(material: StandardMaterial3D, label: String, catego
 	if seen.has(key):
 		return
 	seen[key] = true
+	if bool(material.get_meta("authored_pbr", false)):
+		return
 	if material.has_meta("painterly_finished"):
 		return
 	material.set_meta("painterly_finished", true)

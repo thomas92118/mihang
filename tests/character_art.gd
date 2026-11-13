@@ -4,11 +4,64 @@ extends SceneTree
 
 const Diver = preload("res://scripts/diver.gd")
 const Silhouette = preload("res://scripts/presentation/diver_silhouette.gd")
+const BlenderArt = preload("res://scripts/presentation/blender_art.gd")
+const ReferenceDiver = preload("res://scripts/presentation/reference_diver.gd")
 
 func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
+	if ReferenceDiver.available():
+		_run_reference()
+		return
+	_run_legacy()
+
+func _run_reference() -> void:
+	var diver := Diver.new()
+	root.add_child(diver)
+	diver.set_process(false)
+	diver.set_physics_process(false)
+	assert(diver.reference_model_active)
+	assert(diver.diver_model.get_meta("mesh_contract") == ReferenceDiver.CONTRACT_VERSION)
+	var triangles := 0
+	for part: MeshInstance3D in diver.diver_model.find_children("*", "MeshInstance3D", true, false):
+		if not bool(part.get_meta("reference_part", false)):
+			continue
+		for surface in part.mesh.get_surface_count():
+			var arrays := part.mesh.surface_get_arrays(surface)
+			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+			var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+			triangles += indices.size() / 3
+			assert(vertices.size() == normals.size())
+			for i in vertices.size():
+				assert(vertices[i].is_finite() and normals[i].is_finite())
+				assert(absf(normals[i].length()-1) < 0.001)
+			for i in range(0, indices.size(), 3):
+				var a := indices[i]
+				var b := indices[i+1]
+				var c := indices[i+2]
+				var face := (vertices[b]-vertices[a]).cross(vertices[c]-vertices[a])
+				# Fine eyelashes and seam threads have valid submillimetre faces.
+				# Reject true degeneracy rather than the old coarse-mesh area floor.
+				assert(face.length_squared() > 1e-24, "Detailed character has a degenerate triangle")
+				assert(face.dot(normals[a]+normals[b]+normals[c]) <= 1e-10, "Detailed character winding is inconsistent")
+	assert(triangles > 12000)
+	assert(diver.left_hand_socket.get_parent() == diver.left_forearm_pivot)
+	assert(diver.left_fin_pivot.get_parent() == diver.left_knee_pivot)
+	var initial := diver.position
+	for motion: Vector3 in [Vector3.ZERO, Vector3(0,0,-5.2), Vector3(0,3,-4), Vector3(0,-3,-4)]:
+		diver.velocity = motion
+		for i in 60:
+			diver._animate_diver_model(1.0/60.0)
+			assert(diver.body_pivot.transform.is_finite() and diver.left_fin_pivot.transform.is_finite())
+		assert(diver.position == initial and diver.velocity == motion)
+	diver.free()
+	print("PASS: detailed reference character geometry, normals, ", triangles, " triangles, sockets and finite animation; visual likeness still requires review")
+	quit(0)
+
+func _run_legacy() -> void:
+	assert(BlenderArt.available(), "Blender expedition library must be imported before visual regression")
 	create_timer(12.0).timeout.connect(func():
 		printerr("FAIL: character art regression timed out")
 		quit(1)
@@ -27,6 +80,8 @@ func _run() -> void:
 	assert(diver.left_fin_pivot.get_parent() == diver.left_knee_pivot)
 	assert(diver.right_fin_pivot.get_parent() == diver.right_knee_pivot)
 	assert(Silhouette.torso() == Silhouette.torso(), "Procedural suit meshes must be cached")
+	assert(Silhouette.torso() == BlenderArt.mesh("diver_torso"), "Runtime torso must use the authored Blender surface")
+	assert(Silhouette.fin() == BlenderArt.mesh("diver_fin"), "Runtime fins must use the open Blender swallow-tail")
 	assert(Silhouette.helmet().get_aabb().size.x < 0.23, "Helmet must preserve the slimmer silhouette")
 	assert(Silhouette.fin().get_aabb().size.z > 0.49, "The fin needs a long tapered trailing edge")
 	var triangles := 0
@@ -47,6 +102,9 @@ func _run() -> void:
 	assert(triangles <= Silhouette.TRIANGLE_BUDGET, "Suit exceeded authored triangle budget: %d" % triangles)
 	var suit: MeshInstance3D = diver.body_pivot.get_node("ExpeditionTorso")
 	assert(suit.material_override.albedo_color.is_equal_approx(Color("17354b")), "Authored navy pigment must survive ModelFinish")
+	assert(suit.material_override.albedo_texture != null and suit.material_override.normal_texture != null, "The Blender suit must retain its textile PBR detail")
+	assert(diver.body_pivot.has_node("SatinBrassHarness"), "Concept-derived brass harness missing")
+	assert(diver.left_fin_pivot.get_node("SweptNavigationFin").has_node("SatinFinRim"), "The fin must retain its separate brass edge")
 	var start_position: Vector3 = diver.position
 	var fin_samples: Array[float] = []
 	for motion: Vector3 in [Vector3.ZERO, Vector3(0, 0, -5.2), Vector3(0, 4, -3), Vector3(0, -4, -3)]:
@@ -74,7 +132,7 @@ func _run() -> void:
 	diver.set_submarine_mode(false)
 	diver._update_third_person_camera(0.0)
 	assert(diver.diver_model.visible)
-	print("PASS: original expedition silhouette, %d triangles, preserved sockets, articulated fin lag, finite poses and scope/vehicle framing" % triangles)
+	print("PASS: GPT Image / Blender expedition suit, %d triangles, textile PBR, brass harness, preserved sockets, articulated fin lag and scope/vehicle framing" % triangles)
 	diver.free()
 	quit()
 

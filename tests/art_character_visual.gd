@@ -88,6 +88,15 @@ func _run() -> void:
 			diver.set_mount_mode(true)
 		for step in range(120):
 			diver._animate_diver_model(1.0 / 60.0)
+		if diver.reference_model_active:
+			# Processing is frozen for a repeatable pose, so update the attached
+			# weapon explicitly after moving the imported skin's hand joints.
+			var held: Node3D = diver.weapon_nodes.get(diver.current_weapon, null)
+			if held != null:
+				if diver.current_weapon in ["knife", "axe"]:
+					diver._sync_melee_weapon_to_hand(held, diver.current_weapon, Vector3.ZERO, Vector3.ZERO)
+				elif diver.current_weapon in ["sonic", "marker_gun"]:
+					diver._sync_reference_gun_to_hand(held, diver.current_weapon, Vector3.ZERO, Vector3.ZERO)
 		diver._update_third_person_camera(1.0)
 		game.hud.update_hud({"mode": "explore", "current_weapon": diver.current_weapon,
 			"aiming": diver.aiming, "depth": 9.0, "player_pos": diver.position,
@@ -104,6 +113,11 @@ func _run() -> void:
 		else:
 			external.position = diver.position + (Vector3(3.2, -0.05, 0) if pose[4] == "side" else Vector3(0, -0.05, -3.2))
 			external.look_at(diver.position + Vector3(0, -0.12, 0))
+			if diver.reference_model_active:
+				# The anatomical figure includes long fins below its gameplay
+				# capsule; frame its whole body instead of cropping at the knee.
+				external.position = diver.position + (Vector3(3.6, -0.85, 0.24) if pose[4] == "side" else Vector3(0, -0.85, -3.6))
+				external.look_at(diver.position + Vector3(0, -0.85, 0.24))
 			external.make_current()
 			game.hud.root.hide()
 		await process_frame

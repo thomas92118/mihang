@@ -1,9 +1,10 @@
 extends RefCounted
-## Original compact expedition suit. These cached meshes are visual-only and
-## remain mounted on Diver's existing gameplay/weapon attachment pivots.
+## Concept-led Blender suit on the existing gameplay/weapon attachment pivots.
+## The original lofts remain a development fallback before asset import.
 
-const CONTRACT_VERSION := "expedition-silhouette-1"
-const TRIANGLE_BUDGET := 3600
+const BlenderArt = preload("res://scripts/presentation/blender_art.gd")
+const CONTRACT_VERSION := "gpt-blender-expedition-3"
+const TRIANGLE_BUDGET := 12000
 static var _cache: Dictionary = {}
 
 static func torso() -> ArrayMesh:
@@ -106,6 +107,9 @@ static func calf() -> ArrayMesh:
 	], 12)
 
 static func fin() -> ArrayMesh:
+	var authored := BlenderArt.mesh("diver_fin")
+	if authored != null:
+		return authored
 	if _cache.has("fin"):
 		return _cache["fin"]
 	var vertices := PackedVector3Array()
@@ -193,6 +197,9 @@ static func _append_fin_lobe(vertices: PackedVector3Array, normals: PackedVector
 			indices.append_array(PackedInt32Array([center, a, b] if cap == 0 else [center, b, a]))
 
 static func _loft(key: String, profile: Array, segments: int) -> ArrayMesh:
+	var authored := BlenderArt.mesh("diver_" + key)
+	if authored != null:
+		return authored
 	if _cache.has(key):
 		return _cache[key]
 	var vertices := PackedVector3Array()

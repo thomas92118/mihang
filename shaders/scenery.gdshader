@@ -24,7 +24,7 @@ void fragment() {
 	float grounded = mix(0.74, 1.0, smoothstep(-0.18, 0.46, local_position.y));
 	vec3 shadowed_rock = mix(pigment, shadow_pigment, overhang * 0.44);
 	vec3 base_col = mix(shadowed_rock, top_pigment, shelf * 0.42);
-	ALBEDO = base_col * COLOR.rgb * (0.87 + bands * 0.13) * grounded * 0.57;
+	ALBEDO = base_col * COLOR.rgb * (0.87 + bands * 0.13) * grounded * 0.74;
 	EMISSION = pigment * COLOR.rgb * glow_strength;
 	ROUGHNESS = 0.89;
 	SPECULAR = 0.13;

@@ -3,6 +3,7 @@ class_name Submarine
 
 const OceanDepths = preload("res://scripts/ocean_depths.gd")
 const ModelFinish = preload("res://scripts/presentation/model_finish.gd")
+const BlenderArt = preload("res://scripts/presentation/blender_art.gd")
 
 signal fired_torpedo(data: Dictionary)
 
@@ -29,6 +30,7 @@ var muzzles: Array[Marker3D] = []
 var escape_pods: Array[Node3D] = []
 var wake_particles: CPUParticles3D
 var prop_spin_speed: float = 0.0
+var _sub_mats: Dictionary = {}
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -40,12 +42,14 @@ func _ready() -> void:
 
 func configure(type: String) -> void:
 	sub_type = type
+	set_meta("art_finished", false)
 	for child in get_children():
 		child.queue_free()
 	headlights.clear()
 	propellers.clear()
 	muzzles.clear()
 	escape_pods.clear()
+	_sub_mats = BlenderArt.create_submarine_materials()
 
 	if type == "scout":
 		_build_scout()
@@ -76,6 +80,37 @@ func _build_scout() -> void:
 	col.shape = cap
 	col.rotation.x = PI * 0.5
 	add_child(col)
+
+	if BlenderArt.mesh("vehicle_scout_exterior") != null:
+		BlenderArt.attach_part(self, "ScoutExterior", "vehicle_scout_exterior", _sub_mats)
+		BlenderArt.attach_part(self, "ScoutInterior", "vehicle_scout_interior", _sub_mats)
+		BlenderArt.attach_part(self, "ScoutGlassCanopy", "vehicle_scout_glass", _sub_mats)
+		cockpit_seat = Marker3D.new()
+		cockpit_seat.position = Vector3(0.0, 0.42, -1.12)
+		add_child(cockpit_seat)
+		for side in [-1.0, 1.0]:
+			var muzzle := Marker3D.new()
+			muzzle.position = Vector3(side * 0.82, -0.42, -2.75)
+			add_child(muzzle)
+			muzzles.append(muzzle)
+			_build_escape_pod(Vector3(side * 1.38, -0.46, 0.52), Vector3(0.62, 0.54, 1.55), "斥候救生舱 " + ("左" if side < 0 else "右"), side)
+			var prop := Node3D.new()
+			prop.name = "ScoutThrusterRotor_" + ("R" if side > 0 else "L")
+			prop.position = Vector3(side * 1.58, -0.08, 2.02)
+			add_child(prop)
+			BlenderArt.attach_part(prop, "BrassRotor", "vehicle_propeller_rotor", _sub_mats, Vector3.ZERO, Vector3.ZERO, Vector3.ONE * 0.84)
+			propellers.append(prop)
+			var light := SpotLight3D.new()
+			light.position = Vector3(side * 0.56, -0.44, -2.42)
+			light.spot_range = 75.0
+			light.spot_angle = 50.0
+			light.light_color = Color(1.0, 0.96, 0.87)
+			light.light_energy = 5.8
+			add_child(light)
+			headlights.append(light)
+		_add_cabin_warm_light(Vector3(0.0, 0.68, -0.85), 3.6, 1.25)
+		_setup_wake_particles(Vector3(0.0, 0.0, 2.7), 0.45)
+		return
 
 	var mat_hull := _mat(Color(0.92, 0.95, 0.98), 0.35, 0.25)
 	var mat_accent := _mat(Color(0.12, 0.68, 1.0), 0.35, 0.2)
@@ -159,6 +194,58 @@ func _build_titan() -> void:
 	col.shape = cap
 	col.rotation.x = PI * 0.5
 	add_child(col)
+
+	if BlenderArt.mesh("vehicle_titan_exterior") != null:
+		BlenderArt.attach_part(self, "TitanExterior", "vehicle_titan_exterior", _sub_mats)
+		BlenderArt.attach_part(self, "TitanInterior", "vehicle_titan_interior", _sub_mats)
+		BlenderArt.attach_part(self, "TitanGlassGallery", "vehicle_titan_glass", _sub_mats)
+		cockpit_seat = Marker3D.new()
+		cockpit_seat.position = Vector3(0.0, 1.35, -8.85)
+		add_child(cockpit_seat)
+		for side in [-1.0, 1.0]:
+			_build_escape_pod(Vector3(side * 3.42, -1.55, -3.35), Vector3(1.25, 1.05, 3.4), "泰坦重装救生舱 " + ("左前" if side < 0 else "右前"), side)
+			_build_escape_pod(Vector3(side * 3.22, -1.35, 4.85), Vector3(1.25, 1.05, 3.4), "泰坦重装救生舱 " + ("左后" if side < 0 else "右后"), side)
+			for row in [-1.0, 1.0]:
+				var muzzle := Marker3D.new()
+				muzzle.position = Vector3(side * 1.55, -1.35 + row * 0.55, -11.85)
+				add_child(muzzle)
+				muzzles.append(muzzle)
+				var prop := Node3D.new()
+				prop.name = "TitanThrusterRotor_%s_%s" % ["R" if side > 0 else "L", "U" if row > 0 else "D"]
+				prop.position = Vector3(side * 1.95, row * 1.35, 11.75)
+				add_child(prop)
+				BlenderArt.attach_part(prop, "BrassRotor", "vehicle_propeller_rotor", _sub_mats, Vector3.ZERO, Vector3.ZERO, Vector3.ONE * 1.68)
+				propellers.append(prop)
+			var light_upper := SpotLight3D.new()
+			light_upper.position = Vector3(side * 1.85, 1.8, -10.8)
+			light_upper.spot_range = 95.0
+			light_upper.spot_angle = 55.0
+			light_upper.light_color = Color(1.0, 0.95, 0.88)
+			light_upper.light_energy = 8.0
+			add_child(light_upper)
+			headlights.append(light_upper)
+			var light_lower := SpotLight3D.new()
+			light_lower.position = Vector3(side * 1.85, -2.15, -10.2)
+			light_lower.spot_range = 85.0
+			light_lower.spot_angle = 60.0
+			light_lower.light_color = Color(1.0, 0.95, 0.88)
+			light_lower.light_energy = 6.0
+			add_child(light_lower)
+			headlights.append(light_lower)
+		var t_beacon := OmniLight3D.new()
+		t_beacon.position = Vector3(0.0, 7.68, 1.15)
+		t_beacon.light_color = Color(1.0, 0.38, 0.14)
+		t_beacon.light_energy = 2.2
+		t_beacon.omni_range = 10.0
+		t_beacon.shadow_enabled = false
+		t_beacon.distance_fade_enabled = true
+		t_beacon.distance_fade_begin = 30.0
+		t_beacon.distance_fade_length = 12.0
+		add_child(t_beacon)
+		_add_cabin_warm_light(Vector3(0.0, 1.45, -8.2), 7.2, 1.45)
+		_add_cabin_warm_light(Vector3(0.0, 1.55, -1.15), 7.8, 1.55)
+		_setup_wake_particles(Vector3(0.0, 0.0, 13.5), 1.6)
+		return
 
 	var mat_armor := _mat(Color(0.18, 0.28, 0.44), 0.55, 0.28)
 	var mat_stripe := _mat(Color(1.0, 0.64, 0.14), 0.35, 0.24)
@@ -265,6 +352,37 @@ func _build_mini() -> void:
 	col.shape = cap
 	add_child(col)
 
+	if BlenderArt.mesh("vehicle_mini_exterior") != null:
+		BlenderArt.attach_part(self, "MiniExterior", "vehicle_mini_exterior", _sub_mats)
+		BlenderArt.attach_part(self, "MiniInterior", "vehicle_mini_interior", _sub_mats)
+		BlenderArt.attach_part(self, "MiniGlassCanopy", "vehicle_mini_glass", _sub_mats)
+		cockpit_seat = Marker3D.new()
+		cockpit_seat.position = Vector3(0.0, 0.22, -0.15)
+		add_child(cockpit_seat)
+		var muzzle := Marker3D.new()
+		muzzle.position = Vector3(0.0, -1.08, -1.38)
+		add_child(muzzle)
+		muzzles.append(muzzle)
+		for side in [-1.0, 1.0]:
+			_build_escape_pod(Vector3(side * 1.02, 0.52, 0.48), Vector3(0.44, 0.44, 0.94), "微型救生舱 " + ("左" if side < 0 else "右"), side)
+			var prop := Node3D.new()
+			prop.name = "MiniThrusterRotor_" + ("R" if side > 0 else "L")
+			prop.position = Vector3(side * 1.32, -0.32, 0.50)
+			add_child(prop)
+			BlenderArt.attach_part(prop, "BrassRotor", "vehicle_propeller_rotor", _sub_mats, Vector3.ZERO, Vector3.ZERO, Vector3.ONE * 0.62)
+			propellers.append(prop)
+		var m_light := SpotLight3D.new()
+		m_light.position = Vector3(0.0, -0.96, -1.02)
+		m_light.spot_range = 65.0
+		m_light.spot_angle = 45.0
+		m_light.light_color = Color(1.0, 0.96, 0.87)
+		m_light.light_energy = 5.2
+		add_child(m_light)
+		headlights.append(m_light)
+		_add_cabin_warm_light(Vector3(0.0, 0.72, -0.05), 2.4, 1.15)
+		_setup_wake_particles(Vector3(0.0, -0.32, 1.45), 0.35)
+		return
+
 	var mat_hull := _mat(Color(0.85, 0.94, 1.0), 0.45, 0.2)
 	var mat_accent := _mat(Color(0.12, 0.75, 1.0), 0.6, 0.2)
 	var mat_dark := _mat(Color(0.06, 0.1, 0.14), 0.8, 0.35)
@@ -330,30 +448,29 @@ func _build_escape_pod(at: Vector3, size: Vector3, pod_label: String, side: floa
 	pod_root.position = at
 	add_child(pod_root)
 
-	var mat_pod := _mat(Color(0.95, 0.96, 0.98), 0.35, 0.25)
-	var mat_trim := _mat(Color(1.0, 0.45, 0.1), 0.4, 0.3)
-	var mat_dark := _mat(Color(0.08, 0.1, 0.14), 0.7, 0.4)
-	var mat_win := _mat(Color(0.2, 0.9, 1.0, 0.6), 0.1, 0.1)
-	mat_win.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-
-	# Pod Capsule Ellipsoid (流线型椭圆救生舱胶囊体)
-	_ellipsoid("PodBody", Vector3.ZERO, size, mat_pod, pod_root)
-	_ellipsoid("PodTrim", Vector3(0, 0, 0), Vector3(size.x * 1.02, size.y * 0.4, size.z * 0.6), mat_trim, pod_root)
-
-	# Observation Viewport Window
-	_ellipsoid("PodWindow", Vector3(side * size.x * 0.3, size.y * 0.15, -size.z * 0.32), Vector3(size.x * 0.45, size.y * 0.35, size.z * 0.25), mat_win, pod_root)
-
-	# Quick-release Docking Pylons (侧向液压快速脱离挂架)
-	var pylon_len: float = 0.55
-	_tube(Vector3.ZERO, Vector3(-side * pylon_len, 0, 0), size.x * 0.12, mat_dark, pod_root)
-	_tube(Vector3(0, 0, size.z * 0.25), Vector3(-side * pylon_len, 0, size.z * 0.25), size.x * 0.10, mat_dark, pod_root)
+	if BlenderArt.mesh("vehicle_escape_pod_body") != null:
+		BlenderArt.attach_part(pod_root, "PodBody", "vehicle_escape_pod_body", _sub_mats, Vector3.ZERO, Vector3.ZERO, size)
+		BlenderArt.attach_part(pod_root, "PodWindow", "vehicle_escape_pod_glass", _sub_mats, Vector3.ZERO, Vector3.ZERO, size)
+	else:
+		var mat_pod := _mat(Color(0.95, 0.96, 0.98), 0.35, 0.25)
+		var mat_trim := _mat(Color(1.0, 0.45, 0.1), 0.4, 0.3)
+		var mat_dark := _mat(Color(0.08, 0.1, 0.14), 0.7, 0.4)
+		var mat_win := _mat(Color(0.2, 0.9, 1.0, 0.6), 0.1, 0.1)
+		mat_win.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_ellipsoid("PodBody", Vector3.ZERO, size, mat_pod, pod_root)
+		_ellipsoid("PodTrim", Vector3(0, 0, 0), Vector3(size.x * 1.02, size.y * 0.4, size.z * 0.6), mat_trim, pod_root)
+		_ellipsoid("PodWindow", Vector3(side * size.x * 0.3, size.y * 0.15, -size.z * 0.32), Vector3(size.x * 0.45, size.y * 0.35, size.z * 0.25), mat_win, pod_root)
+		var pylon_len: float = 0.55
+		_tube(Vector3.ZERO, Vector3(-side * pylon_len, 0, 0), size.x * 0.12, mat_dark, pod_root)
+		_tube(Vector3(0, 0, size.z * 0.25), Vector3(-side * pylon_len, 0, size.z * 0.25), size.x * 0.10, mat_dark, pod_root)
 
 	# Flashing Emergency Recovery Beacon Light (救生舱自备遇险搜救光标)
 	var strobe := OmniLight3D.new()
 	strobe.position = Vector3(side * size.x * 0.35, size.y * 0.55, 0)
-	strobe.light_color = Color(1.0, 0.6, 0.15) if sub_type == "titan" else Color(0.2, 0.9, 1.0)
-	strobe.light_energy = 1.4
-	strobe.omni_range = 4.5
+	strobe.light_color = Color(1.0, 0.68, 0.28)
+	strobe.light_energy = 0.9
+	strobe.omni_range = 3.8
+	strobe.shadow_enabled = false
 	strobe.distance_fade_enabled = true
 	strobe.distance_fade_begin = 20.0
 	strobe.distance_fade_length = 8.0
@@ -381,6 +498,19 @@ func _build_escape_pod(at: Vector3, size: Vector3, pod_label: String, side: floa
 
 	escape_pods.append(pod_root)
 	return pod_root
+
+func _add_cabin_warm_light(at: Vector3, light_range: float, energy: float) -> void:
+	var cabin_lamp := OmniLight3D.new()
+	cabin_lamp.name = "CabinWarmLamp"
+	cabin_lamp.position = at
+	cabin_lamp.light_color = Color(1.0, 0.78, 0.44)
+	cabin_lamp.light_energy = energy
+	cabin_lamp.omni_range = light_range
+	cabin_lamp.shadow_enabled = false
+	cabin_lamp.distance_fade_enabled = true
+	cabin_lamp.distance_fade_begin = 38.0
+	cabin_lamp.distance_fade_length = 14.0
+	add_child(cabin_lamp)
 
 func _setup_wake_particles(at: Vector3, radius: float) -> void:
 	wake_particles = CPUParticles3D.new()
@@ -607,6 +737,11 @@ func _ellipsoid(p_name: String, at: Vector3, size: Vector3, material: Material, 
 	sphere.radial_segments = 24
 	sphere.rings = 14
 	part.mesh = sphere
+	var authored := BlenderArt.vehicle_mesh(sub_type, p_name)
+	if authored != null:
+		part.mesh = authored
+		part.set_meta("blender_surface", true)
+		BlenderArt.bind_detail(material, authored)
 	part.position = at
 	part.scale = size
 	part.material_override = material

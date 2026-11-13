@@ -21,16 +21,21 @@ SOURCE = STAGING / 'source'
 CONTRACT = json.loads((ROOT / 'assets/source/asset-contract.json').read_text(encoding='utf-8'))
 GENERATOR_VERSION = 'luminous-ocean-2'
 TRIANGLE_BUDGETS = {
-    'fish': 1900, 'fish_small': 1500, 'fish_predator': 4900, 'fish_abyss': 4900,
-    'manta_ray': 4500, 'sea_turtle': 4500, 'squid': 4500, 'crab': 4000, 'jellyfish': 4500,
-    'rock': 590, 'crystal_spire': 1500, 'pod': 11000, 'ruins': 10000, 'shipwreck': 11000,
-    'weapon_knife': 3500, 'weapon_axe': 3500, 'weapon_sonic': 3800,
-    'resource_titanium': 900, 'resource_copper': 900, 'resource_quartz': 600, 'resource_kelp': 900,
+    'fish': 18000, 'fish_small': 14000, 'fish_predator': 26000, 'fish_abyss': 28000,
+    'manta_ray': 24000, 'sea_turtle': 28000, 'squid': 28000, 'crab': 28000, 'jellyfish': 26000,
+    'rock': 6500, 'kelp': 12000, 'crystal_spire': 12000,
+    'coral': 14000, 'staghorn_coral': 16000, 'table_coral': 16000, 'tube_coral': 14000,
+    'barrel_sponge': 16000, 'anemone': 15000, 'sea_fan': 16000, 'tubeworms': 14000,
+    'starfish_urchin': 14000, 'brain_coral': 14000, 'giant_clam': 18000, 'sea_lily': 15000,
+    'pod': 48000, 'ruins': 44000, 'shipwreck': 48000,
+    'weapon_knife': 18000, 'weapon_axe': 18000, 'weapon_sonic': 22000,
+    'resource_titanium': 8500, 'resource_copper': 8500, 'resource_quartz': 8500, 'resource_kelp': 8500,
 }
 for _key in CONTRACT:
-    TRIANGLE_BUDGETS.setdefault(_key, 1450)
+    TRIANGLE_BUDGETS.setdefault(_key, 14000)
 LUMINOUS_ASSETS = {'fish_small', 'fish_abyss', 'jellyfish', 'crystal_spire', 'resource_quartz',
                    'pod', 'ruins', 'shipwreck', 'weapon_knife', 'weapon_axe', 'weapon_sonic'}
+CUSTOM_PAINTERS = {}
 TAU = math.tau
 PARTS = []
 BONES = {}
@@ -41,41 +46,52 @@ CURRENT = ''
 # Semantic atlas slots: pigment, belly/limestone, accent, crevice, tip/light,
 # secondary pigment, metal, membrane/leaf. Ordinary benthos has zero emission.
 PALETTES = {
- 'fish_predator': ['527582','ccd2c1','8c9d99','233d48','abc8c4','73959a','a5b3b0','668d95'],
- 'fish': ['147baf', 'f1db9e', 'ebaa45', '12395e', 'f3dfaa', 'ecc665', '9cc7cc', 'f2b85d'],
- 'fish_small': ['e9bf52', 'f4e2aa', 'e98d4a', '1d526a', 'efdc9a', 'edcc66', '9fb8a4', 'eeb457'],
- 'fish_abyss': ['48536d','a2adb7','7c718d','1c293e','92cdd0','655e80','929ca4','67758e'],
- 'manta_ray': ['145474', 'd8e4d5', '438d9d', '143b60', 'a2d3d3', '2a7e9b', '9fc5c2', '3c8eac'],
- 'sea_turtle': ['667c58','d7caa0','a49a6c','354b43','bdc8a1','8b9968','b5b49a','879a76'],
- 'squid': ['b67a7e','e2c7b4','d19785','4e4251','c4c9c7','99778b','b7abb0','b9989f'],
- 'crab': ['b56c56','ddc6a1','cf9670','4f4541','dfc8aa','8d675d','c6b8a1','bb886b'],
- 'jellyfish': ['89b4c4','d4ded4','a49bbf','3b536d','b5d7d2','d4b78f','b3c5c5','a9bacf'],
- 'kelp': ['329877', 'b0ce7b', '90ba61', '145569', 'd0d98a', '699e69', '7daf95', '61b080'],
- 'resource_kelp': ['329877', 'b0ce7b', '90ba61', '145569', 'd0d98a', '699e69', '7daf95', '61b080'],
- 'coral': ['e9795e', 'e2c99d', 'efab72', '386b79', 'f4dcaa', 'df6d68', '92b5ad', 'ef9975'],
- 'staghorn_coral': ['e88e60', 'eed5a2', 'f0b979', '3c6d76', 'f5e0b4', 'd8826c', '92b5ad', 'eeb58d'],
- 'table_coral': ['df816c', 'e6c7a4', 'ecaa82', '3e6878', 'efc896', 'ca697a', '94b1ac', 'e6a391'],
- 'brain_coral': ['d8b456', 'e6d6a0', 'c8a249', '416f75', 'ead58c', 'b6b66b', '9eb9a1', 'dfc475'],
- 'barrel_sponge': ['885060','d2a89a','a86b75','4a333e','deb8a6','6d4352','b3958f','9c606d'],
- 'tube_coral': ['94657a','d9b8b4','b48292','523e4c','e0c0ba','7c5368','bba3a5','ab788b'],
- 'anemone': ['ba686e','e8cab2','d8857c','5c464e','f2d8bf','a45d6c','bfa5a7','d89888'],
- 'sea_fan': ['c96b82', 'e8bbac', 'db8b99', '36596d', 'edc3a6', 'ad5c81', '94b1ac', 'd98b9d'],
- 'tubeworms': ['d5c7ad','e8dcc2','c27561','565451','d7aa93','9c625e','bfb7a7','b67268'],
- 'starfish_urchin': ['c17b63','e1c49d','c99d66','4c4b4c','d9b891','85727f','bca9a0','9b8490'],
- 'giant_clam': ['aaa49a','e3d6ba','b7a188','59585f','b4c4c1','708a9a','c7bfb1','93a8b5'],
- 'sea_lily': ['a4a473','ddd2a2','aba477','555d50','d4c89e','859a83','b6ba9a','b4bc97'],
- 'rock': ['5e969a', 'aecbb9', '85b5b2', '24546e', 'c0d2b9', '61969d', '8db7b6', '72a5aa'],
- 'crystal_spire': ['668b96','c4d8cf','94b6bd','344c5b','9fcec9','7a9eab','acbcb9','8eb6bc'],
- 'pod': ['d5d8cd','eeeadc','d4a664','243d4e','8fc6c4','687f87','a9b9b7','49778a'],
- 'ruins': ['79a8a5', 'd3d9b8', '9ebcb0', '26536b', 'b4d8c5', 'd4ba78', 'a6c4b9', '79acae'],
- 'shipwreck': ['526f7b','b3c0b9','b38a58','263e49','a1c6bd','8c7665','92a5a6','6c928e'],
- 'resource_titanium': ['708c95','d1d3bf','9dafa9','3d5860','b1c9c6','869d9b','b9c8be','8ea9aa'],
- 'resource_copper': ['7d8d75','c8c7a5','bc8959','425b51','c0c5a5','799b81','c49e71','91ad91'],
- 'resource_quartz': ['7c9aa1','d9e1cc','a2c6c3','3e5c67','a8d4ce','91b3bc','d1dbcc','aac8c6'],
- 'weapon_knife': ['345264','e6dfc9','caa263','233c4a','9cc8c3','6e8790','c2cdc6','658d9a'],
- 'weapon_axe': ['345264','e6dfc9','caa263','233c4a','9cc8c3','6e8790','c2cdc6','658d9a'],
- 'weapon_sonic': ['345264','e6dfc9','caa263','233c4a','9cc8c3','6e8790','c2cdc6','658d9a'],
+ 'fish_predator': ['285580','edf1f4','4c7da6','152436','c7dae6','6993b5','a9bac6','376891'],
+ 'fish': ['1a56b8', 'f5f1e4', 'f2c12e', '101d38', 'fff0a8', 'e8ad23', '6aaee0', '2878d6'],
+ 'fish_small': ['f08a38', 'fae7d2', 'f5be49', '1b2433', 'ffe8ad', 'e69cb8', 'c9d6dc', 'f5a842'],
+ 'fish_abyss': ['4b3666','dfd8e8','7b4e8a','1d132b','fff0be','63457d','9a90a8','6d4982'],
+ 'manta_ray': ['1c4c82', 'f1f5f8', '3d7db8', '142742', 'cbe3f0', '29629c', '9cb9cc', '2d6ca8'],
+ 'sea_turtle': ['6e6c3a','dfd09f','b5984b','363c25','d4c98e','8c8648','afa783','596136'],
+ 'squid': ['d45a47','f2e9e0','e68c6b','24272b','d6f0f2','b84b47','cbbab2','eb9e82'],
+ 'crab': ['c9522b','f0e2ce','de7d43','472217','f7ead9','9e3c22','d4bfa6','d86b38'],
+ 'jellyfish': ['b59ce3','f7d6a8','e3b8eb','4b356b','d2f4f7','f0be86','c8d8e4','cfa8e8'],
+ 'kelp': ['4d8a3d', 'b2c74c', '88ab41', '254d27', 'd7df73', '6c9c42', '7fa368', '74a844'],
+ 'resource_kelp': ['4d8a3d', 'b2c74c', '88ab41', '254d27', 'd7df73', '6c9c42', '7fa368', '74a844'],
+ 'coral': ['e67858', 'f5e4cb', 'f0a66e', '4a3338', 'faf0df', 'db6266', '9cb5ad', 'ee936e'],
+ 'staghorn_coral': ['e6855c', 'f7ead4', 'f2b57c', '4a3638', 'fbf2e3', 'd97566', '9eb5ac', 'f0a97a'],
+ 'table_coral': ['d95368', 'f5ddd4', 'ee8d5a', '472836', 'fae6dc', 'c7455e', '9cb0ac', 'e87668'],
+ 'brain_coral': ['d9b14e', 'ede0b4', 'c4983d', '45594d', 'f5e8a6', '9fb35c', 'a5b89e', 'e3c264'],
+ 'barrel_sponge': ['8f2d4b','e3aab6','b03e60','2b101b','f2c9d1','6e2039','b8959c','a33858'],
+ 'tube_coral': ['993858','e8b8c2','ba5270','331624','f5d4db','782945','bfa0a6','ad4766'],
+ 'anemone': ['cf5c68','f2d8c2','e8857a','4d2b38','fae6d4','a84862','c7aba8','e3767c'],
+ 'sea_fan': ['d95b8a', 'f5c2b0', 'e6829e', '3d294a', 'fad4be', '85448a', '9cb0b2', 'e06d96'],
+ 'tubeworms': ['ded2ba','f0e7d3','cf5246','4f4843','f5b59e','a63c38','c7bfb0','d96255'],
+ 'starfish_urchin': ['d45a3b','ebd4b0','d99b4e','3b2e3d','f2dec0','6e4668','c2b0a4','c46d4e'],
+ 'giant_clam': ['dfd5be','ede5d2','265878','524b3f','d9a84e','387594','cfc5b0','2e6788'],
+ 'sea_lily': ['b8a85c','ebe0b5','cfbe6d','4b4f3d','f5ecc4','7d9468','bfbda0','c7bd7b'],
+ 'rock': ['5c6e74', '9aa8a6', '788a8e', '2b3942', 'b8c4be', '677b80', '899899', '6d8085'],
+ 'crystal_spire': ['6fd4c2','dffaf3','4bb8ab','235c5e','b8fff2','4ea3a8','b2dbd6','85e3d3'],
+ 'pod': ['ebe3d0','f5efe2','c99a49','22354d','ffcf75','d95a43','9aa6ab','4b8996'],
+ 'ruins': ['d8ceb4', 'ece5d3', 'cfa046', '485e63', 'f5e3a4', 'b89244', '9ab3ab', '6ea399'],
+ 'shipwreck': ['558c84','b8afa0','a85834','1e2d33','96d4cc','8f7248','7d8f91','4d8e99'],
+ 'resource_titanium': ['738c96','d9ddd0','9eb0ad','344b54','c4d9d6','859c9e','c2cfd1','8ea8ad'],
+ 'resource_copper': ['5d8c78','d4ccb0','c7743e','384d43','dfcfb0','6fa188','d48a52','7eab93'],
+ 'resource_quartz': ['72d6c4','e4faf5','54bdb0','265e61','c2fff5','5aa8ad','bde0dc','8ce6d7'],
+ 'weapon_knife': ['25354a','ebe2ce','cba052','172230','6ce0d6','d95840','cfd6d9','3c6b78'],
+ 'weapon_axe': ['25354a','ebe2ce','cba052','172230','6ce0d6','d95840','cfd6d9','3c6b78'],
+ 'weapon_sonic': ['25354a','ebe2ce','cba052','172230','6ce0d6','d95840','cfd6d9','1d5963'],
 }
+
+
+def height_to_normal(relief, strength=2.4):
+    dy, dx = np.gradient(relief.astype(np.float32))
+    nx, ny = -dx * strength, -dy * strength
+    length = np.sqrt(nx * nx + ny * ny + 1.0)
+    out = np.empty((relief.shape[0], relief.shape[1], 3), dtype=np.float32)
+    out[:, :, 0] = nx / length * 0.5 + 0.5
+    out[:, :, 1] = ny / length * 0.5 + 0.5
+    out[:, :, 2] = 0.5 + 0.5 / length
+    return out
 
 
 def color(hex_value):
@@ -122,13 +138,12 @@ def image_from_array(name, pixels, data=False):
 
 def make_material(name):
     # Pigment values stay independent of depth. Runtime lighting handles absorption.
-    size = 1024 if name in {'fish_predator', 'fish_abyss', 'manta_ray', 'sea_turtle',
-        'squid', 'jellyfish', 'pod', 'ruins', 'shipwreck', 'weapon_knife', 'weapon_axe', 'weapon_sonic'} else 512
+    size = 1024
     w, h = size // 4, size // 2
     y, x = np.mgrid[0:h, 0:w].astype(np.float32)
     u, v = x / w, y / h
     cloud = np.sin(u * TAU * 1.7 + np.sin(v * TAU)) * np.cos(v * TAU * 1.3) * .5
-    brush = np.sin(u * TAU * 16 + np.sin(v * TAU * 3)) * .003
+    brush = np.sin(u * TAU * 18 + np.sin(v * TAU * 4)) * .012
     fine = np.random.default_rng(913 + sum(map(ord, name))).random((h, w), dtype=np.float32) - .5
     creature = name in {'fish', 'fish_small', 'fish_predator', 'fish_abyss', 'manta_ray', 'sea_turtle', 'squid', 'crab', 'jellyfish'}
     artificial = name.startswith('weapon') or name in {'pod', 'shipwreck'}
@@ -141,77 +156,167 @@ def make_material(name):
         row, col = slot // 4, slot % 4
         region = (slice(row*h, (row+1)*h), slice(col*w, (col+1)*w))
         base = color(pigment)[None, None, :]
-        ramp = .88 + .10*v + .025*cloud + brush + fine*.003
+        ramp = .88 + .14*v + .045*cloud + brush + fine*.012
         rgb = base * ramp[:, :, None]
+        relief = cloud * .022 + brush * .25 + fine * .008
         if creature and slot == 0:
-            markings = np.maximum(0.0, np.sin(v * TAU * 3.0 + np.sin(u * TAU) * .65)) ** 6
-            amount = markings[:, :, None] * (.11 if name == 'fish_predator' else .19)
-            rgb = rgb*(1-amount) + color(PALETTES[name][5])[None,None,:]*amount
+            if name == 'fish':
+                stripes = np.maximum(0.0, np.sin((v * 7.5 + 0.18 * np.sin(u * TAU)) * TAU)) ** 4
+                rgb = rgb * (1 - 0.72 * stripes[:, :, None]) + color(PALETTES[name][2])[None, None, :] * (0.72 * stripes[:, :, None])
+                relief += stripes * 0.035
+            elif name == 'sea_turtle':
+                scute = np.abs(np.sin(u * TAU * 3.0 + 0.35 * np.cos(v * TAU * 2.0)) * np.cos(v * TAU * 3.5))
+                border = (scute < 0.14).astype(np.float32)
+                burst = np.maximum(0.0, np.cos((u * 6.0 % 1.0 - 0.5) * 9.0)) * scute
+                rgb = rgb * (1 - 0.42 * burst[:, :, None]) + color(PALETTES[name][2])[None, None, :] * (0.42 * burst[:, :, None])
+                rgb = rgb * (1 - 0.55 * border[:, :, None]) + color(PALETTES[name][1])[None, None, :] * (0.55 * border[:, :, None])
+                relief += scute * 0.08 - border * 0.05
+            elif name == 'squid':
+                dots = ((np.sin(u * TAU * 22.0 + fine * 1.8) * np.cos(v * TAU * 28.0)) > 0.52).astype(np.float32)
+                rgb = rgb * (1 - 0.45 * dots[:, :, None]) + color(PALETTES[name][5])[None, None, :] * (0.45 * dots[:, :, None])
+                relief += dots * 0.02
+            elif name == 'crab':
+                bumps = np.maximum(0.0, np.sin(u * TAU * 11.0) * np.cos(v * TAU * 13.0)) ** 3
+                rgb = rgb * (1 - 0.32 * bumps[:, :, None]) + color(PALETTES[name][4])[None, None, :] * (0.32 * bumps[:, :, None])
+                relief += bumps * 0.09
+            else:
+                markings = np.maximum(0.0, np.sin(v * TAU * 3.5 + np.sin(u * TAU) * .65)) ** 5
+                amount = markings[:, :, None] * (.14 if name == 'fish_predator' else .24)
+                rgb = rgb*(1-amount) + color(PALETTES[name][5])[None,None,:]*amount
+                scales = np.sin(u * TAU * 28.0) * np.cos(v * TAU * 34.0) * 0.018
+                relief += scales
+        if name == 'sea_turtle' and slot in (2, 7):
+            scales = np.abs(np.sin(u * TAU * 7.0) * np.cos(v * TAU * 9.0))
+            edge = (scales < 0.18).astype(np.float32)
+            rgb = color(PALETTES[name][3])[None, None, :] * (1 - edge[:, :, None]) + color(PALETTES[name][1])[None, None, :] * edge[:, :, None]
+            relief += scales * 0.06 - edge * 0.04
         if name in {'coral','staghorn_coral','table_coral','tube_coral','barrel_sponge','sea_fan'} and slot in (0,2,7):
-            tip = (np.clip((v-.55)/.45,0,1)**1.8)[:,:,None] * .38
+            tip = (np.clip((v-.52)/.48,0,1)**1.6)[:,:,None] * .56
             rgb = rgb*(1-tip) + color(PALETTES[name][4])[None,None,:]*tip
+            polyps = np.maximum(0.0, np.sin(u * TAU * 18.0) * np.cos(v * TAU * 20.0)) ** 4
+            relief += polyps * 0.055
+        if name == 'giant_clam' and slot in (2, 5, 7):
+            marble = 0.5 + 0.5 * np.sin(u * TAU * 5.0 + 2.2 * np.sin(v * TAU * 3.0 + cloud * 3.0))
+            gold = (marble > 0.68).astype(np.float32) * (marble - 0.68) / 0.32
+            rgb = rgb * (1 - 0.75 * gold[:, :, None]) + color(PALETTES[name][4])[None, None, :] * (0.75 * gold[:, :, None])
+            relief += marble * 0.04
         if mineral:
-            strata = np.sin(v * TAU * 4 + .3*np.sin(u*TAU*2)) * .025
+            strata = np.sin(v * TAU * 6 + .4*np.sin(u*TAU*2)) * .055
             rgb *= (1 + strata[:,:,None])
+            relief += strata * 0.65
+        if name == 'ruins' and slot in (0, 1):
+            mortar_u = (np.abs((u * 4.0) % 1.0 - 0.5) > 0.46).astype(np.float32)
+            mortar_v = (np.abs((v * 6.0) % 1.0 - 0.5) > 0.46).astype(np.float32)
+            mortar = np.clip(mortar_u + mortar_v, 0.0, 1.0)
+            rgb *= (1.0 - 0.16 * mortar[:, :, None])
+            relief -= mortar * 0.06
+        if name == 'shipwreck' and slot in (0, 2, 5):
+            rust = np.clip(0.5 + 0.5 * np.sin(u * TAU * 3.1 + 1.9 * np.cos(v * TAU * 2.7)) + fine * 0.25, 0.0, 1.0)
+            rust_mask = np.clip((rust - 0.52) * 2.2, 0.0, 1.0)[:, :, None]
+            rgb = rgb * (1 - 0.55 * rust_mask) + color(PALETTES[name][2])[None, None, :] * (0.55 * rust_mask)
+            relief += (rust - 0.5) * 0.08
+        if name in {'pod', 'weapon_knife', 'weapon_axe', 'weapon_sonic'} and slot in (0, 1):
+            panel = ((np.abs(u - 0.5) > 0.47) | (np.abs(v - 0.5) > 0.47)).astype(np.float32)
+            rgb *= (1.0 - 0.10 * panel[:, :, None])
+            relief -= panel * 0.035
+        if name == 'weapon_sonic' and slot == 7:
+            cx, cy = u - 0.5, v - 0.5
+            rad = np.sqrt(cx * cx + cy * cy)
+            rings_mask = (np.abs((rad * 10.0) % 1.0 - 0.5) > 0.42).astype(np.float32) * (rad < 0.46).astype(np.float32)
+            sweep = np.maximum(0.0, np.cos(np.arctan2(cy, cx) - 1.1)) ** 8 * (rad < 0.46).astype(np.float32)
+            grid_glow = np.clip(rings_mask * 0.65 + sweep * 0.85, 0.0, 1.0)[:, :, None]
+            rgb = rgb * (1 - grid_glow) + color(PALETTES[name][4])[None, None, :] * grid_glow
+            emission[region][:, :, :3] = color(PALETTES[name][4])[None, None, :] * grid_glow * 0.55
         albedo[region][:,:,:3] = np.clip(rgb,0,1)
         if name == 'jellyfish' and slot in (0,7):
-            albedo[region][:,:,3] = .63 if slot == 0 else .78
-        relief = cloud*.012 + brush*.15
+            rib = 0.5 + 0.5 * np.cos(u * TAU * 16.0)
+            albedo[region][:,:,3] = (.46 + .20 * rib) if slot == 0 else (.58 + .18 * v)
+        elif name in {'pod', 'shipwreck', 'weapon_sonic'} and slot == 7:
+            if name == 'pod':
+                albedo[region][:, :, 3] = 0.28 + 0.08 * (1.0 - v)
+            elif name == 'shipwreck':
+                crack = (np.abs(np.sin(u * 19.0 + np.cos(v * 17.0) * 2.4)) > 0.965).astype(np.float32)
+                albedo[region][:, :, :3] = np.clip(rgb + crack[:, :, None] * 0.32, 0.0, 1.0)
+                albedo[region][:, :, 3] = np.clip(0.34 + crack * 0.42, 0.25, 0.82)
+                relief -= crack * 0.06
+            else:
+                albedo[region][:, :, 3] = 0.72
         if name == 'brain_coral':
-            relief += np.tanh(np.sin(u*TAU*5+np.sin(v*TAU*4))*np.cos(v*TAU*4)*2)*.10
+            relief += np.tanh(np.sin(u*TAU*7+1.8*np.sin(v*TAU*5))*np.cos(v*TAU*6)*2.4)*.14
         if name in {'barrel_sponge','tube_coral'}:
-            relief += np.sin(u*TAU*9)*np.cos(v*TAU*8)*.025
-        dy, dx = np.gradient(relief)
-        nx, ny = -dx*2.0, -dy*2.0
-        length = np.sqrt(nx*nx+ny*ny+1)
-        normal[region][:,:,0] = nx/length*.5+.5
-        normal[region][:,:,1] = ny/length*.5+.5
-        normal[region][:,:,2] = .5+.5/length
-        orm[region][:,:,0] = np.clip(.98-np.abs(relief)*.18,.90,1)
-        rough = .62 if creature else (.48 if artificial else .86)
-        if name == 'jellyfish': rough = .32
-        if name in {'crystal_spire','resource_quartz'}: rough = .36
-        if slot == 6: rough = .43 if artificial else .65
+            flutes = np.cos(u * TAU * 14.0) * 0.09
+            pores = -np.maximum(0.0, np.sin(u * TAU * 26.0) * np.cos(v * TAU * 28.0)) ** 4 * 0.08
+            relief += flutes + pores
+        normal[region][:, :, :3] = height_to_normal(relief, 2.8)
+        orm[region][:,:,0] = np.clip(.97-np.abs(relief)*.32,.72,1)
+        rough = .46 if creature else (.38 if artificial else .78)
+        if name == 'jellyfish': rough = .22
+        if name in {'crystal_spire','resource_quartz'}: rough = .20
+        if name in {'pod', 'shipwreck', 'weapon_sonic'} and slot == 7: rough = .09
+        if slot in (2, 6) and (artificial or name == 'ruins'): rough = .28
         orm[region][:,:,1] = np.clip(rough+cloud*.025,.2,.95)
-        orm[region][:,:,2] = .55 if artificial and slot == 6 else (.32 if name in {'resource_titanium','resource_copper'} and slot == 6 else 0)
+        if name in {'pod', 'shipwreck', 'weapon_sonic'} and slot == 7:
+            orm[region][:, :, 1] = 0.08
+        metal = 0.0
+        if artificial and slot == 6:
+            metal = 0.78
+        elif (artificial or name == 'ruins') and slot == 2:
+            metal = 0.72
+        elif name in {'resource_titanium', 'resource_copper'} and slot in (2, 6):
+            metal = 0.58
+        orm[region][:,:,2] = metal
         if name in LUMINOUS_ASSETS and slot == 4:
-            energy = .2 if creature else .35
+            energy = .45 if name in {'fish_abyss', 'jellyfish', 'pod'} else (.25 if creature else .38)
             emission[region][:,:,:3] = base*energy
+    if name in CUSTOM_PAINTERS:
+        CUSTOM_PAINTERS[name](albedo, normal, orm, emission)
     maps = {key:image_from_array(name+'_'+key, values, key in ('normal','orm'))
         for key,values in [('albedo',albedo),('normal',normal),('orm',orm),('emission',emission)]}
-    mat = bpy.data.materials.new(name+'_Pigment')
-    mat.use_nodes = True
-    mat.use_backface_culling = False
-    nodes,links = mat.node_tree.nodes,mat.node_tree.links
-    bsdf = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
-    for key,img in maps.items():
-        tex=nodes.new('ShaderNodeTexImage'); tex.name=key; tex.image=img; tex.interpolation='Linear'
-    links.new(nodes['albedo'].outputs['Color'],bsdf.inputs['Base Color'])
-    if name == 'jellyfish':
-        links.new(nodes['albedo'].outputs['Alpha'],bsdf.inputs['Alpha']); mat.surface_render_method='DITHERED'
-    nmap=nodes.new('ShaderNodeNormalMap')
-    links.new(nodes['normal'].outputs['Color'],nmap.inputs['Color'])
-    links.new(nmap.outputs['Normal'],bsdf.inputs['Normal'])
-    separate=nodes.new('ShaderNodeSeparateColor')
-    links.new(nodes['orm'].outputs['Color'],separate.inputs['Color'])
-    links.new(separate.outputs['Green'],bsdf.inputs['Roughness'])
-    links.new(separate.outputs['Blue'],bsdf.inputs['Metallic'])
-    links.new(nodes['emission'].outputs['Color'],bsdf.inputs['Emission Color'])
-    bsdf.inputs['Emission Strength'].default_value=1.0
-    group=bpy.data.node_groups.get('glTF Material Output')
-    if group is None:
-        group=bpy.data.node_groups.new('glTF Material Output','ShaderNodeTree')
-        group.interface.new_socket(name='Occlusion',in_out='INPUT',socket_type='NodeSocketFloat')
-    ao=nodes.new('ShaderNodeGroup'); ao.node_tree=group
-    links.new(separate.outputs['Red'],ao.inputs['Occlusion'])
-    return mat,size
+
+    def _build_gltf_mat(mat_name, blended=False):
+        mat = bpy.data.materials.new(mat_name)
+        mat.use_nodes = True
+        mat.use_backface_culling = False
+        nodes, links = mat.node_tree.nodes, mat.node_tree.links
+        bsdf = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
+        for key, img in maps.items():
+            tex = nodes.new('ShaderNodeTexImage')
+            tex.name = key
+            tex.image = img
+            tex.interpolation = 'Linear'
+        links.new(nodes['albedo'].outputs['Color'], bsdf.inputs['Base Color'])
+        if blended:
+            links.new(nodes['albedo'].outputs['Alpha'], bsdf.inputs['Alpha'])
+            mat.surface_render_method = 'BLENDED'
+        nmap = nodes.new('ShaderNodeNormalMap')
+        links.new(nodes['normal'].outputs['Color'], nmap.inputs['Color'])
+        links.new(nmap.outputs['Normal'], bsdf.inputs['Normal'])
+        separate = nodes.new('ShaderNodeSeparateColor')
+        links.new(nodes['orm'].outputs['Color'], separate.inputs['Color'])
+        links.new(separate.outputs['Green'], bsdf.inputs['Roughness'])
+        links.new(separate.outputs['Blue'], bsdf.inputs['Metallic'])
+        links.new(nodes['emission'].outputs['Color'], bsdf.inputs['Emission Color'])
+        bsdf.inputs['Emission Strength'].default_value = 1.0
+        group = bpy.data.node_groups.get('glTF Material Output')
+        if group is None:
+            group = bpy.data.node_groups.new('glTF Material Output', 'ShaderNodeTree')
+            group.interface.new_socket(name='Occlusion', in_out='INPUT', socket_type='NodeSocketFloat')
+        ao = nodes.new('ShaderNodeGroup')
+        ao.node_tree = group
+        links.new(separate.outputs['Red'], ao.inputs['Occlusion'])
+        return mat
+
+    mat = _build_gltf_mat(name + '_Pigment', blended=(name == 'jellyfish'))
+    return mat, size, _build_gltf_mat
 
 
-def mesh(name, vertices, faces, uv, slot=0, bone=None, face_slots=None, smooth=True):
+def mesh(name, vertices, faces, uv, slot=0, bone=None, face_slots=None, smooth=True, glass=False):
     data = bpy.data.meshes.new(CURRENT + '_' + name)
     data.from_pydata(vertices, [], faces)
     data.update()
     obj = bpy.data.objects.new(CURRENT + '_' + name, data)
+    if glass:
+        obj['is_glass'] = True
     bpy.context.scene.collection.objects.link(obj)
     layer = data.uv_layers.new(name='UVMap')
     for polygon in data.polygons:
@@ -253,9 +358,7 @@ def body_weights(point):
     return {'tail_tip': 1.0}
 
 
-def ellipsoid(name, center, scale, slot=0, bone_name=None, segments=20, rings=12, organic=0):
-    if not BONES and CURRENT not in {'pod','shipwreck'}:
-        segments, rings = min(segments, 14), min(rings, 8)
+def ellipsoid(name, center, scale, slot=0, bone_name=None, segments=20, rings=12, organic=0, glass=False):
     verts, uv, faces = [], [], []
     for i in range(rings + 1):
         theta = .0001 + (math.pi - .0002) * i / rings
@@ -270,10 +373,10 @@ def ellipsoid(name, center, scale, slot=0, bone_name=None, segments=20, rings=12
         for j in range(segments):
             a = i * (segments + 1) + j
             faces.append((a, a + 1, a + segments + 2, a + segments + 1))
-    return mesh(name, verts, faces, uv, slot, bone_name)
+    return mesh(name, verts, faces, uv, slot, bone_name, glass=glass)
 
 
-def tube(name, points, radii, slot=0, bone_name=None, sides=10):
+def tube(name, points, radii, slot=0, bone_name=None, sides=10, glass=False):
     verts, uv, faces = [], [], []
     points = [Vector(p) for p in points]
     for i, p in enumerate(points):
@@ -292,10 +395,10 @@ def tube(name, points, radii, slot=0, bone_name=None, sides=10):
             a = i * (sides + 1) + j
             faces.append((a, a + sides + 1, a + sides + 2, a + 1))
     faces.extend([tuple(range(sides - 1, -1, -1)), tuple((len(points) - 1) * (sides + 1) + j for j in range(sides))])
-    return mesh(name, verts, faces, uv, slot, bone_name)
+    return mesh(name, verts, faces, uv, slot, bone_name, glass=glass)
 
 
-def ring(name, center, rx, ry, thickness, slot=2, bone_name=None, plane='XY', segments=24):
+def ring(name, center, rx, ry, thickness, slot=2, bone_name=None, plane='XY', segments=24, sides=8, glass=False):
     pts = []
     for i in range(segments + 1):
         a = i / segments * TAU
@@ -303,10 +406,10 @@ def ring(name, center, rx, ry, thickness, slot=2, bone_name=None, plane='XY', se
                'XZ': (rx * math.cos(a), 0, ry * math.sin(a)),
                'YZ': (0, rx * math.cos(a), ry * math.sin(a))}[plane]
         pts.append(Vector(center) + Vector(off))
-    return tube(name, pts, [thickness] * len(pts), slot, bone_name, 6)
+    return tube(name, pts, [thickness] * len(pts), slot, bone_name, sides, glass=glass)
 
 
-def membrane(name, a, b, tip, slot=7, bone_name=None, bulge=.06, rows=9, columns=6):
+def membrane(name, a, b, tip, slot=7, bone_name=None, bulge=.06, rows=9, columns=6, glass=False):
     a, b, tip = Vector(a), Vector(b), Vector(tip)
     norm = (b - a).cross(tip - a).normalized()
     verts, uv, faces = [], [], []
@@ -325,10 +428,10 @@ def membrane(name, a, b, tip, slot=7, bone_name=None, bulge=.06, rows=9, columns
         for j in range(columns):
             n = i * (columns + 1) + j
             faces.append((n, n + columns + 1, n + columns + 2, n + 1))
-    return mesh(name, verts, faces, uv, slot, bone_name)
+    return mesh(name, verts, faces, uv, slot, bone_name, glass=glass)
 
 
-def plate(name, outline, thickness, slot=6, bone_name=None):
+def plate(name, outline, thickness, slot=6, bone_name=None, glass=False):
     # Extruded YZ outline: preserves the first-person weapon grip convention.
     verts = [(side * thickness / 2, y, z) for side in (-1, 1) for y, z in outline]
     n = len(outline)
@@ -337,7 +440,7 @@ def plate(name, outline, thickness, slot=6, bone_name=None):
     uv = [((p[1] - ylo) / max(.001, yhi - ylo), (p[2] - zlo) / max(.001, zhi - zlo)) for p in verts]
     faces = [tuple(range(n - 1, -1, -1)), tuple(range(n, n * 2))]
     faces.extend((i, (i + 1) % n, (i + 1) % n + n, i + n) for i in range(n))
-    obj = mesh(name, verts, faces, uv, slot, bone_name)
+    obj = mesh(name, verts, faces, uv, slot, bone_name, glass=glass)
     for p in obj.data.polygons:
         p.use_smooth = False
     bevel = obj.modifiers.new('Machined edge radius', 'BEVEL')
@@ -347,7 +450,7 @@ def plate(name, outline, thickness, slot=6, bone_name=None):
     return obj
 
 
-def box(name, location, scale, slot=0, bone_name=None, bevel=0.0):
+def box(name, location, scale, slot=0, bone_name=None, bevel=0.0, glass=False):
     dx, dy, dz = scale[0] / 2, scale[1] / 2, scale[2] / 2
     cx, cy, cz = location
     verts = [
@@ -362,7 +465,7 @@ def box(name, location, scale, slot=0, bone_name=None, bevel=0.0):
         (2, 6, 7, 3), (3, 7, 4, 0),
     ]
     uv = [(0, 0), (1, 0), (1, 1), (0, 1), (0, 0), (1, 0), (1, 1), (0, 1)]
-    obj = mesh(name, verts, faces, uv, slot, bone_name, smooth=False)
+    obj = mesh(name, verts, faces, uv, slot, bone_name, smooth=False, glass=glass)
     if bevel > 0:
         mod = obj.modifiers.new('Bevel', 'BEVEL')
         mod.width = bevel
@@ -379,7 +482,7 @@ def fish_spine():
     bone('tail_tip', (0, 1.45, 0), (0, 2.1, 0), 'tail')
 
 
-def spindle(name, profile, slot=0, segments=24, bone_name=None):
+def spindle(name, profile, slot=0, segments=24, bone_name=None, glass=False):
     verts, uv, faces, slots = [], [], [], []
     for i, (y, rx, rz, z) in enumerate(profile):
         for j in range(segments + 1):
@@ -391,7 +494,7 @@ def spindle(name, profile, slot=0, segments=24, bone_name=None):
             n = i * (segments + 1) + j
             faces.append((n, n + 1, n + segments + 2, n + segments + 1))
             slots.append(1 if math.sin(TAU * (j + .5) / segments) < -.45 else slot)
-    return mesh(name, verts, faces, uv, slot, bone_name, slots)
+    return mesh(name, verts, faces, uv, slot, bone_name, slots, glass=glass)
 
 
 def create_fish_predator():
@@ -1453,20 +1556,21 @@ def build_rig(name, obj):
 
 def sculpt_and_budget(name, obj):
     organism = name in {'coral','staghorn_coral','table_coral','tube_coral','barrel_sponge','sea_fan','kelp','anemone','sea_lily'}
-    for vertex in obj.data.vertices:
-        p=vertex.co
-        if organism:
-            h=max(0,p.z)
-            p.x += math.sin(h*1.2)*h*.035
-            p.y += math.sin(h*1.7+.4)*h*.045
-        elif name=='rock':
-            p.z += math.sin(p.x*2.1+p.y)*.07
-            p.x += math.sin(p.z*3+p.y)*.08
-        elif name=='ruins':
-            p.x += math.sin(p.z*1.3)*.025
-        elif name in {'fish','fish_small','fish_predator','fish_abyss'}:
-            p.x *= 1.0+.09*math.sin(p.y*1.2)
-            p.z += math.sin(p.y*.9)*.025
+    if GENERATOR_VERSION != 'luminous-ocean-3':
+        for vertex in obj.data.vertices:
+            p=vertex.co
+            if organism:
+                h=max(0,p.z)
+                p.x += math.sin(h*1.2)*h*.035
+                p.y += math.sin(h*1.7+.4)*h*.045
+            elif name=='rock':
+                p.z += math.sin(p.x*2.1+p.y)*.07
+                p.x += math.sin(p.z*3+p.y)*.08
+            elif name=='ruins':
+                p.x += math.sin(p.z*1.3)*.025
+            elif name in {'fish','fish_small','fish_predator','fish_abyss'}:
+                p.x *= 1.0+.09*math.sin(p.y*1.2)
+                p.z += math.sin(p.y*.9)*.025
     obj.data.calc_loop_triangles()
     triangle_count=len(obj.data.loop_triangles)
     budget=TRIANGLE_BUDGETS[name]
@@ -1481,16 +1585,18 @@ def sculpt_and_budget(name, obj):
 
 def finish_asset(name):
     normalize_parts(name)
-    material, resolution = make_material(name)
+    material, resolution, glass_builder = make_material(name)
+    has_glass = any(bool(p.get('is_glass')) for p in PARTS)
+    glass_material = glass_builder(name + '_Glass', blended=True) if has_glass else None
     bpy.ops.object.select_all(action='DESELECT')
     for obj in PARTS:
+        obj.data.materials.clear()
+        obj.data.materials.append(glass_material if (glass_material and obj.get('is_glass')) else material)
         obj.select_set(True)
     bpy.context.view_layer.objects.active = PARTS[0]
     bpy.ops.object.join()
     obj = bpy.context.object
     obj.name = name
-    obj.data.materials.clear()
-    obj.data.materials.append(material)
     sculpt_and_budget(name, obj)
     # Decimation changes extremal points slightly; restore the exact original bounds.
     PARTS.clear(); PARTS.append(obj)
@@ -1517,7 +1623,7 @@ def finish_asset(name):
         'seed': 913+sum(map(ord,name)), 'license': 'MIT', 'author': 'Abyssal Echo Contributors',
         'forward': '-Y (Blender) / +Z (Godot)', 'up': '+Z (Blender) / +Y (Godot)',
         'triangle_budget': TRIANGLE_BUDGETS[name], 'external_sources': [],
-        'texture_resolution': resolution, 'materials': 1,
+        'texture_resolution': resolution, 'materials': len(obj.data.materials),
         'textures': {kind: 'embedded://' + name + '_' + kind + '.png'
                      for kind in ('albedo', 'normal', 'orm', 'emission')},
     }

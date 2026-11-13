@@ -2,6 +2,8 @@ extends CharacterBody3D
 
 const ModelFinish = preload("res://scripts/presentation/model_finish.gd")
 const DiverSilhouette = preload("res://scripts/presentation/diver_silhouette.gd")
+const BlenderArt = preload("res://scripts/presentation/blender_art.gd")
+const ReferenceDiver = preload("res://scripts/presentation/reference_diver.gd")
 
 const OceanDepths = preload("res://scripts/ocean_depths.gd")
 const Ocean = preload("res://scripts/ocean.gd")
@@ -71,6 +73,8 @@ var swim_clock: float = 0.0
 var swim_motion_blend: float = 0.0
 var swim_kick_rate: float = 2.2
 var turn_bank: float = 0.0
+var reference_model_active := false
+var _reference_drivers: Dictionary = {}
 var body_combat_yaw: float = 0.0
 var body_combat_pitch: float = 0.0
 var body_combat_roll: float = 0.0
@@ -1421,6 +1425,8 @@ func _process(delta: float) -> void:
 	var is_melee := current_weapon == "knife" or current_weapon == "axe"
 	if is_melee and is_instance_valid(diver_model) and is_instance_valid(body_pivot) and is_instance_valid(right_arm_pivot) and is_instance_valid(right_forearm_pivot) and is_instance_valid(right_hand_socket) and is_instance_valid(equipment_rig):
 		_sync_melee_weapon_to_hand(active_node, current_weapon, lag_rot + fluid_drag_rot * 0.45, jitter)
+	elif reference_model_active and third_person_mode and not scoped and current_weapon in ["sonic", "marker_gun"]:
+		_sync_reference_gun_to_hand(active_node, current_weapon, lag_rot + fluid_drag_rot * 0.3, jitter)
 	else:
 		active_node.position = base_pos + Vector3(sway_x, sway_y, 0) + sprint_offset + anim_offset_pos + lag_pos + equip_offset_pos + fluid_drag_pos
 		active_node.rotation_degrees = base_rot + sprint_rot + anim_offset_rot + lag_rot + equip_offset_rot + fluid_drag_rot
@@ -1506,6 +1512,9 @@ func _update_third_person_camera(delta: float) -> void:
 		diver_model.visible = third_person_mode and not scoped and not in_submarine_mode
 
 func _build_diver_model() -> void:
+	if ReferenceDiver.available():
+		_build_reference_diver_model()
+		return
 	diver_model = Node3D.new()
 	diver_model.name = "DiverThirdPersonModel"
 	diver_model.position = Vector3(0.0, -0.58, 0.24)
@@ -1576,6 +1585,13 @@ func _build_diver_model() -> void:
 	mat_tank.rim_enabled = false
 	mat_tank.rim = 0.52
 
+	var mat_membrane := StandardMaterial3D.new()
+	mat_membrane.albedo_color = Color("d8d5b7")
+	mat_membrane.set_meta("diver_pigment", true)
+	mat_membrane.metallic = 0.08
+	mat_membrane.roughness = 0.58
+	mat_membrane.rim_enabled = false
+
 	# Continuous original suit contours stay on the existing articulated rig.
 	var torso := MeshInstance3D.new()
 	torso.name = "ExpeditionTorso"
@@ -1588,6 +1604,14 @@ func _build_diver_model() -> void:
 	chest_plate.mesh = DiverSilhouette.chest()
 	chest_plate.material_override = mat_armor
 	body_pivot.add_child(chest_plate)
+
+	var harness_mesh := BlenderArt.mesh("diver_harness")
+	if harness_mesh != null:
+		var harness := MeshInstance3D.new()
+		harness.name = "SatinBrassHarness"
+		harness.mesh = harness_mesh
+		harness.material_override = mat_accent
+		body_pivot.add_child(harness)
 
 	var chest_clasp := MeshInstance3D.new()
 	chest_clasp.name = "SternumClaspAccent"
@@ -1742,8 +1766,8 @@ func _build_diver_model() -> void:
 	right_arm_pivot = _build_limb_arm(1.0, mat_suit, mat_armor, mat_accent, mat_cyan)
 
 	# 5. Left & Right Articulated Legs with Hydrodynamic Diving Fins
-	left_leg_pivot = _build_limb_leg(-1.0, mat_suit, mat_armor, mat_accent, mat_cyan)
-	right_leg_pivot = _build_limb_leg(1.0, mat_suit, mat_armor, mat_accent, mat_cyan)
+	left_leg_pivot = _build_limb_leg(-1.0, mat_suit, mat_armor, mat_accent, mat_membrane)
+	right_leg_pivot = _build_limb_leg(1.0, mat_suit, mat_armor, mat_accent, mat_membrane)
 
 	# Subtle local character rim light so the 3D diver is always visible in deep abyss
 	var suit_light := OmniLight3D.new()
@@ -1755,8 +1779,88 @@ func _build_diver_model() -> void:
 	suit_light.omni_attenuation = 1.15
 	diver_model.add_child(suit_light)
 	ModelFinish.apply(diver_model, "diver")
+	BlenderArt.finish_diver(diver_model)
 	diver_model.set_meta("mesh_contract", DiverSilhouette.CONTRACT_VERSION)
 	diver_model.set_meta("triangle_budget", DiverSilhouette.TRIANGLE_BUDGET)
+
+func _build_reference_diver_model() -> void:
+	reference_model_active = true
+	diver_model = Node3D.new()
+	diver_model.name = "DiverThirdPersonModel"
+	diver_model.position = Vector3(0.0, -0.58, 0.24)
+	diver_model.scale = Vector3.ONE * 1.15
+	add_child(diver_model)
+	body_pivot = ReferenceDiver.joint(diver_model, "BodyPivot", Vector3.ZERO)
+	head_pivot = ReferenceDiver.joint(body_pivot, "HeadPivot", Vector3(0, 0.34, 0))
+	left_arm_pivot = ReferenceDiver.joint(body_pivot, "LeftArmPivot", Vector3(-0.18, 0.19, 0))
+	right_arm_pivot = ReferenceDiver.joint(body_pivot, "RightArmPivot", Vector3(0.18, 0.19, 0))
+	left_forearm_pivot = ReferenceDiver.joint(left_arm_pivot, "LeftForearmPivot", Vector3(0, -0.235, 0))
+	right_forearm_pivot = ReferenceDiver.joint(right_arm_pivot, "RightForearmPivot", Vector3(0, -0.235, 0))
+	left_hand_socket = ReferenceDiver.joint(left_forearm_pivot, "LeftHandSocket", Vector3(0, -0.255, -0.005))
+	right_hand_socket = ReferenceDiver.joint(right_forearm_pivot, "RightHandSocket", Vector3(0, -0.255, -0.005))
+	left_leg_pivot = ReferenceDiver.joint(body_pivot, "LeftLegPivot", Vector3(-0.08, -0.17, 0.01))
+	right_leg_pivot = ReferenceDiver.joint(body_pivot, "RightLegPivot", Vector3(0.08, -0.17, 0.01))
+	left_knee_pivot = ReferenceDiver.joint(left_leg_pivot, "LeftKneePivot", Vector3(0, -0.265, 0))
+	right_knee_pivot = ReferenceDiver.joint(right_leg_pivot, "RightKneePivot", Vector3(0, -0.265, 0))
+	left_fin_pivot = ReferenceDiver.joint(left_knee_pivot, "LeftFinPivot", Vector3(0, -0.26, 0))
+	right_fin_pivot = ReferenceDiver.joint(right_knee_pivot, "RightFinPivot", Vector3(0, -0.26, 0))
+	left_fin_pivot.rotation_degrees.x = 11.5
+	right_fin_pivot.rotation_degrees.x = 11.5
+	var fin_l := ReferenceDiver.joint(left_fin_pivot, "FinMembraneDirection", Vector3.ZERO)
+	var fin_r := ReferenceDiver.joint(right_fin_pivot, "FinMembraneDirection", Vector3.ZERO)
+	# The old ankle animation adds 11.5 degrees. New fins are modeled along +Z
+	# with no hidden mesh pre-rotation, for a net 70-degree relaxed foot angle.
+	fin_l.rotation_degrees.x = 58.5
+	fin_r.rotation_degrees.x = 58.5
+	_reference_drivers = {
+		"body": body_pivot, "head": head_pivot,
+		"arm_l": left_arm_pivot, "arm_r": right_arm_pivot,
+		"forearm_l": left_forearm_pivot, "forearm_r": right_forearm_pivot,
+		"leg_l": left_leg_pivot, "leg_r": right_leg_pivot,
+		"calf_l": left_knee_pivot, "calf_r": right_knee_pivot,
+		"fin_l": fin_l, "fin_r": fin_r}
+	var report := ReferenceDiver.populate(_reference_drivers)
+	diver_model.set_meta("mesh_contract", ReferenceDiver.CONTRACT_VERSION)
+	diver_model.set_meta("reference_model", ReferenceDiver.MODEL_PATH)
+	diver_model.set_meta("reference_parts", report.parts)
+	diver_model.set_meta("reference_triangles", report.triangles)
+	diver_model.set_meta("art_finished", true)
+	set_meta("art_finished", true)
+	# Breathing and sprint particles remain controller-owned, independent of the
+	# character's authored glass, skin, cloth and metallic materials.
+	var bubble := SphereMesh.new()
+	bubble.radius = 0.012
+	bubble.height = 0.024
+	bubble.radial_segments = 6
+	bubble.rings = 3
+	var bubble_mat := StandardMaterial3D.new()
+	bubble_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bubble_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bubble_mat.albedo_color = Color(0.8, 0.96, 1.0, 0.35)
+	bubble.material = bubble_mat
+	breath_bubbles = CPUParticles3D.new()
+	breath_bubbles.name = "RegulatorBubbles"
+	breath_bubbles.position = Vector3(0, -0.065, -0.11)
+	breath_bubbles.amount = 10
+	breath_bubbles.lifetime = 1.6
+	breath_bubbles.direction = Vector3.UP
+	breath_bubbles.gravity = Vector3(0, 0.8, 0)
+	breath_bubbles.initial_velocity_min = 0.25
+	breath_bubbles.initial_velocity_max = 0.5
+	breath_bubbles.mesh = bubble
+	head_pivot.add_child(breath_bubbles)
+	backpack_thruster_bubbles = CPUParticles3D.new()
+	backpack_thruster_bubbles.name = "BackpackThrusterJet"
+	backpack_thruster_bubbles.position = Vector3(0, -0.1, 0.16)
+	backpack_thruster_bubbles.amount = 20
+	backpack_thruster_bubbles.lifetime = 0.55
+	backpack_thruster_bubbles.direction = Vector3(0, -0.6, 1)
+	backpack_thruster_bubbles.gravity = Vector3(0, 0.6, 0)
+	backpack_thruster_bubbles.initial_velocity_min = 2.0
+	backpack_thruster_bubbles.initial_velocity_max = 3.5
+	backpack_thruster_bubbles.emitting = false
+	backpack_thruster_bubbles.mesh = bubble
+	body_pivot.add_child(backpack_thruster_bubbles)
 
 func _build_limb_arm(side: float, mat_suit: Material, mat_armor: Material, mat_accent: Material, mat_cyan: Material) -> Node3D:
 	var pivot := Node3D.new()
@@ -1790,6 +1894,17 @@ func _build_limb_arm(side: float, mat_suit: Material, mat_armor: Material, mat_a
 	else:
 		right_forearm_pivot = elbow_pivot
 
+	# A curved textile sleeve covers the real elbow pivot. The visual upper
+	# arm ends inside it; combat/weapon animation still owns the same pivot.
+	for joint_part: Array in [["diver_elbow_sleeve", "FlexibleElbowSleeve", mat_suit], ["diver_elbow_guard", "ContourElbowGuard", mat_armor]]:
+		var joint_mesh := BlenderArt.mesh(joint_part[0])
+		if joint_mesh != null:
+			var joint := MeshInstance3D.new()
+			joint.name = joint_part[1]
+			joint.mesh = joint_mesh
+			joint.material_override = joint_part[2]
+			elbow_pivot.add_child(joint)
+
 	var forearm := MeshInstance3D.new()
 	forearm.name = "TaperedForearm"
 	forearm.mesh = DiverSilhouette.forearm()
@@ -1815,6 +1930,7 @@ func _build_limb_arm(side: float, mat_suit: Material, mat_armor: Material, mat_a
 	glove.name = "ContourGlove"
 	glove.mesh = DiverSilhouette.glove()
 	glove.position = Vector3(-side * 0.01, -0.08, -0.21)
+	glove.rotation_degrees = Vector3(72.0, -side * 10.0, 0.0)
 	glove.material_override = mat_suit
 	elbow_pivot.add_child(glove)
 
@@ -1828,7 +1944,7 @@ func _build_limb_arm(side: float, mat_suit: Material, mat_armor: Material, mat_a
 		right_hand_socket = hand_socket
 	return pivot
 
-func _build_limb_leg(side: float, mat_suit: Material, mat_armor: Material, mat_accent: Material, mat_cyan: Material) -> Node3D:
+func _build_limb_leg(side: float, mat_suit: Material, mat_armor: Material, mat_accent: Material, mat_membrane: Material) -> Node3D:
 	var pivot := Node3D.new()
 	pivot.name = "LeftLegPivot" if side < 0.0 else "RightLegPivot"
 	pivot.position = Vector3(side * 0.09, -0.15, 0.01)
@@ -1879,8 +1995,15 @@ func _build_limb_leg(side: float, mat_suit: Material, mat_armor: Material, mat_a
 	fin.mesh = DiverSilhouette.fin()
 	fin.position = Vector3(0, -0.010, -0.006)
 	fin.rotation_degrees = Vector3(66.0, 0.0, 0.0)
-	fin.material_override = mat_accent
+	fin.material_override = mat_membrane
 	ankle.add_child(fin)
+	var trim_mesh := BlenderArt.mesh("diver_fin_trim")
+	if trim_mesh != null:
+		var fin_trim := MeshInstance3D.new()
+		fin_trim.name = "SatinFinRim"
+		fin_trim.mesh = trim_mesh
+		fin_trim.material_override = mat_accent
+		fin.add_child(fin_trim)
 
 	var fin_rib := MeshInstance3D.new()
 	var r_box := BoxMesh.new()
@@ -2280,6 +2403,46 @@ func _animate_diver_model(delta: float) -> void:
 
 	if is_instance_valid(backpack_thruster_bubbles):
 		backpack_thruster_bubbles.emitting = (sprinting or dash_cooldown > 3.8) and not in_submarine_mode
+	if reference_model_active:
+		_animate_reference_posture(delta, cam_pitch, in_attack)
+		ReferenceDiver.sync_skin(diver_model, _reference_drivers)
+
+func _animate_reference_posture(delta: float, cam_pitch: float, in_attack: bool) -> void:
+	# New anatomy rests vertically. It must not inherit the static 32/72-degree
+	# bends baked into v3's cylindrical upper-arm and forearm meshes.
+	if in_attack:
+		# Combat choreography already solves the wrist so the knife thrust and
+		# its blade direction agree. Idle anatomical alignment must not replace it.
+		return
+	var is_gun := current_weapon in ["sonic", "marker_gun"]
+	var aiming_gun := is_gun and (aiming or gun_trigger_held)
+	if not in_attack and combat_stance_blend < 0.05 and not in_mount_mode:
+		var vertical_lean := atan2(velocity.y, maxf(Vector2(velocity.x, velocity.z).length(), 1.2)) * 0.26
+		var pitch := lerpf(-0.025, -1.30, swim_motion_blend) + cam_pitch * 0.40 + vertical_lean
+		body_pivot.rotation.x = pitch
+		head_pivot.rotation.x = clampf(cam_pitch * 0.45 + 0.05 + swim_motion_blend * 0.58, -0.55, 0.75)
+	if booster_active:
+		left_arm_pivot.rotation_degrees = Vector3(65, 10, -6)
+		right_arm_pivot.rotation_degrees = Vector3(65, -10, 6)
+		left_forearm_pivot.rotation_degrees = Vector3(12, 8, 0)
+		right_forearm_pivot.rotation_degrees = Vector3(12, -8, 0)
+	elif aiming_gun and not in_attack:
+		var aim_pitch := rad_to_deg(cam_pitch - body_pivot.rotation.x) * 0.55
+		left_arm_pivot.rotation_degrees = Vector3(72 + aim_pitch, 12, -8)
+		right_arm_pivot.rotation_degrees = Vector3(75 + aim_pitch, -8, 6)
+		left_forearm_pivot.rotation_degrees = Vector3(12, 12, 0)
+		right_forearm_pivot.rotation_degrees = Vector3(8, -7, 0)
+	elif not in_attack and combat_stance_blend < 0.05 and not shield_active and current_weapon != "axe":
+		var slow := sin(swim_clock * 0.5)
+		var stroke := lerpf(1.8, 9.0, swim_motion_blend)
+		left_arm_pivot.rotation_degrees = Vector3(3 + slow * stroke, 2, -4)
+		right_arm_pivot.rotation_degrees = Vector3(5 - slow * stroke, -2, 4)
+		left_forearm_pivot.rotation_degrees = Vector3(5 + sin(swim_clock * 0.5 - 0.5) * stroke * 0.35, 0, 0)
+		right_forearm_pivot.rotation_degrees = Vector3(7 - sin(swim_clock * 0.5 - 0.5) * stroke * 0.35, 0, 0)
+	for socket: Node3D in [left_hand_socket, right_hand_socket]:
+		var wrist := left_wrist_rot if socket == left_hand_socket else right_wrist_rot
+		var align := Basis.from_euler(Vector3(-PI * 0.5, 0, 0))
+		socket.basis = align * Basis(Vector3.BACK, deg_to_rad(wrist.z)) * Basis.from_euler(Vector3(deg_to_rad(wrist.x), deg_to_rad(wrist.y), 0))
 
 func _sync_melee_weapon_to_hand(active_node: Node3D, weapon_id: String, inertia_rot_deg: Vector3, jitter_offset: Vector3) -> void:
 	var hand_in_diver: Transform3D = diver_model.transform * body_pivot.transform * right_arm_pivot.transform * right_forearm_pivot.transform * right_hand_socket.transform
@@ -2310,6 +2473,15 @@ func _sync_melee_weapon_to_hand(active_node: Node3D, weapon_id: String, inertia_
 	var final_basis: Basis = (hand_basis * grip_basis_in_hand).scaled(Vector3.ONE * weapon_scale)
 	var final_origin: Vector3 = hand_in_mount.origin - (final_basis * local_grip_center) + jitter_offset
 	active_node.transform = Transform3D(final_basis, final_origin)
+
+func _sync_reference_gun_to_hand(active_node: Node3D, weapon_id: String, inertia_rot_deg: Vector3, jitter_offset: Vector3) -> void:
+	var hand_in_diver := diver_model.transform * body_pivot.transform * right_arm_pivot.transform * right_forearm_pivot.transform * right_hand_socket.transform
+	var mount_in_diver := equipment_rig.transform * weapon_mount.transform
+	var hand_in_mount := mount_in_diver.affine_inverse() * hand_in_diver
+	var inertia := Basis.from_euler(Vector3(deg_to_rad(clampf(inertia_rot_deg.x, -5, 5)), deg_to_rad(clampf(inertia_rot_deg.y, -5, 5)), 0))
+	var grip := Vector3(0, -0.10, 0.16) if weapon_id == "sonic" else Vector3(0, -0.08, 0.06)
+	var final_basis := (hand_in_mount.basis.orthonormalized() * inertia).scaled(Vector3.ONE * 1.02)
+	active_node.transform = Transform3D(final_basis, hand_in_mount.origin - final_basis * grip + jitter_offset)
 
 func _sync_shield_to_left_arm() -> void:
 	var l_hand_in_diver: Transform3D = diver_model.transform * body_pivot.transform * left_arm_pivot.transform * left_forearm_pivot.transform * left_hand_socket.transform
