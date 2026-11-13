@@ -311,7 +311,7 @@ func _reset_position() -> void:
 	diver.set_mount_mode(false)
 	diver.position = Vector3(0, -9.0, 17.0)
 	diver.rotation = Vector3.ZERO
-	diver.camera.rotation.x = -0.16
+	diver.reset_camera_alignment(-0.16)
 	diver.velocity = Vector3.ZERO
 	diver._update_third_person_camera(0.0)
 

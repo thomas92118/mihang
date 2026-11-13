@@ -300,6 +300,30 @@ func _initialize() -> void:
 	assert(axe2.combo == 2, "Second axe swing should be combo 2")
 	assert(diver_test.camera_punch.y > 0.0, "Reverse axe cleave camera punch must be mirrored to the right")
 
+	# Verify repeated single axe swings and large frame deltas never leave camera/character sideways
+	diver_test.active = true
+	diver_test.reset_camera_alignment(-0.16)
+	for _swing_idx in range(24):
+		diver_test.combo_timer = 0.0
+		diver_test.attack_cooldown = 0.0
+		diver_test.attack()
+		for _step in range(8):
+			diver_test._process(0.05)
+	for _settle in range(15):
+		diver_test._process(0.05)
+	assert(absf(diver_test.camera.rotation.y) < 0.001, "Repeated single axe swings must not accumulate sideways camera yaw")
+	assert(is_equal_approx(diver_test.camera.rotation.x, -0.16), "Camera pitch must return to base pitch after melee recoil")
+
+	# Verify lag hitch / large delta stability and recovery when camera yaw is perturbed sideways
+	diver_test.combo_timer = 0.0
+	diver_test.attack_cooldown = 0.0
+	diver_test.attack()
+	diver_test._process(2.5)
+	assert(absf(diver_test.camera.rotation.y) < 0.001, "Large frame delta during camera punch must not overshoot or drift")
+	diver_test.camera.rotation.y = -PI * 0.5
+	diver_test.apply_look_delta(Vector2(24.0, 0.0))
+	assert(absf(diver_test.camera.rotation.y) < 0.001, "Adjusting view when sideways must immediately re-align camera behind diver")
+
 	# Verify procedural equip animation & attack cancel
 	diver_test.set_weapon("sonic")
 	assert(diver_test.equip_anim_time > 0.0, "Equip anim time should be set on weapon switch")

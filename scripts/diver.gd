@@ -115,6 +115,11 @@ var muzzle_flash: OmniLight3D
 # Attack reinforcement and procedural impact feedback
 var damage_bonus: float = 0.0
 var camera_punch: Vector3 = Vector3.ZERO
+var _camera_punch_offset: Vector3 = Vector3.ZERO
+var _camera_shake_offset: Vector3 = Vector3.ZERO
+var _applied_camera_transient: Vector3 = Vector3.ZERO
+var _last_camera_rot_with_transient: Vector3 = Vector3.ZERO
+var _has_camera_rot_snapshot: bool = false
 var camera_trauma: float = 0.0
 var hitstop_timer: float = 0.0
 var hitstop_jitter: Vector3 = Vector3.ZERO
@@ -797,15 +802,43 @@ func _update_vehicle_collision_state() -> void:
 		velocity = Vector3.ZERO
 		camera_trauma = 0.0
 		camera_punch = Vector3.ZERO
+		_camera_punch_offset = Vector3.ZERO
+		_camera_shake_offset = Vector3.ZERO
 		hitstop_timer = 0.0
 		hitstop_jitter = Vector3.ZERO
 		if is_instance_valid(camera):
-			camera.rotation.z = 0.0
+			var base_rot := _base_camera_rotation()
+			camera.rotation = Vector3(clampf(base_rot.x, -1.45, 1.45), 0.0, 0.0)
+			_applied_camera_transient = Vector3.ZERO
+			_last_camera_rot_with_transient = camera.rotation
+			_has_camera_rot_snapshot = true
 	else:
 		collision_layer = 1
 		collision_mask = 1
 		if is_instance_valid(body_collision):
 			body_collision.disabled = false
+
+func _base_camera_rotation() -> Vector3:
+	if not is_instance_valid(camera):
+		return Vector3.ZERO
+	if _has_camera_rot_snapshot and camera.rotation.is_equal_approx(_last_camera_rot_with_transient):
+		return camera.rotation - _applied_camera_transient
+	return camera.rotation
+
+func reset_camera_alignment(pitch: float = NAN) -> void:
+	camera_punch = Vector3.ZERO
+	_camera_punch_offset = Vector3.ZERO
+	_camera_shake_offset = Vector3.ZERO
+	camera_trauma = 0.0
+	if is_instance_valid(camera):
+		var base_rot := _base_camera_rotation()
+		var target_pitch: float = clampf(base_rot.x if is_nan(pitch) else pitch, -1.45, 1.45)
+		camera.rotation = Vector3(target_pitch, 0.0, 0.0)
+		_applied_camera_transient = Vector3.ZERO
+		_last_camera_rot_with_transient = camera.rotation
+		_has_camera_rot_snapshot = true
+		if is_instance_valid(equipment_rig):
+			equipment_rig.rotation = camera.rotation
 
 func set_submarine_mode(in_sub: bool, sub_type: String = "scout", sub_rid: RID = RID()) -> void:
 	var was_in_sub := in_submarine_mode
@@ -1058,7 +1091,20 @@ func _look_settings(key: String, default_value: Variant) -> Variant:
 
 func _apply_look_angles(angles: Vector2) -> void:
 	rotate_y(-angles.x)
-	camera.rotation.x = clampf(camera.rotation.x - angles.y, -1.45, 1.45)
+	var base_rot := _base_camera_rotation()
+	base_rot.x = clampf(base_rot.x - angles.y, -1.45, 1.45)
+	if active:
+		base_rot.y = 0.0
+	var transient := _camera_punch_offset + _camera_shake_offset
+	var target_rot := Vector3(
+		clampf(base_rot.x + transient.x, -1.45, 1.45),
+		base_rot.y + transient.y,
+		base_rot.z + transient.z
+	)
+	camera.rotation = target_rot
+	_applied_camera_transient = target_rot - base_rot
+	_last_camera_rot_with_transient = camera.rotation
+	_has_camera_rot_snapshot = true
 	if is_instance_valid(equipment_rig):
 		equipment_rig.rotation = camera.rotation
 	camera.position = camera.basis.z * _applied_camera_distance
@@ -1212,28 +1258,65 @@ func _process(delta: float) -> void:
 			lamp_fill.light_energy = 1.05
 			lamp_fill.omni_range = 16.0
 	# 鼠标惯性阻尼滞后解算 (Spring-damper mouse lag)
-	mouse_lag = mouse_lag.lerp(mouse_lag_target, delta * 14.0)
-	mouse_lag_target = mouse_lag_target.lerp(Vector2.ZERO, delta * 8.0)
+	var lag_follow := 1.0 - exp(-delta * 14.0) if delta > 0.0 else 0.0
+	var lag_decay := 1.0 - exp(-delta * 8.0) if delta > 0.0 else 0.0
+	mouse_lag = mouse_lag.lerp(mouse_lag_target, lag_follow)
+	mouse_lag_target = mouse_lag_target.lerp(Vector2.ZERO, lag_decay)
 
 	# Camera punch & trauma-based shake
 	if is_instance_valid(camera):
+		var base_rot := _base_camera_rotation()
 		if in_submarine_mode:
 			camera_punch = Vector3.ZERO
+			_camera_punch_offset = Vector3.ZERO
+			_camera_shake_offset = Vector3.ZERO
 			camera_trauma = 0.0
-			camera.rotation.z = 0.0
-		elif camera_punch.length_squared() > 0.00001:
-			camera.rotation += camera_punch * delta * 18.0
-			camera_punch = camera_punch.lerp(Vector3.ZERO, delta * 12.0)
+			base_rot.y = 0.0
+			base_rot.z = 0.0
+		else:
+			if delta > 0.0:
+				var exp_return := exp(-delta * 10.0)
+				var exp_punch := exp(-delta * 12.0)
+				_camera_punch_offset = _camera_punch_offset * exp_return + camera_punch * 9.0 * (exp_return - exp_punch)
+				camera_punch *= exp_punch
+				if camera_punch.length_squared() <= 0.0000001:
+					camera_punch = Vector3.ZERO
+				if _camera_punch_offset.length_squared() <= 0.0000001:
+					_camera_punch_offset = Vector3.ZERO
 
-		if not in_submarine_mode and camera_trauma > 0.0:
-			var trauma_pwr: float = camera_trauma * camera_trauma
-			var shake_roll := (randf() * 2.0 - 1.0) * trauma_pwr * 0.024
-			var shake_pitch := (randf() * 2.0 - 1.0) * trauma_pwr * 0.020
-			camera.rotation.z += shake_roll
-			camera.rotation.x += shake_pitch
-			camera_trauma = maxf(0.0, camera_trauma - delta * 3.2)
-		elif not in_submarine_mode:
-			camera.rotation.z = lerpf(camera.rotation.z, 0.0, 1.0 - exp(-delta * 12.0))
+			if camera_trauma > 0.0:
+				var trauma_pwr: float = camera_trauma * camera_trauma
+				_camera_shake_offset = Vector3(
+					(randf() * 2.0 - 1.0) * trauma_pwr * 0.020,
+					0.0,
+					(randf() * 2.0 - 1.0) * trauma_pwr * 0.024
+				)
+				camera_trauma = maxf(0.0, camera_trauma - delta * 3.2)
+			else:
+				_camera_shake_offset = Vector3.ZERO
+
+			if active:
+				var align_yaw: float = diver_model.rotation.y if is_instance_valid(diver_model) else 0.0
+				if delta > 0.0:
+					base_rot.y = lerp_angle(base_rot.y, align_yaw, 1.0 - exp(-delta * 14.0))
+				if absf(angle_difference(base_rot.y, align_yaw)) < 0.0005:
+					base_rot.y = align_yaw
+			if delta > 0.0:
+				base_rot.z = lerpf(base_rot.z, 0.0, 1.0 - exp(-delta * 12.0))
+			if absf(base_rot.z) < 0.0005:
+				base_rot.z = 0.0
+
+		base_rot.x = clampf(base_rot.x, -1.45, 1.45)
+		var new_transient := _camera_punch_offset + _camera_shake_offset
+		var target_rot := Vector3(
+			clampf(base_rot.x + new_transient.x, -1.45, 1.45),
+			base_rot.y + new_transient.y,
+			base_rot.z + new_transient.z
+		)
+		camera.rotation = target_rot
+		_applied_camera_transient = target_rot - base_rot
+		_last_camera_rot_with_transient = camera.rotation
+		_has_camera_rot_snapshot = true
 	_update_third_person_camera(delta)
 	# Visual effects update
 	if is_instance_valid(slash_light) and slash_light.light_energy > 0.0:
@@ -1419,8 +1502,9 @@ func _process(delta: float) -> void:
 		clampf(-local_vel.x * 2.2, -18.0, 18.0),
 		clampf(local_vel.x * 1.4, -12.0, 12.0)
 	)
-	fluid_drag_pos = fluid_drag_pos.lerp(target_fluid_pos, delta * 7.5)
-	fluid_drag_rot = fluid_drag_rot.lerp(target_fluid_rot, delta * 7.5)
+	var drag_alpha := 1.0 - exp(-delta * 7.5) if delta > 0.0 else 0.0
+	fluid_drag_pos = fluid_drag_pos.lerp(target_fluid_pos, drag_alpha)
+	fluid_drag_rot = fluid_drag_rot.lerp(target_fluid_rot, drag_alpha)
 
 	var is_melee := current_weapon == "knife" or current_weapon == "axe"
 	if is_melee and is_instance_valid(diver_model) and is_instance_valid(body_pivot) and is_instance_valid(right_arm_pivot) and is_instance_valid(right_forearm_pivot) and is_instance_valid(right_hand_socket) and is_instance_valid(equipment_rig):
