@@ -9,8 +9,8 @@ static func surface(background: Color, border: Color = Color.TRANSPARENT, radius
 	style.border_color = border
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(radius)
-	style.shadow_color = Color(0.01, 0.025, 0.035, 0.18)
-	style.shadow_size = 10 if background.a > 0.8 else 0
+	style.shadow_color = Color(0.01, 0.025, 0.035, 0.14)
+	style.shadow_size = 8 if background.a > 0.8 else 0
 	style.shadow_offset = Vector2(0, 3)
 	return style
 
@@ -22,7 +22,7 @@ static func build(font: Font) -> Theme:
 	theme.set_color("font_color", "Button", Art.PAPER)
 	theme.set_color("font_hover_color", "Button", Color.WHITE)
 	theme.set_color("font_disabled_color", "Button", Art.MUTED.darkened(0.1))
-	theme.set_stylebox("panel", "Panel", surface(Art.PANEL, Color(Art.CYAN, 0.13)))
+	theme.set_stylebox("panel", "Panel", surface(Art.PANEL, Color(Art.CYAN, 0.10)))
 	return theme
 
 static func button(control: Button, primary: bool) -> void:
@@ -31,7 +31,7 @@ static func button(control: Button, primary: bool) -> void:
 	control.add_theme_color_override("font_hover_color", Art.INK if primary else Color.WHITE)
 	control.add_theme_color_override("font_pressed_color", Art.INK if primary else Art.PAPER)
 	control.add_theme_color_override("font_disabled_color", Color(Art.MUTED, 0.65))
-	control.add_theme_stylebox_override("normal", surface(Color(Art.AMBER, 0.10) if primary else Color(0.06, 0.19, 0.25, 0.42), Color(Art.AMBER, 0.75) if primary else Color(Art.CYAN, 0.22)))
+	control.add_theme_stylebox_override("normal", surface(Color(Art.AMBER, 0.08) if primary else Color(0.035, 0.14, 0.20, 0.32), Color(Art.AMBER, 0.64) if primary else Color(Art.CYAN, 0.16)))
 	control.add_theme_stylebox_override("hover", surface(Art.AMBER if primary else Color(0.10, 0.30, 0.36, 0.92), Color(Art.AMBER, 0.9) if primary else Color(Art.CYAN, 0.65)))
 	control.add_theme_stylebox_override("pressed", surface(Art.AMBER.darkened(0.1) if primary else Art.INK, Art.CYAN))
 	control.add_theme_stylebox_override("disabled", surface(Color(0.06, 0.115, 0.15, 0.65), Color(Art.MUTED, 0.10)))

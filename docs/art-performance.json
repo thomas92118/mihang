@@ -1,183 +1,393 @@
 {
-  "renderer": "Godot 4.7.2 Compatibility / AMD Radeon Graphics",
+  "renderer": "4.7.2-stable (official) / gl_compatibility / AMD Radeon(TM) Graphics",
   "resolution": [
     1280,
     800
   ],
   "camera_script": "tests/art_review.gd",
-  "samples_per_region": 80,
+  "samples_per_region": 300,
+  "capture_mode": "static_fixed_camera",
+  "before_environment": {
+    "adapter": "AMD Radeon(TM) Graphics",
+    "adapter_vendor": "ATI Technologies Inc.",
+    "camera_script": "tests/art_review.gd",
+    "capture_mode": "static_fixed_camera",
+    "controlled_shader_materials": 115,
+    "deterministic_scope": "review_time shader uniforms and imported animation poses; static scene processing disabled",
+    "display_server": "Windows",
+    "engine": {
+      "build": "official",
+      "hash": "ed1daf0bf001b61586d9930840f2f1394092c079",
+      "hex": 263938,
+      "major": 4,
+      "minor": 7,
+      "patch": 2,
+      "status": "stable",
+      "string": "4.7.2-stable (official)",
+      "timestamp": 0
+    },
+    "max_fps": 0,
+    "platform": "Windows",
+    "renderer": "gl_compatibility",
+    "rendering_driver": "opengl3",
+    "resolution": [
+      1280,
+      800
+    ],
+    "review_phase_seconds": 12.0,
+    "samples_per_region": 300,
+    "views_captured": 18,
+    "vsync_mode": 0,
+    "warmup_frames": 90,
+    "world_seed": 671112
+  },
+  "after_environment": {
+    "adapter": "AMD Radeon(TM) Graphics",
+    "adapter_vendor": "ATI Technologies Inc.",
+    "camera_script": "tests/art_review.gd",
+    "capture_mode": "static_fixed_camera",
+    "composition_seed": 671112,
+    "controlled_shader_materials": 115,
+    "deterministic_scope": "review_time shader uniforms and imported animation poses; static scene processing disabled",
+    "display_server": "Windows",
+    "ecology_seed": 381193,
+    "engine": {
+      "build": "official",
+      "hash": "ed1daf0bf001b61586d9930840f2f1394092c079",
+      "hex": 263938,
+      "major": 4,
+      "minor": 7,
+      "patch": 2,
+      "status": "stable",
+      "string": "4.7.2-stable (official)",
+      "timestamp": 0
+    },
+    "max_fps": 0,
+    "platform": "Windows",
+    "renderer": "gl_compatibility",
+    "rendering_driver": "opengl3",
+    "resolution": [
+      1280,
+      800
+    ],
+    "review_phase_seconds": 12.0,
+    "samples_per_region": 300,
+    "views_captured": 18,
+    "vsync_mode": 0,
+    "warmup_frames": 90
+  },
+  "environment_verified": true,
+  "environment_changes": {},
+  "environment_warning": "",
+  "maximum_p95_regression_percent": 15.0,
   "regions": [
     {
       "region": "core",
       "before": {
-        "draw_calls": 1864.0,
-        "p50_ms": 45.554,
-        "p95_ms": 177.263,
+        "camera_position": [
+          20.0,
+          -2.63629007339478,
+          26.0
+        ],
+        "draw_calls": 1323.0,
+        "p50_ms": 12.376,
+        "p95_ms": 17.867,
         "region": "core",
-        "video_memory": 392323660.0
+        "samples": 300,
+        "video_memory": 383878362.0,
+        "warmup_frames": 90
       },
       "after": {
-        "draw_calls": 1324.0,
-        "p50_ms": 16.773,
-        "p95_ms": 26.478,
+        "camera_position": [
+          20.0,
+          -2.63629007339478,
+          26.0
+        ],
+        "draw_calls": 1317.0,
+        "p50_ms": 11.709,
+        "p95_ms": 15.737,
         "region": "core",
-        "video_memory": 383456614.0
+        "samples": 300,
+        "video_memory": 383972222.0,
+        "warmup_frames": 90
       },
-      "p95_change_percent": -85.1,
-      "draw_call_change_percent": -29.0
+      "p95_change_percent": -11.92,
+      "p95_gate_passed": true,
+      "draw_call_change_percent": -0.45
     },
     {
       "region": "atoll",
       "before": {
-        "draw_calls": 309.0,
-        "p50_ms": 35.048,
-        "p95_ms": 150.879,
+        "camera_position": [
+          65.0,
+          -5.20571517944336,
+          378.0
+        ],
+        "draw_calls": 287.0,
+        "p50_ms": 7.911,
+        "p95_ms": 10.646,
         "region": "atoll",
-        "video_memory": 392352652.0
+        "samples": 300,
+        "video_memory": 383892442.0,
+        "warmup_frames": 90
       },
       "after": {
-        "draw_calls": 287.0,
-        "p50_ms": 11.033,
-        "p95_ms": 29.27,
+        "camera_position": [
+          65.0,
+          -5.20571517944336,
+          378.0
+        ],
+        "draw_calls": 286.0,
+        "p50_ms": 7.239,
+        "p95_ms": 11.193,
         "region": "atoll",
-        "video_memory": 383470694.0
+        "samples": 300,
+        "video_memory": 383985278.0,
+        "warmup_frames": 90
       },
-      "p95_change_percent": -80.6,
-      "draw_call_change_percent": -7.1
+      "p95_change_percent": 5.14,
+      "p95_gate_passed": true,
+      "draw_call_change_percent": -0.35
     },
     {
       "region": "kelp",
       "before": {
-        "draw_calls": 78.0,
-        "p50_ms": 42.978,
-        "p95_ms": 76.196,
+        "camera_position": [
+          -235.0,
+          -17.6609802246094,
+          320.0
+        ],
+        "draw_calls": 53.0,
+        "p50_ms": 9.707,
+        "p95_ms": 14.324,
         "region": "kelp",
-        "video_memory": 392330380.0
+        "samples": 300,
+        "video_memory": 383882586.0,
+        "warmup_frames": 90
       },
       "after": {
-        "draw_calls": 54.0,
-        "p50_ms": 11.171,
-        "p95_ms": 17.067,
+        "camera_position": [
+          -235.0,
+          -17.6609802246094,
+          320.0
+        ],
+        "draw_calls": 52.0,
+        "p50_ms": 7.375,
+        "p95_ms": 9.608,
         "region": "kelp",
-        "video_memory": 383460390.0
+        "samples": 300,
+        "video_memory": 383980734.0,
+        "warmup_frames": 90
       },
-      "p95_change_percent": -77.6,
-      "draw_call_change_percent": -30.8
+      "p95_change_percent": -32.92,
+      "p95_gate_passed": true,
+      "draw_call_change_percent": -1.89
     },
     {
       "region": "ridge",
       "before": {
-        "draw_calls": 69.0,
-        "p50_ms": 53.137,
-        "p95_ms": 70.065,
+        "camera_position": [
+          410.0,
+          -64.7480392456055,
+          335.0
+        ],
+        "draw_calls": 45.0,
+        "p50_ms": 6.172,
+        "p95_ms": 9.754,
         "region": "ridge",
-        "video_memory": 392318444.0
+        "samples": 300,
+        "video_memory": 383887546.0,
+        "warmup_frames": 90
       },
       "after": {
-        "draw_calls": 45.0,
-        "p50_ms": 11.24,
-        "p95_ms": 20.235,
+        "camera_position": [
+          410.0,
+          -64.7480392456055,
+          335.0
+        ],
+        "draw_calls": 44.0,
+        "p50_ms": 6.025,
+        "p95_ms": 8.662,
         "region": "ridge",
-        "video_memory": 383465734.0
+        "samples": 300,
+        "video_memory": 383985374.0,
+        "warmup_frames": 90
       },
-      "p95_change_percent": -71.1,
-      "draw_call_change_percent": -34.8
+      "p95_change_percent": -11.2,
+      "p95_gate_passed": true,
+      "draw_call_change_percent": -2.22
     },
     {
       "region": "citadel",
       "before": {
-        "draw_calls": 84.0,
-        "p50_ms": 21.215,
-        "p95_ms": 42.665,
+        "camera_position": [
+          487.0,
+          -118.408615112305,
+          -15.0
+        ],
+        "draw_calls": 66.0,
+        "p50_ms": 11.222,
+        "p95_ms": 18.222,
         "region": "citadel",
-        "video_memory": 392347256.0
+        "samples": 300,
+        "video_memory": 383916998.0,
+        "warmup_frames": 90
       },
       "after": {
-        "draw_calls": 66.0,
-        "p50_ms": 11.055,
-        "p95_ms": 12.98,
+        "camera_position": [
+          487.0,
+          -118.408615112305,
+          -15.0
+        ],
+        "draw_calls": 62.0,
+        "p50_ms": 6.821,
+        "p95_ms": 11.251,
         "region": "citadel",
-        "video_memory": 383495250.0
+        "samples": 300,
+        "video_memory": 384015402.0,
+        "warmup_frames": 90
       },
-      "p95_change_percent": -69.6,
-      "draw_call_change_percent": -21.4
+      "p95_change_percent": -38.26,
+      "p95_gate_passed": true,
+      "draw_call_change_percent": -6.06
     },
     {
       "region": "wreck",
       "before": {
-        "draw_calls": 54.0,
-        "p50_ms": 16.694,
-        "p95_ms": 39.644,
+        "camera_position": [
+          450.0,
+          -160.008712768555,
+          -340.0
+        ],
+        "draw_calls": 53.0,
+        "p50_ms": 5.479,
+        "p95_ms": 8.613,
         "region": "wreck",
-        "video_memory": 392367544.0
+        "samples": 300,
+        "video_memory": 383937094.0,
+        "warmup_frames": 90
       },
       "after": {
+        "camera_position": [
+          450.0,
+          -160.008712768555,
+          -340.0
+        ],
         "draw_calls": 53.0,
-        "p50_ms": 11.089,
-        "p95_ms": 12.049,
+        "p50_ms": 5.329,
+        "p95_ms": 7.718,
         "region": "wreck",
-        "video_memory": 383515346.0
+        "samples": 300,
+        "video_memory": 384035754.0,
+        "warmup_frames": 90
       },
-      "p95_change_percent": -69.6,
-      "draw_call_change_percent": -1.9
+      "p95_change_percent": -10.39,
+      "p95_gate_passed": true,
+      "draw_call_change_percent": 0.0
     },
     {
       "region": "bones",
       "before": {
-        "draw_calls": 71.0,
-        "p50_ms": 20.67,
-        "p95_ms": 47.063,
+        "camera_position": [
+          -445.0,
+          -225.939819335938,
+          -34.0
+        ],
+        "draw_calls": 50.0,
+        "p50_ms": 5.852,
+        "p95_ms": 7.732,
         "region": "bones",
-        "video_memory": 392356344.0
+        "samples": 300,
+        "video_memory": 383933190.0,
+        "warmup_frames": 90
       },
       "after": {
-        "draw_calls": 50.0,
-        "p50_ms": 11.126,
-        "p95_ms": 11.727,
+        "camera_position": [
+          -445.0,
+          -225.939819335938,
+          -34.0
+        ],
+        "draw_calls": 52.0,
+        "p50_ms": 4.673,
+        "p95_ms": 6.573,
         "region": "bones",
-        "video_memory": 383511314.0
+        "samples": 300,
+        "video_memory": 384030826.0,
+        "warmup_frames": 90
       },
-      "p95_change_percent": -75.1,
-      "draw_call_change_percent": -29.6
+      "p95_change_percent": -14.99,
+      "p95_gate_passed": true,
+      "draw_call_change_percent": 4.0
     },
     {
       "region": "caldera",
       "before": {
-        "draw_calls": 80.0,
-        "p50_ms": 19.946,
-        "p95_ms": 44.796,
+        "camera_position": [
+          -408.0,
+          -336.753814697266,
+          -372.0
+        ],
+        "draw_calls": 73.0,
+        "p50_ms": 5.739,
+        "p95_ms": 8.514,
         "region": "caldera",
-        "video_memory": 392412204.0
+        "samples": 300,
+        "video_memory": 383991674.0,
+        "warmup_frames": 90
       },
       "after": {
-        "draw_calls": 73.0,
-        "p50_ms": 11.985,
-        "p95_ms": 22.063,
+        "camera_position": [
+          -408.0,
+          -336.753814697266,
+          -372.0
+        ],
+        "draw_calls": 72.0,
+        "p50_ms": 6.062,
+        "p95_ms": 9.142,
         "region": "caldera",
-        "video_memory": 383569798.0
+        "samples": 300,
+        "video_memory": 384090846.0,
+        "warmup_frames": 90
       },
-      "p95_change_percent": -50.7,
-      "draw_call_change_percent": -8.8
+      "p95_change_percent": 7.38,
+      "p95_gate_passed": true,
+      "draw_call_change_percent": -1.37
     },
     {
       "region": "hadal",
       "before": {
-        "draw_calls": 60.0,
-        "p50_ms": 17.503,
-        "p95_ms": 36.993,
+        "camera_position": [
+          92.0,
+          -506.278930664063,
+          -592.0
+        ],
+        "draw_calls": 53.0,
+        "p50_ms": 5.108,
+        "p95_ms": 7.626,
         "region": "hadal",
-        "video_memory": 392447820.0
+        "samples": 300,
+        "video_memory": 384033818.0,
+        "warmup_frames": 90
       },
       "after": {
-        "draw_calls": 53.0,
-        "p50_ms": 11.107,
-        "p95_ms": 12.153,
+        "camera_position": [
+          92.0,
+          -506.278930664063,
+          -592.0
+        ],
+        "draw_calls": 52.0,
+        "p50_ms": 4.249,
+        "p95_ms": 5.903,
         "region": "hadal",
-        "video_memory": 383612070.0
+        "samples": 300,
+        "video_memory": 384130430.0,
+        "warmup_frames": 90
       },
-      "p95_change_percent": -67.1,
-      "draw_call_change_percent": -11.7
+      "p95_change_percent": -22.59,
+      "p95_gate_passed": true,
+      "draw_call_change_percent": -1.89
     }
   ],
-  "p95_gate_passed": true
+  "p95_gate_passed": true,
+  "scope_note": "Static fixed-camera timings do not validate live gameplay, streaming or browser performance."
 }

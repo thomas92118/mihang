@@ -144,6 +144,23 @@ async function loadPermanentAccount() {
 		"";
 
 	if (!accountId) {
+		const cachedAccountPath = path.resolve("node_modules/.cache/wrangler/wrangler-account.json");
+		if (fs.existsSync(cachedAccountPath)) {
+			try {
+				const cached = JSON.parse(fs.readFileSync(cachedAccountPath, "utf8"));
+				if (cached?.account?.id) {
+					accountId = cached.account.id;
+					console.log(
+						`[upload_assets] Using cached Wrangler Cloudflare account: ${cached.account.name || "default"} (${accountId})`
+					);
+				}
+			} catch {
+				// Fall back to Cloudflare accounts API below.
+			}
+		}
+	}
+
+	if (!accountId) {
 		const accRes = await fetch("https://api.cloudflare.com/client/v4/accounts", {
 			headers: { Authorization: `Bearer ${apiToken}` },
 		});

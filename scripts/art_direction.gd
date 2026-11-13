@@ -9,15 +9,15 @@ const DANGER := Color("f28c77")
 const PANEL := Color(0.025, 0.10, 0.15, 0.82)
 const MUTED := Color("abc9ce")
 const REGIONS := {
-	"core": {"water": "087fa7", "sand": "eadab2", "rock": "5f9295", "flora": "539e72", "accent": "ef9675", "shadow": "123f69"},
-	"atoll": {"water": "12b2b9", "sand": "f2e7c5", "rock": "8bb7a4", "flora": "8db967", "accent": "edce7a", "shadow": "146585"},
-	"kelp": {"water": "146b69", "sand": "cdcba0", "rock": "4c8278", "flora": "6eac63", "accent": "c8d47e", "shadow": "144c5b"},
-	"ridge": {"water": "235f9a", "sand": "b6cdd0", "rock": "578eac", "flora": "83abb4", "accent": "9ee2e4", "shadow": "193d72"},
-	"citadel": {"water": "155b83", "sand": "cccfb7", "rock": "8eafa6", "flora": "529985", "accent": "e1c578", "shadow": "193859"},
-	"wreck": {"water": "1b4d70", "sand": "adb8ab", "rock": "517c88", "flora": "719da0", "accent": "d79d6a", "shadow": "183850"},
-	"bones": {"water": "255775", "sand": "b6b9a7", "rock": "5d8191", "flora": "8fae9d", "accent": "e8dfbc", "shadow": "1a3e62"},
-	"caldera": {"water": "173650", "sand": "7d8f91", "rock": "354d64", "flora": "a48f75", "accent": "efaa58", "shadow": "182e4b"},
-	"hadal": {"water": "193d72", "sand": "96afc2", "rock": "466c99", "flora": "82a9b9", "accent": "b4e7e6", "shadow": "142d56"}
+	"core": {"water": "0982b0", "sand": "f1d9a7", "rock": "3e7486", "flora": "469c79", "accent": "f09674", "shadow": "0f355d"},
+	"atoll": {"water": "12b3c4", "sand": "f4e3bc", "rock": "4e8a8d", "flora": "6fa874", "accent": "efd07a", "shadow": "125975"},
+	"kelp": {"water": "15727c", "sand": "d4ca9f", "rock": "3d7276", "flora": "4fa276", "accent": "d0dc7e", "shadow": "104453"},
+	"ridge": {"water": "1f639e", "sand": "b8cfd4", "rock": "437494", "flora": "7ea9b5", "accent": "9ce8ee", "shadow": "153668"},
+	"citadel": {"water": "165d88", "sand": "cfcfb6", "rock": "5c8284", "flora": "4f9682", "accent": "e6c875", "shadow": "153354"},
+	"wreck": {"water": "1b4f73", "sand": "aeb9ad", "rock": "436b78", "flora": "6e9ca0", "accent": "e09e63", "shadow": "15324a"},
+	"bones": {"water": "235979", "sand": "b8bca9", "rock": "4c7082", "flora": "8eae9e", "accent": "f0e7c8", "shadow": "16375a"},
+	"caldera": {"water": "16354f", "sand": "748589", "rock": "273b4f", "flora": "a88e72", "accent": "f4a64c", "shadow": "11233b"},
+	"hadal": {"water": "183e74", "sand": "98b2c6", "rock": "3d628c", "flora": "84adc0", "accent": "bceef0", "shadow": "10264b"}
 }
 const REGION_ANCHORS := {
 	"atoll": Vector3(40, 340, 255), "kelp": Vector3(-260, 280, 200),
@@ -102,7 +102,11 @@ static func material_profile(asset_key: String, material_role: String = "", regi
 			base = Color("a96e76"); tip = Color("d7c3b4"); roughness = 0.66; tint = 0.0
 		"jellyfish", "fish_abyss", "water_dragon", "flying_fish":
 			base = Color("58768e"); tip = Color("a7c8cc"); roughness = 0.61; emission = CYAN; energy = 0.22; tint = 0.0
-		"pod", "shipwreck", "diver", "submarine", "weapon":
+		"diver":
+			base = Color("17354b"); tip = Color("b9cdc9"); roughness = 0.66; metal = 0.10; tint = 0.0
+		"shipwreck":
+			base = Color("9da6a2"); tip = Color("d8cdb8"); roughness = 0.68; metal = 0.22; tint = 0.0
+		"pod", "submarine", "weapon":
 			base = Color("d4d6c9"); tip = Color("e7dfc9"); roughness = 0.46; metal = 0.3; tint = 0.0
 		"resource_copper":
 			base = Color("a67953"); tip = Color("d4b38b"); roughness = 0.65; metal = 0.35

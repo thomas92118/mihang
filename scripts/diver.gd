@@ -1,6 +1,7 @@
 extends CharacterBody3D
 
 const ModelFinish = preload("res://scripts/presentation/model_finish.gd")
+const DiverSilhouette = preload("res://scripts/presentation/diver_silhouette.gd")
 
 const OceanDepths = preload("res://scripts/ocean_depths.gd")
 const Ocean = preload("res://scripts/ocean.gd")
@@ -9,7 +10,7 @@ const AIM_FOV := 48.0
 const SCOPE_FOV := 11.56
 const CHARGE_THRESHOLD := 3.0
 const CHARGE_DURATION := 3.0
-const THIRD_PERSON_DEFAULT_DIST := 2.65
+const THIRD_PERSON_DEFAULT_DIST := 3.05
 const THIRD_PERSON_MIN_DIST := 1.6
 const THIRD_PERSON_MAX_DIST := 6.5
 const THIRD_PERSON_AIM_DIST := 1.45
@@ -60,9 +61,15 @@ var left_hand_socket: Node3D
 var right_hand_socket: Node3D
 var left_leg_pivot: Node3D
 var right_leg_pivot: Node3D
+var left_knee_pivot: Node3D
+var right_knee_pivot: Node3D
+var left_fin_pivot: Node3D
+var right_fin_pivot: Node3D
 var breath_bubbles: CPUParticles3D
 var backpack_thruster_bubbles: CPUParticles3D
 var swim_clock: float = 0.0
+var swim_motion_blend: float = 0.0
+var swim_kick_rate: float = 2.2
 var turn_bank: float = 0.0
 var body_combat_yaw: float = 0.0
 var body_combat_pitch: float = 0.0
@@ -1510,7 +1517,8 @@ func _build_diver_model() -> void:
 	diver_model.add_child(body_pivot)
 
 	var mat_suit := StandardMaterial3D.new()
-	mat_suit.albedo_color = Color("1d3545")
+	mat_suit.albedo_color = Color("17354b")
+	mat_suit.set_meta("diver_pigment", true)
 	mat_suit.metallic = 0.06
 	mat_suit.roughness = 0.72
 	mat_suit.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
@@ -1520,16 +1528,18 @@ func _build_diver_model() -> void:
 	mat_suit.rim_tint = 0.32
 
 	var mat_armor := StandardMaterial3D.new()
-	mat_armor.albedo_color = Color("cbc8b8")
-	mat_armor.metallic = 0.16
-	mat_armor.roughness = 0.52
+	mat_armor.albedo_color = Color("527d88")
+	mat_armor.set_meta("diver_pigment", true)
+	mat_armor.metallic = 0.10
+	mat_armor.roughness = 0.66
 	mat_armor.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 	mat_armor.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
 	mat_armor.rim_enabled = false
 	mat_armor.rim = 0.52
 
 	var mat_accent := StandardMaterial3D.new()
-	mat_accent.albedo_color = Color("c99652")
+	mat_accent.albedo_color = Color("d5b566")
+	mat_accent.set_meta("diver_pigment", true)
 	mat_accent.metallic = 0.14
 	mat_accent.roughness = 0.52
 	mat_accent.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
@@ -1538,65 +1548,68 @@ func _build_diver_model() -> void:
 	mat_accent.rim = 0.52
 
 	var mat_cyan := StandardMaterial3D.new()
-	mat_cyan.albedo_color = Color(0.15, 0.92, 1.0)
+	mat_cyan.albedo_color = Color("7caeae")
+	mat_cyan.set_meta("diver_pigment", true)
 	mat_cyan.emission_enabled = true
-	mat_cyan.emission = Color(0.12, 0.85, 1.0)
-	mat_cyan.emission_energy_multiplier = 0.4
+	mat_cyan.emission = Color("71aaa9")
+	mat_cyan.emission_energy_multiplier = 0.09
 
 	var mat_visor := StandardMaterial3D.new()
-	mat_visor.albedo_color = Color(0.12, 0.85, 0.98, 0.82)
-	mat_visor.metallic = 0.15
-	mat_visor.roughness = 0.08
+	mat_visor.albedo_color = Color("2b6e7d")
+	mat_visor.set_meta("diver_pigment", true)
+	mat_visor.metallic = 0.22
+	mat_visor.roughness = 0.28
 	mat_visor.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 	mat_visor.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+	mat_visor.rim_enabled = false
 	mat_visor.emission_enabled = true
-	mat_visor.emission = Color(0.14, 0.72, 0.95)
-	mat_visor.emission_energy_multiplier = 0.12
+	mat_visor.emission = Color("52a8b5")
+	mat_visor.emission_energy_multiplier = 0.07
 
 	var mat_tank := StandardMaterial3D.new()
-	mat_tank.albedo_color = Color("b1ad8b")
-	mat_tank.metallic = 0.28
-	mat_tank.roughness = 0.22
+	mat_tank.albedo_color = Color("345969")
+	mat_tank.set_meta("diver_pigment", true)
+	mat_tank.metallic = 0.12
+	mat_tank.roughness = 0.65
 	mat_tank.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
 	mat_tank.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
 	mat_tank.rim_enabled = false
 	mat_tank.rim = 0.52
 
-	# 1. Torso & Pelvis Wetsuit + Exosuit Chest Rig
+	# Continuous original suit contours stay on the existing articulated rig.
 	var torso := MeshInstance3D.new()
-	var t_cap := CapsuleMesh.new()
-	t_cap.radius = 0.145
-	t_cap.height = 0.48
-	torso.mesh = t_cap
-	torso.position = Vector3(0, 0.05, 0)
-	torso.scale = Vector3(1.12, 1.0, 0.82)
+	torso.name = "ExpeditionTorso"
+	torso.mesh = DiverSilhouette.torso()
 	torso.material_override = mat_suit
 	body_pivot.add_child(torso)
 
 	var chest_plate := MeshInstance3D.new()
-	var c_box := BoxMesh.new()
-	c_box.size = Vector3(0.27, 0.24, 0.16)
-	chest_plate.mesh = c_box
-	chest_plate.position = Vector3(0, 0.12, -0.03)
+	chest_plate.name = "ContourChestShell"
+	chest_plate.mesh = DiverSilhouette.chest()
 	chest_plate.material_override = mat_armor
 	body_pivot.add_child(chest_plate)
 
+	var chest_clasp := MeshInstance3D.new()
+	chest_clasp.name = "SternumClaspAccent"
+	var cc_box := BoxMesh.new()
+	cc_box.size = Vector3(0.048, 0.012, 0.012)
+	chest_clasp.mesh = cc_box
+	chest_clasp.position = Vector3(0.0, 0.222, -0.088)
+	chest_clasp.rotation_degrees = Vector3(-14.0, 0.0, 0.0)
+	chest_clasp.material_override = mat_accent
+	body_pivot.add_child(chest_clasp)
+
 	var spine_strip := MeshInstance3D.new()
 	var s_box := BoxMesh.new()
-	s_box.size = Vector3(0.045, 0.22, 0.02)
+	s_box.size = Vector3(0.018, 0.13, 0.012)
 	spine_strip.mesh = s_box
 	spine_strip.position = Vector3(0, 0.12, 0.10)
 	spine_strip.material_override = mat_cyan
 	body_pivot.add_child(spine_strip)
 
 	var belt := MeshInstance3D.new()
-	var b_cyl := CylinderMesh.new()
-	b_cyl.top_radius = 0.145
-	b_cyl.bottom_radius = 0.14
-	b_cyl.height = 0.055
-	belt.mesh = b_cyl
-	belt.position = Vector3(0, -0.10, 0)
-	belt.scale = Vector3(1.08, 1.0, 0.84)
+	belt.name = "WarmNavigationBelt"
+	belt.mesh = DiverSilhouette.belt()
 	belt.material_override = mat_accent
 	body_pivot.add_child(belt)
 
@@ -1607,30 +1620,39 @@ func _build_diver_model() -> void:
 	body_pivot.add_child(head_pivot)
 
 	var helmet := MeshInstance3D.new()
-	var h_sph := SphereMesh.new()
-	h_sph.radius = 0.135
-	h_sph.height = 0.27
-	helmet.mesh = h_sph
-	helmet.material_override = mat_armor
+	helmet.name = "StreamlinedHelmet"
+	helmet.mesh = DiverSilhouette.helmet()
+	helmet.material_override = mat_suit
 	head_pivot.add_child(helmet)
 
 	var visor := MeshInstance3D.new()
-	var v_sph := SphereMesh.new()
-	v_sph.radius = 0.118
-	v_sph.height = 0.21
-	visor.mesh = v_sph
-	visor.position = Vector3(0, 0.01, -0.045)
-	visor.scale = Vector3(0.95, 0.82, 0.75)
+	visor.name = "DarkVisor"
+	visor.mesh = DiverSilhouette.visor()
 	visor.material_override = mat_visor
 	head_pivot.add_child(visor)
 
+	var visor_rim := MeshInstance3D.new()
+	visor_rim.name = "VisorRimAccent"
+	visor_rim.mesh = DiverSilhouette.visor_rim()
+	visor_rim.material_override = mat_accent
+	head_pivot.add_child(visor_rim)
+
+	var collar := MeshInstance3D.new()
+	collar.name = "ExpeditionCollar"
+	collar.mesh = DiverSilhouette.collar()
+	collar.position = Vector3(0, -0.092, 0)
+	collar.material_override = mat_accent
+	head_pivot.add_child(collar)
+
 	var headlamp_bezel := MeshInstance3D.new()
 	var hl_cyl := CylinderMesh.new()
-	hl_cyl.top_radius = 0.028
-	hl_cyl.bottom_radius = 0.032
-	hl_cyl.height = 0.04
+	hl_cyl.top_radius = 0.020
+	hl_cyl.bottom_radius = 0.024
+	hl_cyl.height = 0.026
+	hl_cyl.radial_segments = 10
+	hl_cyl.rings = 0
 	headlamp_bezel.mesh = hl_cyl
-	headlamp_bezel.position = Vector3(0, 0.105, -0.10)
+	headlamp_bezel.position = Vector3(0, 0.084, -0.078)
 	headlamp_bezel.rotation.x = PI * 0.5
 	headlamp_bezel.material_override = mat_cyan
 	head_pivot.add_child(headlamp_bezel)
@@ -1640,43 +1662,38 @@ func _build_diver_model() -> void:
 	backpack.name = "ScubaBackpack"
 	backpack.position = Vector3(0, 0.10, 0.145)
 	body_pivot.add_child(backpack)
+	var pack_shell := MeshInstance3D.new()
+	pack_shell.name = "ContouredBackpack"
+	pack_shell.mesh = DiverSilhouette.backpack()
+	pack_shell.material_override = mat_suit
+	backpack.add_child(pack_shell)
 
 	for side in [-1.0, 1.0]:
 		var tank := MeshInstance3D.new()
-		var tk_cyl := CylinderMesh.new()
-		tk_cyl.top_radius = 0.052
-		tk_cyl.bottom_radius = 0.052
-		tk_cyl.height = 0.32
-		tank.mesh = tk_cyl
-		tank.position = Vector3(side * 0.068, 0.0, 0.02)
+		tank.name = "IntegratedTankLeft" if side < 0.0 else "IntegratedTankRight"
+		tank.mesh = DiverSilhouette.tank()
+		tank.position = Vector3(side * 0.052, 0.0, 0.045)
 		tank.material_override = mat_tank
 		backpack.add_child(tank)
-
-		var dome := MeshInstance3D.new()
-		var dm_sph := SphereMesh.new()
-		dm_sph.radius = 0.052
-		dm_sph.height = 0.104
-		dome.mesh = dm_sph
-		dome.position = Vector3(side * 0.068, 0.16, 0.02)
-		dome.material_override = mat_armor
-		backpack.add_child(dome)
 
 		var nozzle := MeshInstance3D.new()
 		var nz_cyl := CylinderMesh.new()
 		nz_cyl.top_radius = 0.022
 		nz_cyl.bottom_radius = 0.032
 		nz_cyl.height = 0.07
+		nz_cyl.radial_segments = 10
+		nz_cyl.rings = 0
 		nozzle.mesh = nz_cyl
-		nozzle.position = Vector3(side * 0.068, -0.18, 0.03)
+		nozzle.position = Vector3(side * 0.052, -0.168, 0.040)
 		nozzle.rotation.x = 0.25
 		nozzle.material_override = mat_suit
 		backpack.add_child(nozzle)
 
 	var o2_gauge := MeshInstance3D.new()
 	var g_box := BoxMesh.new()
-	g_box.size = Vector3(0.035, 0.22, 0.025)
+	g_box.size = Vector3(0.014, 0.12, 0.012)
 	o2_gauge.mesh = g_box
-	o2_gauge.position = Vector3(0, 0.01, 0.065)
+	o2_gauge.position = Vector3(0, 0.015, 0.085)
 	o2_gauge.material_override = mat_cyan
 	backpack.add_child(o2_gauge)
 
@@ -1733,11 +1750,13 @@ func _build_diver_model() -> void:
 	suit_light.name = "DiverSuitRimLight"
 	suit_light.position = Vector3(0.0, 0.18, 0.72)
 	suit_light.light_color = Color(0.58, 0.82, 0.88)
-	suit_light.light_energy = 0.26
+	suit_light.light_energy = 0.16
 	suit_light.omni_range = 2.6
 	suit_light.omni_attenuation = 1.15
 	diver_model.add_child(suit_light)
 	ModelFinish.apply(diver_model, "diver")
+	diver_model.set_meta("mesh_contract", DiverSilhouette.CONTRACT_VERSION)
+	diver_model.set_meta("triangle_budget", DiverSilhouette.TRIANGLE_BUDGET)
 
 func _build_limb_arm(side: float, mat_suit: Material, mat_armor: Material, mat_accent: Material, mat_cyan: Material) -> Node3D:
 	var pivot := Node3D.new()
@@ -1746,18 +1765,16 @@ func _build_limb_arm(side: float, mat_suit: Material, mat_armor: Material, mat_a
 	body_pivot.add_child(pivot)
 
 	var pauldron := MeshInstance3D.new()
-	var p_sph := SphereMesh.new()
-	p_sph.radius = 0.062
-	p_sph.height = 0.124
-	pauldron.mesh = p_sph
+	pauldron.name = "ContourShoulder"
+	pauldron.mesh = DiverSilhouette.shoulder()
+	pauldron.position = Vector3(-side * 0.010, -0.022, -0.016)
+	pauldron.rotation_degrees = Vector3(26.0, 0.0, side * 10.0)
 	pauldron.material_override = mat_armor
 	pivot.add_child(pauldron)
 
 	var upper_arm := MeshInstance3D.new()
-	var u_cap := CapsuleMesh.new()
-	u_cap.radius = 0.044
-	u_cap.height = 0.24
-	upper_arm.mesh = u_cap
+	upper_arm.name = "TaperedUpperArm"
+	upper_arm.mesh = DiverSilhouette.upper_arm()
 	upper_arm.position = Vector3(side * 0.02, -0.10, -0.05)
 	upper_arm.rotation_degrees = Vector3(32.0, 0, -side * 8.0)
 	upper_arm.material_override = mat_suit
@@ -1774,13 +1791,11 @@ func _build_limb_arm(side: float, mat_suit: Material, mat_armor: Material, mat_a
 		right_forearm_pivot = elbow_pivot
 
 	var forearm := MeshInstance3D.new()
-	var f_cap := CapsuleMesh.new()
-	f_cap.radius = 0.040
-	f_cap.height = 0.24
-	forearm.mesh = f_cap
+	forearm.name = "TaperedForearm"
+	forearm.mesh = DiverSilhouette.forearm()
 	forearm.position = Vector3(0.0, -0.04, -0.09)
 	forearm.rotation_degrees = Vector3(72.0, -side * 10.0, 0)
-	forearm.material_override = mat_armor
+	forearm.material_override = mat_suit
 	elbow_pivot.add_child(forearm)
 
 	var cuff := MeshInstance3D.new()
@@ -1788,17 +1803,17 @@ func _build_limb_arm(side: float, mat_suit: Material, mat_armor: Material, mat_a
 	c_cyl.top_radius = 0.044
 	c_cyl.bottom_radius = 0.044
 	c_cyl.height = 0.025
+	c_cyl.radial_segments = 10
+	c_cyl.rings = 0
 	cuff.mesh = c_cyl
 	cuff.position = Vector3(-side * 0.01, -0.07, -0.17)
 	cuff.rotation_degrees = Vector3(72.0, -side * 10.0, 0)
-	cuff.material_override = mat_cyan if side < 0.0 else mat_accent
+	cuff.material_override = mat_accent
 	elbow_pivot.add_child(cuff)
 
 	var glove := MeshInstance3D.new()
-	var g_sph := SphereMesh.new()
-	g_sph.radius = 0.042
-	g_sph.height = 0.084
-	glove.mesh = g_sph
+	glove.name = "ContourGlove"
+	glove.mesh = DiverSilhouette.glove()
 	glove.position = Vector3(-side * 0.01, -0.08, -0.21)
 	glove.material_override = mat_suit
 	elbow_pivot.add_child(glove)
@@ -1820,50 +1835,59 @@ func _build_limb_leg(side: float, mat_suit: Material, mat_armor: Material, mat_a
 	body_pivot.add_child(pivot)
 
 	var thigh := MeshInstance3D.new()
-	var t_cap := CapsuleMesh.new()
-	t_cap.radius = 0.056
-	t_cap.height = 0.28
-	thigh.mesh = t_cap
-	thigh.position = Vector3(0, -0.11, 0.02)
-	thigh.rotation_degrees = Vector3(-12.0, 0, 0)
+	thigh.name = "TaperedThigh"
+	thigh.mesh = DiverSilhouette.thigh()
+	thigh.position = Vector3(0, -0.11, 0.012)
+	thigh.rotation_degrees = Vector3(-6.0, 0, 0)
 	thigh.material_override = mat_suit
 	pivot.add_child(thigh)
 
+	var knee_pivot := Node3D.new()
+	knee_pivot.name = "LeftKneePivot" if side < 0.0 else "RightKneePivot"
+	knee_pivot.position = Vector3(0, -0.235, 0.025)
+	pivot.add_child(knee_pivot)
+	if side < 0.0:
+		left_knee_pivot = knee_pivot
+	else:
+		right_knee_pivot = knee_pivot
 	var knee := MeshInstance3D.new()
-	var k_sph := SphereMesh.new()
-	k_sph.radius = 0.052
-	k_sph.height = 0.104
-	knee.mesh = k_sph
-	knee.position = Vector3(0, -0.23, 0.045)
+	knee.name = "ContourKnee"
+	knee.mesh = DiverSilhouette.knee()
 	knee.material_override = mat_armor
-	pivot.add_child(knee)
+	knee_pivot.add_child(knee)
 
 	var calf := MeshInstance3D.new()
-	var c_cap := CapsuleMesh.new()
-	c_cap.radius = 0.046
-	c_cap.height = 0.27
-	calf.mesh = c_cap
-	calf.position = Vector3(0, -0.35, 0.09)
-	calf.rotation_degrees = Vector3(-22.0, 0, 0)
+	calf.name = "TaperedCalf"
+	calf.mesh = DiverSilhouette.calf()
+	calf.position = Vector3(0, -0.12, 0.018)
+	calf.rotation_degrees = Vector3(-7.5, 0, 0)
 	calf.material_override = mat_suit
-	pivot.add_child(calf)
+	knee_pivot.add_child(calf)
 
-	# Hydrodynamic Split Diving Fin (脚蹼)
+	# Flexible ankle separates the trailing fin phase from the thigh kick.
+	var ankle := Node3D.new()
+	ankle.name = "LeftFinPivot" if side < 0.0 else "RightFinPivot"
+	ankle.position = Vector3(0, -0.245, 0.034)
+	ankle.rotation_degrees.x = 11.5
+	knee_pivot.add_child(ankle)
+	if side < 0.0:
+		left_fin_pivot = ankle
+	else:
+		right_fin_pivot = ankle
 	var fin := MeshInstance3D.new()
-	var f_box := BoxMesh.new()
-	f_box.size = Vector3(0.13, 0.022, 0.34)
-	fin.mesh = f_box
-	fin.position = Vector3(0, -0.47, 0.22)
-	fin.rotation_degrees = Vector3(28.0, 0, 0)
+	fin.name = "SweptNavigationFin"
+	fin.mesh = DiverSilhouette.fin()
+	fin.position = Vector3(0, -0.010, -0.006)
+	fin.rotation_degrees = Vector3(66.0, 0.0, 0.0)
 	fin.material_override = mat_accent
-	pivot.add_child(fin)
+	ankle.add_child(fin)
 
 	var fin_rib := MeshInstance3D.new()
 	var r_box := BoxMesh.new()
-	r_box.size = Vector3(0.138, 0.026, 0.03)
+	r_box.size = Vector3(0.014, 0.009, 0.22)
 	fin_rib.mesh = r_box
-	fin_rib.position = Vector3(0, 0, 0.14)
-	fin_rib.material_override = mat_cyan
+	fin_rib.position = Vector3(0, 0.011, 0.155)
+	fin_rib.material_override = mat_suit
 	fin.add_child(fin_rib)
 	return pivot
 
@@ -1873,8 +1897,13 @@ func _animate_diver_model(delta: float) -> void:
 	var horiz_spd := Vector2(velocity.x, velocity.z).length()
 	var total_spd := velocity.length()
 	var is_moving := total_spd > 0.25
-	var kick_rate := 13.5 if (sprinting or booster_active) else (8.5 if is_moving else 2.6)
-	swim_clock += delta * kick_rate
+	var motion_target := smoothstep(0.12, 6.5, total_spd)
+	swim_motion_blend = lerpf(swim_motion_blend, motion_target, 1.0 - exp(-delta * 4.5))
+	var kick_target := lerpf(2.0, 4.8, swim_motion_blend)
+	if sprinting or booster_active:
+		kick_target = 6.4
+	swim_kick_rate = lerpf(swim_kick_rate, kick_target, 1.0 - exp(-delta * 5.0))
+	swim_clock += delta * swim_kick_rate
 
 	# Compute full-body combat choreography (torso twist, lunge, shoulder & elbow curves)
 	var target_combat_yaw := 0.0
@@ -2130,9 +2159,16 @@ func _animate_diver_model(delta: float) -> void:
 		var swim_lean := raw_swim_lean * lerpf(1.0, 0.22, combat_stance_blend)
 		var base_torso_lean := lerpf(-0.32, -0.16, combat_stance_blend)
 		var target_body_pitch := base_torso_lean - swim_lean + cam_pitch * lerpf(0.65, 0.78, combat_stance_blend) + body_combat_pitch
+		# Cruise follows the water-relative motion with a long, calm silhouette.
+		# Combat keeps its authored torso curves so weapon/hand alignment is exact.
+		var vertical_lean := atan2(velocity.y, maxf(horiz_spd, 1.2)) * 0.38
+		var cruise_pitch := -0.22 - swim_motion_blend * 0.85 + cam_pitch * 0.42 + vertical_lean
+		var pose_combat := 1.0 if in_attack else combat_stance_blend
+		target_body_pitch = lerpf(cruise_pitch, target_body_pitch, pose_combat)
 		body_pivot.rotation.x = target_body_pitch if in_attack else lerpf(body_pivot.rotation.x, target_body_pitch, 1.0 - exp(-delta * 9.0))
-		body_pivot.rotation.y = body_combat_yaw
-		body_pivot.rotation.z = (turn_bank + body_combat_roll) if in_attack else lerpf(body_pivot.rotation.z, turn_bank + body_combat_roll, 1.0 - exp(-delta * 11.0))
+		body_pivot.rotation.y = body_combat_yaw + sin(swim_clock * 0.5) * swim_motion_blend * 0.022 * (1.0 - pose_combat)
+		var flow_roll := sin(swim_clock - 0.35) * swim_motion_blend * 0.025 * (1.0 - pose_combat)
+		body_pivot.rotation.z = (turn_bank + body_combat_roll) if in_attack else lerpf(body_pivot.rotation.z, turn_bank + body_combat_roll + flow_roll, 1.0 - exp(-delta * 8.0))
 
 	diver_model.position = Vector3(0.0, -0.58 + sin(swim_clock * 0.5) * (0.015 if not is_moving else 0.025), 0.24) + body_combat_lunge
 
@@ -2141,17 +2177,30 @@ func _animate_diver_model(delta: float) -> void:
 		head_pivot.rotation.y = -body_combat_yaw * 0.55
 
 	if is_instance_valid(left_leg_pivot) and is_instance_valid(right_leg_pivot):
-		var kick_amp := 0.52 if sprinting else (0.38 if is_moving else 0.12)
+		var kick_amp := lerpf(0.055, 0.165, swim_motion_blend)
+		if sprinting or booster_active:
+			kick_amp = 0.225
 		if in_mount_mode:
 			left_leg_pivot.rotation.x = 0.35
 			right_leg_pivot.rotation.x = 0.35
 			left_leg_pivot.rotation.z = 0.22
 			right_leg_pivot.rotation.z = -0.22
 		else:
-			left_leg_pivot.rotation.x = sin(swim_clock) * kick_amp
-			right_leg_pivot.rotation.x = -sin(swim_clock) * kick_amp
-			left_leg_pivot.rotation.z = 0.0
-			right_leg_pivot.rotation.z = 0.0
+			var kick_alpha := 1.0 - exp(-delta * 12.0)
+			left_leg_pivot.rotation.x = lerpf(left_leg_pivot.rotation.x, sin(swim_clock) * kick_amp, kick_alpha)
+			right_leg_pivot.rotation.x = lerpf(right_leg_pivot.rotation.x, sin(swim_clock + PI + 0.06) * kick_amp, kick_alpha)
+			left_leg_pivot.rotation.z = -0.015
+			right_leg_pivot.rotation.z = 0.015
+		for side in range(2):
+			var knee: Node3D = left_knee_pivot if side == 0 else right_knee_pivot
+			var ankle: Node3D = left_fin_pivot if side == 0 else right_fin_pivot
+			var phase := swim_clock + (0.0 if side == 0 else PI + 0.06)
+			if is_instance_valid(knee):
+				var knee_target := -0.44 if in_mount_mode else -maxf(0.0, cos(phase - 0.20)) * kick_amp * 0.52
+				knee.rotation.x = lerpf(knee.rotation.x, knee_target, 1.0 - exp(-delta * 9.0))
+			if is_instance_valid(ankle):
+				var ankle_target := deg_to_rad(11.5) + (-0.05 if in_mount_mode else sin(phase - 1.15) * kick_amp * 0.62)
+				ankle.rotation.x = lerpf(ankle.rotation.x, ankle_target, 1.0 - exp(-delta * 8.0))
 
 	if is_instance_valid(left_arm_pivot) and is_instance_valid(right_arm_pivot):
 		if booster_active:
@@ -2192,10 +2241,10 @@ func _animate_diver_model(delta: float) -> void:
 				if is_instance_valid(left_forearm_pivot):
 					left_forearm_pivot.rotation_degrees = Vector3(22.0, 12.0, 0.0) + l_elbow
 			else:
-				var l_stroke := sin(swim_clock * 0.5) * (16.0 if is_moving else 6.0)
-				left_arm_pivot.rotation_degrees = Vector3(12.0 + l_stroke, 8.0, -10.0) + l_shoulder
+				var l_stroke := sin(swim_clock * 0.5) * lerpf(4.0, 9.5, swim_motion_blend)
+				left_arm_pivot.rotation_degrees = Vector3(lerpf(15.0, 6.0, swim_motion_blend) + l_stroke, 8.0, lerpf(-11.0, -7.0, swim_motion_blend)) + l_shoulder
 				if is_instance_valid(left_forearm_pivot):
-					left_forearm_pivot.rotation_degrees = Vector3(10.0, 4.0, 0.0) + l_elbow
+					left_forearm_pivot.rotation_degrees = Vector3(8.0 + sin(swim_clock * 0.5 - 0.6) * 4.0, 4.0, 0.0) + l_elbow
 
 			var r_idle_sway := sin(swim_clock * 0.5 + 0.6) * (6.0 if is_moving else 2.5) * (1.0 - combat_stance_blend)
 			var r_base := Vector3(44.0, -12.0, 6.0) if (is_gun and (aiming or gun_trigger_held)) else (

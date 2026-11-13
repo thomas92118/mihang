@@ -9,6 +9,8 @@ var _batches: Dictionary = {}
 var _assets: Dictionary = {}
 var _materials: Dictionary = {}
 var _rib_meshes: Dictionary = {}
+var _arch_meshes: Dictionary = {}
+var _pillar_meshes: Dictionary = {}
 var _terrace_mesh: ArrayMesh
 var _spire_mesh: ArrayMesh
 var _cube := BoxMesh.new()
@@ -61,10 +63,27 @@ func _material(region: String, role: String = "rock") -> ShaderMaterial:
 		var material := ShaderMaterial.new()
 		material.shader = Scenery
 		var glow := role == "glow"
-		var pigment_role := "accent" if glow else role
-		material.set_shader_parameter("pigment", profile[pigment_role])
-		material.set_shader_parameter("top_pigment", profile["sand"].lerp(profile[pigment_role], 0.35))
-		material.set_shader_parameter("glow_strength", 0.58 if glow else (0.14 if role == "accent" else 0.0))
+		var pigment: Color = profile["rock"]
+		var top_pigment: Color = profile["sand"].lerp(pigment, 0.36)
+		var glow_strength := 0.0
+		if role == "stone":
+			pigment = profile["rock"].darkened(0.08).lerp(profile["sand"], 0.24)
+			top_pigment = profile["sand"].darkened(0.05).lerp(pigment, 0.38)
+		elif role == "bone":
+			pigment = profile["accent"].lerp(profile["rock"], 0.16)
+			top_pigment = profile["accent"].lightened(0.10)
+			glow_strength = 0.05
+		elif role == "sand":
+			pigment = profile["sand"].darkened(0.12)
+			top_pigment = profile["sand"]
+		elif glow or role == "accent":
+			pigment = profile["accent"]
+			top_pigment = profile["accent"].lightened(0.18)
+			glow_strength = 0.65 if glow else 0.18
+		material.set_shader_parameter("pigment", pigment)
+		material.set_shader_parameter("top_pigment", top_pigment)
+		material.set_shader_parameter("shadow_pigment", profile["shadow"])
+		material.set_shader_parameter("glow_strength", glow_strength)
 		_materials[key] = material
 	return _materials[key]
 
@@ -136,36 +155,48 @@ func _garden(center: Vector2, region: String, size_value: float = 1.0) -> void:
 	var rim_xz := center + Vector2(size_value * 2.1, -size_value * 1.2)
 	_asset("starfish_urchin", Vector3(rim_xz.x, top - 0.06, rim_xz.y), Vector3.ONE * size_value * 0.72, region, size_value * 1.7)
 
-func _arch(center: Vector2, width: float, requested_height: float, yaw: float, region: String) -> void:
+func _arch(center: Vector2, width: float, requested_height: float, yaw: float, region: String, variation: int = 0) -> void:
 	var at := Vector3(center.x, _height(center), center.y)
 	var height := minf(requested_height, -at.y - 1.2)
 	var turn := Basis(Vector3.UP, yaw)
 	var thickness := width * 0.095
-	for side: float in [-1.0, 1.0]:
-		var foot := at + turn * Vector3(side * width * 0.5, 0, 0)
-		var bottom := _height(Vector2(foot.x, foot.z)) - 0.6
-		var leg_height := at.y + height * 0.54 - bottom
-		_record(region + "_columns", _column, _material(region, "sand"), Vector3(foot.x, bottom + leg_height * 0.5, foot.z), Vector3(thickness * 0.72, leg_height, thickness * 0.72), yaw, Color.WHITE, true)
-	for i in range(13):
-		var a := float(i) / 13.0 * PI
-		var b := float(i + 1) / 13.0 * PI
-		var start := Vector3(cos(a) * width * 0.5, height * 0.54 + sin(a) * height * 0.46, 0)
-		var end := Vector3(cos(b) * width * 0.5, height * 0.54 + sin(b) * height * 0.46, 0)
-		var delta := end - start
-		var up := delta.normalized()
-		var right := up.cross(Vector3.FORWARD).normalized()
-		var basis := turn * Basis(right, up, right.cross(up)).scaled_local(Vector3(thickness, delta.length() * 1.06, thickness * 1.35))
-		var point := at + turn * (start + end) * 0.5
-		_record(region + "_arches", _cube, _material(region, "sand"), point, Vector3.ONE)
-		_batches[region + "_arches"].transforms[-1] = Transform3D(basis, point)
+	var style := posmod(variation, 3)
+	if not _arch_meshes.has(style):
+		_arch_meshes[style] = _make_arch_band(style)
+	var dimensions := Vector3(width, height, thickness)
+	_record(region + "_vaults_" + str(style), _arch_meshes[style], _material(region, "stone"), at, dimensions, yaw)
+	# The vault is one continuous silhouette, while its collision remains an open
+	# chain of convex wedges. A single convex hull here would seal the swimway.
+	var sections := _arch_sections(style)
+	for index in range(sections.size() - 1):
+		var points := PackedVector3Array()
+		points.append_array(sections[index])
+		points.append_array(sections[index + 1])
+		var local_center := Vector3.ZERO
+		for point: Vector3 in points:
+			local_center += point
+		local_center /= float(points.size())
+		var shape_points := PackedVector3Array()
+		var clearance := 0.0
+		for point: Vector3 in points:
+			var offset := (point - local_center) * dimensions
+			shape_points.append(offset)
+			clearance = maxf(clearance, Vector2(offset.x, offset.z).length())
 		var body := StaticBody3D.new()
 		var collision := CollisionShape3D.new()
-		var box := BoxShape3D.new()
-		box.size = Vector3.ONE
-		collision.shape = box
-		body.transform = Transform3D(basis, point)
+		var wedge := ConvexPolygonShape3D.new()
+		wedge.points = shape_points
+		collision.shape = wedge
+		body.transform = Transform3D(turn, at + turn * (local_center * dimensions))
+		body.set_meta("ecology_clearance", clearance + 0.35)
 		body.add_child(collision)
 		add_child(body)
+	# Extend the two buried feet to the real local seabed on sloping terrain.
+	for side: float in [-1.0, 1.0]:
+		var foot := at + turn * Vector3(side * width * 0.5, 0, 0)
+		var bottom := _height(Vector2(foot.x, foot.z)) - 0.65
+		if bottom < at.y:
+			_record(region + "_footings", _column, _material(region, "stone"), Vector3(foot.x, (bottom + at.y) * 0.5, foot.z), Vector3(width * 0.043, at.y - bottom + 0.2, thickness * 0.43), yaw, Color.WHITE, true)
 	# A gold keystone emblem links ancient architecture to the interface inlays.
 	var emblem := TorusMesh.new()
 	emblem.inner_radius = 0.65
@@ -182,27 +213,43 @@ func _pillar(xz: Vector2, height: float, region: String, broken: bool = false) -
 		return
 	var y := _height(xz)
 	var h := height * (0.57 if broken else 1.0)
-	_record(region + "_columns", _column, _material(region, "sand"), Vector3(xz.x, y + h * 0.5 - 0.4, xz.y), Vector3(1.25, h, 1.25), 0, Color.WHITE, true)
-	for level: float in [0.4, h - 0.5]:
-		_record(region + "_caps", _cube, _material(region, "rock"), Vector3(xz.x, y + level, xz.y), Vector3(3.0, 0.7, 3.0), 0.12)
+	if not _pillar_meshes.has(broken):
+		_pillar_meshes[broken] = _make_pillar(broken)
+	var yaw := sin(xz.x * 0.17 + xz.y * 0.11) * 0.22
+	_record(region + ("_broken_pillars" if broken else "_stone_pillars"), _pillar_meshes[broken], _material(region, "stone"), Vector3(xz.x, y - 0.4, xz.y), Vector3(1.5, h, 1.5), yaw, Color.WHITE, true)
+	_record(region + "_caps", _cube, _material(region, "stone"), Vector3(xz.x, y + 0.22, xz.y), Vector3(3.25, 0.58, 2.95), yaw)
+	if not broken:
+		_record(region + "_caps", _cube, _material(region, "stone"), Vector3(xz.x, y + h - 0.42, xz.y), Vector3(2.85, 0.52, 2.65), yaw)
 	var inlay_role := "glow" if region in ["citadel", "hadal"] else "accent"
 	_record(region + "_inlays", _column, _material(region, inlay_role), Vector3(xz.x, y + h * 0.77, xz.y), Vector3(1.29, 0.18, 1.29))
 
-func _shoal(center: Vector2, region: String, height: float, radius: float = 15.0) -> void:
+func _shoal(center: Vector2, region: String, height: float, radius: float = 15.0, curve_mode: int = 0, stretch: Vector2 = Vector2(1.0, 0.72), yaw: float = 0.0) -> void:
 	var batch := MultiMeshInstance3D.new()
 	batch.name = region + "_ribbon"
+	batch.layers = 3
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_custom_data = true
 	mm.mesh = _fish_mesh()
 	mm.instance_count = 80 if region in ["core", "atoll", "kelp"] else 48
 	for i in range(mm.instance_count):
-		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * _seed.randf_range(0.7, 1.3)), Vector3.ZERO))
-		mm.set_instance_custom_data(i, Color(float(i) / float(mm.instance_count), _seed.randf(), _seed.randf(), 1))
-	mm.custom_aabb = AABB(Vector3(-radius - 8, -6, -radius - 8), Vector3(radius * 2 + 16, 12, radius * 2 + 16))
+		var scale_value := _seed.randf_range(0.68, 1.18) * (1.22 if i % 13 == 0 else 1.0)
+		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * scale_value), Vector3.ZERO))
+		# Two loose shoals leave a moving opening in the silhouette. All motion is
+		# continuous: there is no wrap/teleport at an artificial path end.
+		var phase := float(i) / float(mm.instance_count) * 0.72 + (0.10 if i >= mm.instance_count / 2 else 0.0)
+		mm.set_instance_custom_data(i, Color(phase, _seed.randf(), _seed.randf(), _seed.randf()))
+	# Shader displacement is in mesh space, hence the largest individual scale
+	# must also expand the complete animated path envelope before culling.
+	var reach := (radius * maxf(stretch.x, stretch.y) * 1.20 + 6.0) * 1.5
+	mm.custom_aabb = AABB(Vector3(-reach, -8.0, -reach), Vector3(reach * 2.0, 16.0, reach * 2.0))
 	var material := ShaderMaterial.new()
 	material.shader = Ribbon
 	material.set_shader_parameter("radius", radius)
+	material.set_shader_parameter("curve_mode", curve_mode)
+	material.set_shader_parameter("path_stretch", stretch)
+	material.set_shader_parameter("path_yaw", yaw)
+	material.set_shader_parameter("swim_speed", 0.105 if region in ["bones", "hadal"] else 0.14)
 	material.set_shader_parameter("back_color", Art.region_profile(region).shadow)
 	material.set_shader_parameter("belly_color", Art.region_profile(region).accent)
 	batch.multimesh = mm
@@ -210,84 +257,140 @@ func _shoal(center: Vector2, region: String, height: float, radius: float = 15.0
 	batch.position = Vector3(center.x, minf(-3.0, _height(center) + height), center.y)
 	batch.visibility_range_end = 140.0
 	batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	batch.set_meta("curve_mode", curve_mode)
+	batch.set_meta("path_radius", radius)
+	batch.set_meta("path_stretch", stretch)
 	add_child(batch)
 
 func _core() -> void:
-	for point: Vector2 in [Vector2(-21, 5), Vector2(21, -2), Vector2(-27, -14), Vector2(22, -28)]:
-		_garden(point, "core", 1.15)
+	for spec: Vector3 in [Vector3(-21, 8, 1.15), Vector3(23, 1, 1.30), Vector3(-26, -21, 1.05), Vector3(25, -33, 1.35)]:
+		_garden(Vector2(spec.x, spec.y), "core", spec.z)
 	_arch(Vector2(0, -28), 28.0, 23.0, -0.12, "core")
-	for point: Vector2 in [Vector2(-49, -40), Vector2(22, -78), Vector2(-38, -72)]:
-		_rock(point, Vector3(14, 20, 12), "core", point.x * 0.08, true)
-	_shoal(Vector2(-2, -12), "core", 8.0, 15.0)
+	var right_ledge := _rock(Vector2(31, -9), Vector3(7.6, 3.2, 6.2), "core", 0.38, false)
+	var left_ledge := _rock(Vector2(-43, -25), Vector3(9.2, 4.3, 7.2), "core", -0.28, false)
+	_asset("table_coral", Vector3(30, right_ledge - 0.08, -9), Vector3.ONE * 1.15, "core", 0.42)
+	_asset("staghorn_coral", Vector3(-42, left_ledge - 0.08, -25), Vector3.ONE * 1.18, "core", -0.45)
+	_rock(Vector2(-54, -52), Vector3(14, 24, 11), "core", -0.30, true)
+	_rock(Vector2(-19, -98), Vector3(13, 28, 11), "core", -0.48, true)
+	_rock(Vector2(48, -82), Vector3(16, 34, 12), "core", 0.35, true)
+	_rock(Vector2(-44, -92), Vector3(15, 19, 11), "core", -0.65, false)
+	_shoal(Vector2(-2, -16), "core", 9.0, 17.0, 1, Vector2(1.24, 0.72), -0.28)
 
 func _atoll() -> void:
 	var c := Vector2(40, 340)
-	for i in range(8):
-		var angle := 0.9 + float(i) * 0.63
-		var point := c + Vector2(cos(angle), sin(angle)) * 32.0
-		_garden(point, "atoll", 1.2 + float(i % 3) * 0.25)
-	_arch(c + Vector2(-17, -26), 16.0, 12.0, 0.3, "atoll")
-	_shoal(c, "atoll", 9.0, 23.0)
+	for spec: Vector3 in [Vector3(-37, -12, 1.68), Vector3(-26, -35, 0.96), Vector3(-6, -42, 0.76), Vector3(25, -32, 1.32), Vector3(38, -10, 1.48), Vector3(41, 13, 0.78), Vector3(20, 29, 0.95), Vector3(-25, 28, 1.18)]:
+		_garden(c + Vector2(spec.x, spec.y), "atoll", spec.z)
+	_arch(c + Vector2(-17, -26), 16.0, 12.0, 0.3, "atoll", 2)
+	_rock(c + Vector2(-49, -43), Vector3(16, 15, 11), "atoll", -0.32, false)
+	_rock(c + Vector2(50, -48), Vector3(12, 16, 10), "atoll", 0.44, true)
+	_shoal(c, "atoll", 9.0, 23.0, 2, Vector2(1.12, 0.66), 0.32)
 
 func _kelp() -> void:
 	var c := Vector2(-260, 280)
 	for side: float in [-1.0, 1.0]:
 		for i in range(15):
-			var point := c + Vector2(side * (14.0 + sin(float(i) * 0.65) * 5.0), float(i) * 5.4 - 35.0)
+			var corridor := 17.5 + sin(float(i) * 0.62 + side * 0.45) * 4.5 + (3.5 if i > 9 and side > 0.0 else 0.0)
+			var point := c + Vector2(side * corridor, float(i) * 5.4 - 36.0)
 			var y := _height(point)
-			var h := minf(18.0 + sin(float(i)) * 4.0, -y - 2.0)
-			_asset("kelp", Vector3(point.x, y, point.y), Vector3(1.4, h / 5.114, 1.4), "kelp", float(i) * 1.73)
+			var h := minf(15.5 + sin(float(i) * 1.15 + side * 0.8) * 6.2, -y - 2.0)
+			var breadth := 1.02 + sin(float(i) * 1.7 + side) * 0.22
+			_asset("kelp", Vector3(point.x, y, point.y), Vector3(breadth, h / 5.114, breadth), "kelp", float(i) * 1.73)
+			if i % 3 == 1:
+				var outer := point + Vector2(side * 8.5, 2.2)
+				var oy := _height(outer)
+				var oh := minf(20.5 + cos(float(i) * 0.9) * 4.5, -oy - 1.8)
+				_asset("kelp", Vector3(outer.x, oy, outer.y), Vector3(1.22, oh / 5.114, 1.22), "kelp", float(i) * 2.31)
 			if i % 4 == 0:
-				_rock(point + Vector2(side * 6.5, 0), Vector3(6.5, 8.5, 7.0), "kelp", float(i) * 0.9, true)
-	_arch(c + Vector2(0, -32), 21.0, 18.0, 0.1, "kelp")
-	_shoal(c + Vector2(0, -5), "kelp", 11.0, 10.0)
+				_rock(point + Vector2(side * 7.2, 0), Vector3(6.8, 9.5, 7.0), "kelp", float(i) * 0.9, i % 8 == 0)
+	_arch(c + Vector2(0, -32), 21.0, 18.0, 0.1, "kelp", 2)
+	_rock(c + Vector2(-32, -48), Vector3(12, 23, 11), "kelp", 0.42, true)
+	_rock(c + Vector2(30, -52), Vector3(11, 20, 10), "kelp", -0.36, true)
+	_shoal(c + Vector2(0, -5), "kelp", 11.0, 17.0, 1, Vector2(1.40, 0.42), PI * 0.5)
 
 func _ridge() -> void:
 	var c := Vector2(380, 290)
 	for i in range(8):
-		var point := c + Vector2(float(i) * 11.0 - 40.0, -18.0 - sin(float(i) * 0.9) * 10.0)
-		_rock(point, Vector3(6.5, 16.0 + float(i % 3) * 7.0, 8.0), "ridge", float(i) * 0.55, true)
-		if i in [1, 3, 5, 7]:
+		var point := c + Vector2(float(i) * 11.0 - 42.0, -18.0 - sin(float(i) * 0.9) * 10.0)
+		_rock(point, Vector3(6.8, 18.0 + float(i % 3) * 7.5, 8.2), "ridge", float(i) * 0.55, true)
+		if i in [1, 2, 4, 6, 7]:
 			var crystal_xz := point + Vector2(2.5, 5.5)
-			_asset("crystal_spire", Vector3(crystal_xz.x, _height(crystal_xz), crystal_xz.y), Vector3.ONE * (2.4 + float(i % 2) * 0.6), "ridge", float(i) * 0.8)
+			_asset("crystal_spire", Vector3(crystal_xz.x, _height(crystal_xz), crystal_xz.y), Vector3.ONE * (2.5 + float(i % 2) * 0.65), "ridge", float(i) * 0.8)
+	for fore: Vector2 in [Vector2(-4, 24), Vector2(31, 18)]:
+		var shelf_xz := c + fore
+		var shelf_top := _rock(shelf_xz, Vector3(7.2, 5.2, 6.2), "ridge", fore.x * 0.08, false)
+		_asset("crystal_spire", Vector3(shelf_xz.x + 0.8, shelf_top - 0.35, shelf_xz.y - 0.6), Vector3.ONE * 2.25, "ridge", fore.y * 0.12)
 	_rock(c + Vector2(-18, 12), Vector3(7.5, 12.0, 8.5), "ridge", 1.1, true)
+	_rock(c + Vector2(-46, -47), Vector3(12, 38, 12), "ridge", -0.32, true)
+	_rock(c + Vector2(18, -54), Vector3(11, 33, 11), "ridge", 0.28, true)
 	_garden(c + Vector2(-8, 8), "ridge", 1.35)
-	_shoal(c, "ridge", 13.0, 18.0)
+	_shoal(c, "ridge", 17.0, 23.0, 0, Vector2(1.30, 0.45), -0.45)
 	var aurora := OmniLight3D.new()
 	aurora.name = "AuroraRidgeLight"
-	aurora.position = Vector3(c.x, _height(c) + 10.0, c.y - 8.0)
+	aurora.position = Vector3(c.x + 2.0, _height(c) + 12.0, c.y - 4.0)
 	aurora.light_color = Color("8be6ec")
-	aurora.light_energy = 2.2
-	aurora.omni_range = 62.0
+	aurora.light_energy = 3.4
+	aurora.omni_range = 66.0
+	aurora.distance_fade_enabled = true
+	aurora.distance_fade_begin = 110.0
+	aurora.distance_fade_length = 30.0
 	aurora.set_meta("authored_light", true)
 	add_child(aurora)
 
 func _citadel() -> void:
 	var c := Vector2(460, -60)
-	_arch(c + Vector2(0, -22), 25.0, 25.0, 0, "citadel")
-	_arch(c + Vector2(-1, -42), 18.0, 22.0, -0.03, "citadel")
+	_arch(c + Vector2(0, -22), 25.0, 25.0, 0, "citadel", 1)
+	_arch(c + Vector2(-1, -42), 18.0, 22.0, -0.03, "citadel", 2)
 	for side: float in [-1.0, 1.0]:
 		for i in range(4):
-			_pillar(c + Vector2(side * 16.0, 17.0 - float(i) * 15.0), 13.0 + float(i) * 1.5, "citadel", side < 0 and i == 1)
+			var broken := (side < 0.0 and i == 1) or (side > 0.0 and i == 2)
+			_pillar(c + Vector2(side * 16.0, 17.0 - float(i) * 15.0 + (3.0 if side < 0 else 0.0)), 13.0 + float(i) * 1.5 + side * 0.75, "citadel", broken)
 	_garden(c + Vector2(-26, 13), "citadel", 1.5)
 	_garden(c + Vector2(24, -16), "citadel", 1.3)
 	for point: Vector2 in [Vector2(-53, -54), Vector2(49, -68), Vector2(12, -88)]:
 		_rock(c + point, Vector3(13, 34, 13), "citadel", point.x * 0.1, true)
-	_shoal(c + Vector2(0, -8), "citadel", 18.0, 21.0)
+	_rock(c + Vector2(0, -115), Vector3(23, 48, 14), "citadel", -0.22, true)
+	_shoal(c + Vector2(0, -8), "citadel", 22.0, 24.0, 2, Vector2(0.95, 0.64), PI * 0.5)
+	var sanctum_glow := OmniLight3D.new()
+	sanctum_glow.name = "CitadelSanctumLight"
+	sanctum_glow.position = Vector3(c.x, _height(c) + 15.0, c.y - 24.0)
+	sanctum_glow.light_color = Color("ead08a")
+	sanctum_glow.light_energy = 2.5
+	sanctum_glow.omni_range = 54.0
+	sanctum_glow.distance_fade_enabled = true
+	sanctum_glow.distance_fade_begin = 110.0
+	sanctum_glow.distance_fade_length = 30.0
+	sanctum_glow.set_meta("authored_light", true)
+	add_child(sanctum_glow)
 
 func _wreck() -> void:
 	var c := Vector2(420, -380)
 	for i in range(2):
-		var point := c + (Vector2(-16, -12) if i == 0 else Vector2(24, -25))
-		var ship: Node3D = ocean.model("shipwreck", Vector3(point.x, _height(point) + 1.0, point.y), 1.8 if i == 0 else 1.3, 180.0)
-		ship.rotation = Vector3(0.08, -0.55 if i == 0 else 1.15, -0.22 if i == 0 else 0.18)
+		var point := c + (Vector2(-16, -12) if i == 0 else Vector2(25, -26))
+		var ship: Node3D = ocean.model("shipwreck", Vector3(point.x, _height(point) + 1.15, point.y), 1.85 if i == 0 else 1.38, 180.0)
+		ship.rotation = Vector3(0.10 if i == 0 else -0.07, -0.58 if i == 0 else 1.18, -0.25 if i == 0 else 0.22)
 		ocean._attach_landmark_collision(ship, "shipwreck")
-		var mast_pos := Vector3(point.x, _height(point) + (5.2 if i == 0 else 4.0), point.y + (2.5 if i == 0 else -1.8))
-		_record("wreck_lanterns", _column, _material("wreck", "glow"), mast_pos, Vector3(0.32, 0.55, 0.32))
-	for point: Vector2 in [Vector2(-35, 7), Vector2(38, -43), Vector2(-26, -41)]:
-		_rock(c + point, Vector3(7.5, 12.5, 9.5), "wreck", point.x * 0.15, true)
+		for gi: GeometryInstance3D in ship.find_children("*", "GeometryInstance3D", true, false):
+			gi.layers = 3
+		var mast_base := Vector3(point.x, _height(point) + (3.6 if i == 0 else 2.9), point.y + (2.4 if i == 0 else -1.8))
+		var mast_top := mast_base + Vector3(0, 2.4 if i == 0 else 1.9, 0)
+		_record("wreck_masts", _column, _material("wreck", "stone"), (mast_base + mast_top) * 0.5, Vector3(0.16, mast_top.y - mast_base.y, 0.16))
+		_record("wreck_lanterns", _column, _material("wreck", "glow"), mast_top, Vector3(0.46, 0.78, 0.46))
+	for spec: Vector3 in [Vector3(-35, 7, 0.90), Vector3(39, -44, 1.38), Vector3(-26, -41, 1.08)]:
+		_rock(c + Vector2(spec.x, spec.y), Vector3(8.5, 14.5, 9.5) * spec.z, "wreck", spec.x * 0.15, true)
+	_rock(c + Vector2(-14, 14), Vector3(8.0, 4.2, 6.8), "wreck", 0.42, false)
 	_garden(c + Vector2(27, 8), "wreck", 1.1)
-	_shoal(c + Vector2(-5, 0), "wreck", 12.0, 19.0)
+	_shoal(c + Vector2(-5, 0), "wreck", 14.0, 26.0, 1, Vector2(1.15, 0.48), -0.8)
+	var beacon := OmniLight3D.new()
+	beacon.name = "WreckChannelBeacon"
+	beacon.position = Vector3(c.x + 3.0, _height(c) + 11.0, c.y - 16.0)
+	beacon.light_color = Color("f2a45a")
+	beacon.light_energy = 3.2
+	beacon.omni_range = 54.0
+	beacon.distance_fade_enabled = true
+	beacon.distance_fade_begin = 110.0
+	beacon.distance_fade_length = 30.0
+	beacon.set_meta("authored_light", true)
+	add_child(beacon)
 
 func _bones() -> void:
 	var c := Vector2(-480, -90)
@@ -296,61 +399,204 @@ func _bones() -> void:
 		var y := _height(point)
 		var spine_yaw := atan2(cos(float(i) * 0.45) * 1.8, 9.0)
 		var spine_pos := Vector3(point.x, y + 1.25, point.y)
-		_record("bones_spine", _column, _material("bones", "accent"), spine_pos, Vector3.ONE)
+		_record("bones_spine", _column, _material("bones", "bone"), spine_pos, Vector3.ONE)
 		_batches["bones_spine"].transforms[-1] = Transform3D(
 			Basis(Vector3.UP, spine_yaw) * Basis(Vector3.RIGHT, PI * 0.5).scaled_local(Vector3(1.65, 3.8, 1.45)),
 			spine_pos
 		)
-		_record("bones_crest", _cube, _material("bones", "sand"), spine_pos + Vector3(0, 1.45, 0), Vector3(0.42, 1.5, 2.2), spine_yaw)
+		_record("bones_crest", _cube, _material("bones", "bone"), spine_pos + Vector3(0, 1.48, 0), Vector3(0.46, 1.65, 2.25), spine_yaw)
 		for side: float in [-1.0, 1.0]:
-			var broken := (i == 2 and side < 0.0) or (i == 6 and side > 0.0)
+			var broken := (i == 1 and side > 0.0) or (i == 3 and side < 0.0) or (i == 6 and side > 0.0)
 			var key := "bones_rib_%s_%s" % ["l" if side < 0.0 else "r", "broken" if broken else "whole"]
 			if not _rib_meshes.has(key):
 				_rib_meshes[key] = ocean._build_leviathan_rib_mesh(side, broken)
-			_record(key, _rib_meshes[key], _material("bones", "accent"), Vector3(point.x + side * 14.5, y - 0.5, point.y), Vector3.ONE * (0.85 + sin(float(i) / 8.0 * PI) * 0.25))
-	for point: Vector2 in [Vector2(-36, -32), Vector2(48, -18), Vector2(-44, 26)]:
+			var rib_scale := 0.78 + sin(float(i) / 8.0 * PI) * 0.42
+			_record(key, _rib_meshes[key], _material("bones", "bone"), Vector3(point.x + side * (13.2 + rib_scale * 2.2), y - 0.5, point.y), Vector3.ONE * rib_scale)
+	for point: Vector2 in [Vector2(-34, -36), Vector2(48, -18), Vector2(-44, 26)]:
 		_rock(c + point, Vector3(9.5, 14.0, 8.5), "bones", point.x * 0.12, true)
-	_shoal(c + Vector2(0, -6), "bones", 21.0, 23.0)
+	_rock(c + Vector2(18, -80), Vector3(13, 28, 10), "bones", 0.42, true)
+	_shoal(c + Vector2(0, -6), "bones", 27.0, 29.0, 0, Vector2(1.28, 0.62), 0.1)
+	var pale_light := OmniLight3D.new()
+	pale_light.name = "BonefieldPaleLight"
+	pale_light.position = Vector3(c.x + 6.0, _height(c) + 18.0, c.y - 6.0)
+	pale_light.light_color = Color("9ed2eb")
+	pale_light.light_energy = 3.8
+	pale_light.omni_range = 64.0
+	pale_light.distance_fade_enabled = true
+	pale_light.distance_fade_begin = 110.0
+	pale_light.distance_fade_length = 30.0
+	pale_light.set_meta("authored_light", true)
+	add_child(pale_light)
 
 func _caldera() -> void:
 	var c := Vector2(-440, -420)
 	for i in range(9):
 		var point := c + Vector2(float(i) * 10.0 - 42.0, -26.0 - cos(float(i)) * 8.0)
-		_rock(point, Vector3(5.5, 16.0 + float(i % 4) * 5.0, 7.5), "caldera", float(i) * 0.42, true)
+		_rock(point, Vector3(5.8 + sin(float(i) * 1.1) * 1.35, 17.0 + float(i % 4) * 5.5, 7.8), "caldera", float(i) * 0.42, true)
 	for point: Vector2 in [Vector2(-32, 8), Vector2(34, 4)]:
-		_rock(c + point, Vector3(6.5, 15.0, 7.0), "caldera", point.x * 0.1, true)
+		_rock(c + point, Vector3(6.8, 16.0, 7.2), "caldera", point.x * 0.1, true)
+	for rim_ledge: Vector2 in [Vector2(-22, 18), Vector2(24, 16)]:
+		_rock(c + rim_ledge, Vector3(7.5, 4.6, 6.4), "caldera", rim_ledge.x * 0.06, false)
 	for point: Vector2 in [Vector2(-17, -4), Vector2(8, -16), Vector2(21, -22), Vector2(-25, -24)]:
 		ocean._create_hydrothermal_vent(Vector3(c.x + point.x, _height(c + point), c.y + point.y))
 	var magma_glow := OmniLight3D.new()
 	magma_glow.name = "CalderaBasinGlow"
-	magma_glow.position = Vector3(c.x - 2.0, _height(c) + 11.0, c.y - 16.0)
-	magma_glow.light_color = Color("ff8c3b")
-	magma_glow.light_energy = 3.4
-	magma_glow.omni_range = 48.0
+	magma_glow.position = Vector3(c.x - 2.0, _height(c) + 12.0, c.y - 15.0)
+	magma_glow.light_color = Color("ff8836")
+	magma_glow.light_energy = 4.2
+	magma_glow.omni_range = 28.0
+	magma_glow.distance_fade_enabled = true
+	magma_glow.distance_fade_begin = 95.0
+	magma_glow.distance_fade_length = 25.0
 	magma_glow.set_meta("authored_light", true)
 	add_child(magma_glow)
-	_shoal(c, "caldera", 16.0, 24.0)
+	_shoal(c, "caldera", 19.0, 25.0, 2, Vector2(1.0, 0.70), -0.24)
 
 func _hadal() -> void:
 	var c := Vector2(60, -640)
-	_arch(c + Vector2(0, -28), 30.0, 31.0, 0.05, "hadal")
+	_arch(c + Vector2(0, -28), 30.0, 31.0, 0.05, "hadal", 2)
 	for side: float in [-1.0, 1.0]:
 		_pillar(c + Vector2(side * 22.0, -12.0), 19.0, "hadal", false)
 		_pillar(c + Vector2(side * 18.0, 6.0), 14.5, "hadal", side > 0.0)
 	for i in range(5):
 		var point := c + Vector2(-37.0 + float(i) * 19.0, -48.0 - absf(2.0 - float(i)) * 6.0)
-		_rock(point, Vector3(7.5, 32.0 + float(i % 2) * 9.0, 9.5), "hadal", float(i) * 0.5, true)
-	for point: Vector2 in [Vector2(-20, 9), Vector2(24, -8), Vector2(-14, -22), Vector2(15, -24)]:
+		_rock(point, Vector3(7.8, 33.0 + float(i % 2) * 9.5, 9.5), "hadal", float(i) * 0.5, true)
+	for approach: Vector2 in [Vector2(-24, 22), Vector2(26, 24)]:
+		_rock(c + approach, Vector3(8.2, 3.8, 6.8), "hadal", approach.x * 0.05, false)
+	for point: Vector2 in [Vector2(-22, 9), Vector2(24, -8), Vector2(-15, -22), Vector2(16, -24)]:
 		_asset("crystal_spire", Vector3(c.x + point.x, _height(c + point), c.y + point.y), Vector3.ONE * 3.0, "hadal", point.x * 0.1)
-	_shoal(c + Vector2(0, -4), "hadal", 24.0, 24.0)
+	_shoal(c + Vector2(0, -4), "hadal", 27.0, 29.0, 1, Vector2(1.12, 0.50), -0.12)
 	var light := OmniLight3D.new()
 	light.name = "SanctumPearlLight"
-	light.position = Vector3(c.x, _height(c) + 17.0, c.y - 22.0)
-	light.light_color = Color("8ee0f6")
-	light.light_energy = 3.9
-	light.omni_range = 54.0
+	light.position = Vector3(c.x, _height(c) + 18.5, c.y - 18.0)
+	light.light_color = Color("94e4fa")
+	light.light_energy = 5.8
+	light.omni_range = 52.0
+	light.distance_fade_enabled = true
+	light.distance_fade_begin = 110.0
+	light.distance_fade_length = 30.0
 	light.set_meta("authored_light", true)
 	add_child(light)
+
+func _add_tri(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
+	var normal := (c - a).cross(b - a).normalized()
+	surface.set_normal(normal)
+	surface.add_vertex(a)
+	surface.add_vertex(b)
+	surface.add_vertex(c)
+
+func _add_quad(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
+	var normal := ((c - a).cross(b - a) + (c - b).cross(d - b)).normalized()
+	surface.set_normal(normal)
+	surface.add_vertex(a)
+	surface.add_vertex(b)
+	surface.add_vertex(c)
+	surface.add_vertex(b)
+	surface.add_vertex(d)
+	surface.add_vertex(c)
+
+func _arch_sections(style: int) -> Array[PackedVector3Array]:
+	var centers: Array[Vector2] = [Vector2(-0.5, -0.025), Vector2(-0.5, 0.23), Vector2(-0.5, 0.48)]
+	for i in range(1, 17):
+		var phase := float(i) / 16.0 * PI
+		var asymmetry := sin(phase) * sin(phase * 2.0) * (0.035 if style == 2 else 0.012)
+		var rise := sin(phase) * 0.47
+		if style == 1:
+			rise = (sin(phase) * 0.76 + (1.0 - absf(cos(phase))) * 0.24) * 0.48
+		centers.append(Vector2(-cos(phase) * 0.5 + asymmetry, 0.48 + rise))
+	centers.append(Vector2(0.5, 0.23))
+	centers.append(Vector2(0.5, -0.025))
+	var sections: Array[PackedVector3Array] = []
+	for i in range(centers.size()):
+		var tangent := centers[mini(i + 1, centers.size() - 1)] - centers[maxi(i - 1, 0)]
+		var outward := Vector2(-tangent.y, tangent.x).normalized()
+		var phase := float(i) / float(centers.size() - 1)
+		var width := 0.043 * (1.0 + sin(phase * PI * 3.0 + float(style)) * 0.13)
+		var depth := 0.50 * (1.0 + sin(phase * PI * 2.0 + float(style)) * 0.12)
+		var inner := centers[i] - outward * width
+		var outer := centers[i] + outward * width
+		sections.append(PackedVector3Array([
+			Vector3(inner.x, inner.y, -depth), Vector3(outer.x, outer.y, -depth),
+			Vector3(outer.x, outer.y, depth), Vector3(inner.x, inner.y, depth)
+		]))
+	return sections
+
+func _make_arch_band(style: int) -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	surface.set_smooth_group(-1)
+	var sections := _arch_sections(style)
+	var profiles: Array[PackedVector3Array] = []
+	for i in range(sections.size()):
+		var s: PackedVector3Array = sections[i]
+		var inner := Vector2(s[0].x, s[0].y)
+		var outer := Vector2(s[1].x, s[1].y)
+		var center := (inner + outer) * 0.5
+		var half_span := (outer - inner) * 0.5
+		var phase := float(i) / float(sections.size() - 1)
+		var keystone := 1.09 if absf(phase - 0.5) < 0.08 else (1.03 if i % 2 == 0 else 0.98)
+		var w := half_span * keystone
+		var wc := w * 0.58
+		var d := absf(s[2].z) * keystone
+		var dc := d * 0.62
+		profiles.append(PackedVector3Array([
+			Vector3(center.x - w.x, center.y - w.y, -dc),
+			Vector3(center.x - wc.x, center.y - wc.y, -d),
+			Vector3(center.x + wc.x, center.y + wc.y, -d),
+			Vector3(center.x + w.x, center.y + w.y, -dc),
+			Vector3(center.x + w.x, center.y + w.y, dc),
+			Vector3(center.x + wc.x, center.y + wc.y, d),
+			Vector3(center.x - wc.x, center.y - wc.y, d),
+			Vector3(center.x - w.x, center.y - w.y, dc),
+		]))
+	for i in range(sections.size() - 1):
+		for edge in range(8):
+			var next_edge := (edge + 1) % 8
+			var a: Vector3 = profiles[i][edge]
+			var b: Vector3 = profiles[i][next_edge]
+			var c: Vector3 = profiles[i + 1][edge]
+			var d: Vector3 = profiles[i + 1][next_edge]
+			_add_quad(surface, a, c, b, d)
+	for end in [0, sections.size() - 1]:
+		var profile: PackedVector3Array = profiles[end]
+		var cap_center := Vector3.ZERO
+		for p: Vector3 in profile:
+			cap_center += p
+		cap_center /= float(profile.size())
+		for edge in range(8):
+			var next_edge := (edge + 1) % 8
+			if end == 0:
+				_add_tri(surface, cap_center, profile[edge], profile[next_edge])
+			else:
+				_add_tri(surface, cap_center, profile[next_edge], profile[edge])
+	return surface.commit()
+
+func _make_pillar(broken: bool) -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	surface.set_smooth_group(-1)
+	var sides := 8
+	var rings: Array[PackedVector3Array] = []
+	for level in range(5):
+		var y := float(level) / 4.0
+		var radius := lerpf(1.0, 0.74, y) * (1.0 + sin(y * PI) * 0.04)
+		var ring := PackedVector3Array()
+		for index in range(sides):
+			var angle := (float(index) + 0.5) / float(sides) * TAU
+			var chamfer := 1.0 + (0.04 if index % 2 == 0 else -0.02)
+			var top := y
+			if broken and level == 4:
+				top += cos(angle - 0.55) * 0.09 + sin(angle * 2.0) * 0.03
+			ring.append(Vector3(cos(angle) * radius * chamfer + y * 0.04, top, sin(angle) * radius * chamfer))
+		rings.append(ring)
+	for level in range(4):
+		for index in range(sides):
+			var next := (index + 1) % sides
+			_add_quad(surface, rings[level][index], rings[level][next], rings[level + 1][index], rings[level + 1][next])
+	var cap_apex := Vector3(0.04, 1.03 if broken else 1.0, -0.02)
+	for index in range(sides):
+		_add_tri(surface, rings[4][index], rings[4][(index + 1) % sides], cap_apex)
+	return surface.commit()
 
 func _flush() -> void:
 	for key: String in _batches:
@@ -386,66 +632,83 @@ func _flush() -> void:
 func _make_terrace() -> ArrayMesh:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var sides := 11
+	surface.set_smooth_group(-1)
+	var sides := 9
 	var vertices: Array[Vector3] = []
-	for level in range(5):
-		var radius: float = [1.02, 0.96, 0.84, 0.75, 0.60][level]
-		var y: float = [0.0, 0.28, 0.56, 0.84, 0.98][level]
-		var shift := Vector2(0.03 * float(level), -0.02 * float(level))
+	var radii: Array[float] = [1.04, 0.95, 0.72, 0.65, 0.50, 0.45]
+	var heights: Array[float] = [0.0, 0.36, 0.41, 0.77, 0.82, 0.97]
+	for level in range(radii.size()):
+		var radius: float = radii[level]
+		var y: float = heights[level]
+		var tier := level >> 1
+		var shift := Vector2(0.035 * float(tier), -0.025 * float(tier))
 		for i in range(sides):
-			var angle := float(i) / float(sides) * TAU + float(level) * 0.08
-			var jag := 1.0 + sin(float(i) * 2.3 + 0.4) * 0.13 + cos(float(i) * 3.7 - float(level)) * 0.07
+			var angle := float(i) / float(sides) * TAU + float(tier) * 0.11
+			var jag := 1.0 + sin(float(i) * 2.1 + 0.5) * 0.14 + cos(float(i) * 3.4 - float(tier) * 0.8) * 0.08
 			var r := radius * jag
-			vertices.append(Vector3(cos(angle) * r + shift.x, y, sin(angle) * r + shift.y))
-	for level in range(4):
+			var ledge := y + (sin(float(i) * 2.0 + float(tier)) * 0.014 if level in [1, 2, 3, 4] else 0.0)
+			vertices.append(Vector3(cos(angle) * r + shift.x, ledge, sin(angle) * r + shift.y))
+	for level in range(radii.size() - 1):
 		for i in range(sides):
 			var a := level * sides + i
 			var b := level * sides + (i + 1) % sides
-			for index: int in [a, b, a + sides, b, b + sides, a + sides]:
-				surface.add_vertex(vertices[index])
-	var top_base := 4 * sides
-	var apex := Vector3(0.05, 1.0, -0.04)
+			_add_quad(surface, vertices[a], vertices[b], vertices[a + sides], vertices[b + sides])
+	var top_base := (radii.size() - 1) * sides
+	var apex := Vector3(0.04, 1.0, -0.03)
 	for i in range(sides):
-		surface.add_vertex(vertices[top_base + i])
-		surface.add_vertex(vertices[top_base + (i + 1) % sides])
-		surface.add_vertex(apex)
-	surface.generate_normals()
+		_add_tri(surface, vertices[top_base + i], vertices[top_base + (i + 1) % sides], apex)
 	return surface.commit()
 
 func _make_spire() -> ArrayMesh:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var sides := 8
+	surface.set_smooth_group(-1)
+	var sides := 7
 	var vertices: Array[Vector3] = []
-	for level in range(5):
-		var radius: float = [1.0, 0.86, 0.66, 0.45, 0.22][level]
-		var y: float = [0.0, 0.24, 0.54, 0.80, 0.94][level]
-		var lean := Vector2(0.07 * float(level) / 4.0, -0.05 * float(level) / 4.0)
+	var radii: Array[float] = [1.02, 0.86, 0.69, 0.56, 0.36, 0.17]
+	var heights: Array[float] = [0.0, 0.28, 0.33, 0.63, 0.84, 0.95]
+	for level in range(radii.size()):
+		var radius: float = radii[level]
+		var y: float = heights[level]
+		var lean := Vector2(0.08 * y, -0.06 * y)
 		for i in range(sides):
-			var angle := float(i) / float(sides) * TAU + float(level) * 0.14
-			var flute := 1.0 + sin(float(i) * 3.0 + 0.7) * 0.16 + cos(float(i) * 2.0 + float(level)) * 0.09
-			var crest := y + (0.04 * sin(float(i) * 2.0) if level == 4 else 0.0)
+			var angle := float(i) / float(sides) * TAU + float(level >> 1) * 0.12
+			var flute := 1.0 + sin(float(i) * 2.4 + 0.7) * 0.17 + cos(float(i) * 3.1 + float(level) * 0.5) * 0.09
+			var crest := y + (0.025 * sin(float(i) * 2.0) if level == radii.size() - 1 else 0.0)
 			vertices.append(Vector3(cos(angle) * radius * flute + lean.x, crest, sin(angle) * radius * flute + lean.y))
-	for level in range(4):
+	for level in range(radii.size() - 1):
 		for i in range(sides):
 			var a := level * sides + i
 			var b := level * sides + (i + 1) % sides
-			for index: int in [a, b, a + sides, b, b + sides, a + sides]:
-				surface.add_vertex(vertices[index])
-	var top_base := 4 * sides
-	var peak := Vector3(0.07, 1.0, -0.05)
+			_add_quad(surface, vertices[a], vertices[b], vertices[a + sides], vertices[b + sides])
+	var top_base := (radii.size() - 1) * sides
+	var peak := Vector3(0.08, 1.0, -0.06)
 	for i in range(sides):
-		surface.add_vertex(vertices[top_base + i])
-		surface.add_vertex(vertices[top_base + (i + 1) % sides])
-		surface.add_vertex(peak)
-	surface.generate_normals()
+		_add_tri(surface, vertices[top_base + i], vertices[top_base + (i + 1) % sides], peak)
 	return surface.commit()
 
 func _fish_mesh() -> ArrayMesh:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var points := [Vector3(0, 0, 0.55), Vector3(-0.13, 0, 0.05), Vector3(0, 0.18, 0.05), Vector3(0.13, 0, 0.05), Vector3(0, -0.10, 0.05), Vector3(0, 0, -0.42), Vector3(0, 0.23, -0.62), Vector3(0, -0.20, -0.62)]
-	for index: int in [0,2,1, 0,3,2, 0,4,3, 0,1,4, 5,1,2, 5,2,3, 5,3,4, 5,4,1, 5,6,7]:
-		surface.add_vertex(points[index])
+	var profiles: Array[Vector3] = [Vector3(-0.40, 0.025, 0.035), Vector3(-0.16, 0.11, 0.13), Vector3(0.14, 0.115, 0.15), Vector3(0.38, 0.065, 0.085), Vector3(0.54, 0.010, 0.018)]
+	for ring in range(profiles.size() - 1):
+		for side in range(8):
+			var points: Array[Vector3] = []
+			for offset: Vector2i in [Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(1, 0)]:
+				var profile: Vector3 = profiles[ring + offset.x]
+				var angle := float((side + offset.y) % 8) / 8.0 * TAU
+				points.append(Vector3(cos(angle) * profile.y, sin(angle) * profile.z, profile.x))
+			for point: Vector3 in points:
+				surface.add_vertex(point)
+	# Forked tail, dorsal and pectoral fins keep the small silhouette readable.
+	for point: Vector3 in [
+		Vector3(0, 0, -0.35), Vector3(0, 0.24, -0.64), Vector3(0, 0.02, -0.53),
+		Vector3(0, 0, -0.35), Vector3(0, -0.02, -0.53), Vector3(0, -0.20, -0.64),
+		Vector3(0, 0.13, 0.12), Vector3(0, 0.25, -0.10), Vector3(0, 0.11, -0.24)
+	]:
+		surface.add_vertex(point)
+	for side: float in [-1.0, 1.0]:
+		for point: Vector3 in [Vector3(side * 0.08, -0.025, 0.13), Vector3(side * 0.25, -0.055, -0.12), Vector3(side * 0.08, -0.045, -0.06)]:
+			surface.add_vertex(point)
 	surface.generate_normals()
 	return surface.commit()

@@ -103,7 +103,7 @@ func _collect_exclusion_zones() -> void:
 		for node: Node in composition.get_children():
 			if node is StaticBody3D:
 				var pos: Vector3 = node.position
-				var radius := maxf(node.scale.x, node.scale.z) * 1.05
+				var radius := float(node.get_meta("ecology_clearance", maxf(node.scale.x, node.scale.z) * 1.05))
 				_exclusion_zones.append(Vector3(pos.x, pos.z, radius))
 	var tree: Node3D = _ocean.get("mother_tree")
 	if is_instance_valid(tree):
@@ -219,8 +219,12 @@ func build_chunk_plan(cell: Vector2i) -> Array[Dictionary]:
 				shape.y = minf(shape.y, (float(habitat["depth"]) - 1.5) / 5.2)
 			_add_to_plan(plan, asset, p, shape, yaw + local_rng.randf_range(-0.5, 0.5))
 		# Low-cost blades form the understory only where photosynthesis is possible.
-		for index in range(9):
-			var p := center + Vector2(local_rng.randf_range(-10, 10), local_rng.randf_range(-10, 10))
+		for index in range(7):
+			# Understory follows the colony's shoulder as one crescent-shaped patch;
+			# it no longer peppers each exposed sand square with separate tufts.
+			var angle := yaw - 1.1 + float(index) * 0.34
+			var drift_radius := size * 2.3 + local_rng.randf_range(-1.1, 1.1)
+			var p := center + Vector2(cos(angle), sin(angle)) * drift_radius
 			var habitat := sample_habitat(p.x, p.y)
 			if float(habitat["depth"]) > 35.0 or float(habitat["slope"]) > 0.32 or _is_sand_channel(p):
 				continue
@@ -228,12 +232,12 @@ func build_chunk_plan(cell: Vector2i) -> Array[Dictionary]:
 			_add_to_plan(plan, "seagrass", p, Vector3(blade_scale, blade_scale * local_rng.randf_range(0.85, 1.3), blade_scale), local_rng.randf() * TAU)
 	# Pebble drifts and shell hash remain visible across all depth bands, including
 	# map edges. Drift noise leaves rippled sand exposed between the patches.
-	for index in range(25):
+	for index in range(18):
 		var p := origin + Vector2(local_rng.randf_range(1.0, 47.0), local_rng.randf_range(1.0, 47.0))
 		if _is_sand_channel(p) and index % 4 != 0:
 			continue
 		var drift := _patch_noise.get_noise_2d(p.x * 2.1, p.y * 2.1)
-		if drift < -0.22 and index > 23:
+		if drift < -0.22 and index > 10:
 			continue
 		var size := local_rng.randf_range(0.45, 1.8)
 		var asset := "shell" if index % 5 == 0 else "pebble"
@@ -661,13 +665,18 @@ func _build_ambient_shoal(chunk: Node3D, cell: Vector2i) -> void:
 			var at: Vector3 = record["position"] - chunk.position
 			var basis := Basis(Vector3.UP, float(record["yaw"])).scaled(Vector3.ONE * size)
 			mm.set_instance_transform(index, Transform3D(basis, at))
-			mm.set_instance_custom_data(index, Color(float(record["phase"]), 0.43, float(index) * 0.17, 1.0))
+			mm.set_instance_custom_data(index, Color(float(record["phase"]), float(record["lane"]), fposmod(float(index) * 0.17, 1.0), 1.0))
 			var tint := Color.WHITE
 			if species == "silverside":
 				var profile := ArtDirection.region_profile(ArtDirection.region_id_at(float(record["position"].x), float(record["position"].z)))
 				tint = tint.lerp(profile["accent"], 0.12)
 			mm.set_instance_color(index, tint)
-			var envelope := AABB(at - Vector3(8, 5, 8), Vector3(16, 10, 16))
+			# A large squid includes the complete tentacle chain after its path and
+			# instance scale; a fixed eight-metre radius clipped the largest ones.
+			var horizontal := size * (5.2 if species == "squid" else 3.8) + 0.5
+			var vertical := size * (1.9 if species in ["jellyfish", "abyss_jelly"] else 0.65) + 0.5
+			var half_size := Vector3(horizontal, vertical, horizontal)
+			var envelope := AABB(at - half_size, half_size * 2.0)
 			bounds = bounds.merge(envelope) if index > 0 else envelope
 		mm.custom_aabb = bounds
 		batch.multimesh = mm
@@ -692,7 +701,7 @@ func sample_ambient_community(cell: Vector2i, observer_depth: float = -1.0) -> A
 	var highest_floor := sample_floor_height(center.x, center.y)
 	for index in range(8):
 		var angle := float(index) * TAU / 8.0
-		highest_floor = maxf(highest_floor, sample_floor_height(center.x + cos(angle) * 7.5, center.y + sin(angle) * 7.5))
+		highest_floor = maxf(highest_floor, sample_floor_height(center.x + cos(angle) * 10.5, center.y + sin(angle) * 10.5))
 	var available_depth := -highest_floor
 	if available_depth <= 6.0:
 		return community
@@ -729,7 +738,8 @@ func sample_ambient_community(cell: Vector2i, observer_depth: float = -1.0) -> A
 			size = fish_rng.randf_range(1.2, 1.75)
 		var position := Vector3(xz.x, -water_depth, xz.y)
 		community.append({"species": species, "position": position, "size": size,
-			"yaw": heading, "phase": phase + float(index) * 0.018, "depth_zone": zone})
+			"yaw": heading + fish_rng.randf_range(-0.12, 0.12), "phase": phase + float(index) * 0.018 + fish_rng.randf_range(-0.012, 0.012),
+			"lane": fish_rng.randf(), "depth_zone": zone})
 	return community
 
 func _create_ambient_creature_mesh(species: String) -> ArrayMesh:

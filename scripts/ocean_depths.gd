@@ -55,21 +55,24 @@ static func light_profile(depth: float) -> Dictionary:
 	var hadal := smoothstep(340.0, MAX_SEAFLOOR_DEPTH, water_depth)
 	# A luminous turquoise horizon separates the sunlit colonies from their
 	# background. The same continuous curve reaches a nearly black blue trench.
-	var fog_color := Color(0.025, 0.40, 0.62).lerp(Color(0.025, 0.23, 0.42), shelf)
-	fog_color = fog_color.lerp(Color(0.025, 0.13, 0.29), twilight)
-	fog_color = fog_color.lerp(Color(0.018, 0.075, 0.18), basin)
-	fog_color = fog_color.lerp(Color(0.012, 0.045, 0.13), hadal)
-	var ambient_color := Color(0.60, 0.80, 0.86).lerp(Color(0.36, 0.60, 0.72), shelf)
-	ambient_color = ambient_color.lerp(Color(0.22, 0.39, 0.60), twilight)
-	ambient_color = ambient_color.lerp(Color(0.16, 0.26, 0.43), basin)
-	var fog_energy := 0.56 * exp(-water_depth * 0.004) + 0.30
+	var fog_color := Color(0.032, 0.44, 0.67).lerp(Color(0.032, 0.28, 0.48), shelf)
+	fog_color = fog_color.lerp(Color(0.030, 0.17, 0.35), twilight)
+	fog_color = fog_color.lerp(Color(0.024, 0.105, 0.245), basin)
+	fog_color = fog_color.lerp(Color(0.018, 0.068, 0.18), hadal)
+	# A cool, restrained fill keeps deep silhouettes legible. Directional light
+	# still supplies the broad shallow-water forms; lamps restore local pigments.
+	var ambient_color := Color(0.66, 0.83, 0.89).lerp(Color(0.44, 0.67, 0.79), shelf)
+	ambient_color = ambient_color.lerp(Color(0.30, 0.48, 0.69), twilight)
+	ambient_color = ambient_color.lerp(Color(0.24, 0.38, 0.58), basin)
+	ambient_color = ambient_color.lerp(Color(0.20, 0.33, 0.52), hadal)
+	var fog_energy := 0.54 * exp(-water_depth * 0.004) + 0.32
 	return {
-		"sun_energy": 0.76 * exp(-water_depth * SUNLIGHT_FALLOFF),
+		"sun_energy": 0.84 * exp(-water_depth * SUNLIGHT_FALLOFF),
 		"sun_color": Color(1.0, 0.955, 0.86),
-		"ambient_energy": 0.23 * exp(-water_depth * 0.007) + 0.08,
+		"ambient_energy": 0.24 * exp(-water_depth * 0.0068) + 0.105,
 		"ambient_color": ambient_color,
 		"fog_energy": fog_energy,
-		"fog_density": 0.0046 + (1.0 - exp(-water_depth * 0.005)) * 0.006,
+		"fog_density": 0.0045 + (1.0 - exp(-water_depth * 0.005)) * 0.0058,
 		"fog_color": fog_color,
 		"background_color": (fog_color.srgb_to_linear() * fog_energy).linear_to_srgb()
 	}

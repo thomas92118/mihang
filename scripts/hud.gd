@@ -37,6 +37,15 @@ var _detail_time := 5.0
 var _previous_weapon := ""
 var _previous_inventory: Dictionary = {}
 var _cargo: Panel
+var _journal_heading: Label
+var _journal_bar: ColorRect
+var _bottom_hints: Label
+var _life_normal_style: StyleBoxFlat
+var _life_warning_style: StyleBoxFlat
+var _status_normal_style: StyleBoxEmpty
+var _status_alert_style: StyleBoxFlat
+var _life_alert := false
+var _low_oxygen_alert := false
 var root: Control
 var instruments: Control
 var menus: Dictionary = {}
@@ -181,7 +190,14 @@ func _ready() -> void:
 	root.resized.connect(_apply_layout)
 	toast_label = _label(root, "", Rect2(-390, 130, 780, 44), 15, CYAN, Vector2(0.5, 0))
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	toast_label.add_theme_stylebox_override("normal", _style(PANEL, Color(0.46, 0.88, 0.83, 0.35)))
+	toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var toast_style := _style(Color(Art.INK, 0.88), Color(CYAN, 0.26), 2)
+	toast_style.content_margin_left = 16
+	toast_style.content_margin_right = 16
+	toast_style.content_margin_top = 6
+	toast_style.content_margin_bottom = 6
+	toast_label.add_theme_stylebox_override("normal", toast_style)
 	toast_label.hide()
 	set_screen("main")
 	_apply_layout()
@@ -194,13 +210,11 @@ func _process(delta: float) -> void:
 		_refresh_navigation()
 	if toast_time > 0.0:
 		toast_time = maxf(0.0, toast_time - delta)
-		if is_instance_valid(boss_panel):
-			var toast_top := 206.0 if boss_panel.visible else 130.0
-			if toast_label.offset_top != toast_top:
-				toast_label.offset_top = toast_top
-				toast_label.offset_bottom = toast_top + 44.0
+		_layout_toast()
 		toast_label.modulate.a = minf(toast_time * 2.0, 1.0)
-		toast_label.visible = toast_time > 0.0 and active_screen == "play"
+		toast_label.visible = toast_time > 0.0 and active_screen in ["play", "craft", "sushi", "mount_board", "map"]
+	elif is_instance_valid(toast_label) and toast_label.visible:
+		toast_label.hide()
 	if hit_marker_timer > 0.0:
 		hit_marker_timer = maxf(0.0, hit_marker_timer - delta)
 		if is_instance_valid(hit_marker):
@@ -232,13 +246,13 @@ func _build_instruments() -> void:
 	void fragment() {
 		vec2 p = (UV - 0.5) * 2.0;
 		float edge = smoothstep(0.85, 1.9, dot(p,p));
-		COLOR = vec4(mix(vec3(0.015,0.045,0.065), vec3(0.72,0.85,0.85), frost * 0.45), edge * (0.12 + breath * 0.06 + frost * 0.16));
+		COLOR = vec4(mix(vec3(0.015,0.045,0.065), vec3(0.72,0.85,0.85), frost * 0.45), edge * (0.06 + breath * 0.06 + frost * 0.18));
 	}"""
 	visor_material = ShaderMaterial.new()
 	visor_material.shader = shader
 	visor_rect.material = visor_material
-	_line(instruments, Rect2(28, 27, 3, 22), AMBER_GOLD)
-	_label(instruments, "深 蓝 回 声   /   潜 航 日 志", Rect2(42, 26, 282, 20), 12, MUTED)
+	_journal_bar = _line(instruments, Rect2(28, 27, 3, 22), AMBER_GOLD)
+	_journal_heading = _label(instruments, "深 蓝 回 声   /   潜 航 日 志", Rect2(42, 26, 282, 20), 12, MUTED)
 	mission_title = _label(instruments, "探索未知海域", Rect2(28, 60, 300, 24), 14, INK)
 	mission_detail = _label(instruments, "M 勘测海图  /  N 声呐", Rect2(28, 90, 300, 38), 11, MUTED)
 	mission_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -247,8 +261,14 @@ func _build_instruments() -> void:
 	compass_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	depth_value = _label(instruments, "012 m", Rect2(-120, 55, 240, 36), 28, INK, Vector2(0.5, 0))
 	depth_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	status_value = _label(instruments, "阳光浅礁带", Rect2(-250, 96, 500, 24), 11, MUTED, Vector2(0.5, 0))
+	status_value = _label(instruments, "阳光浅礁带", Rect2(-250, 96, 500, 26), 11, MUTED, Vector2(0.5, 0))
 	status_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	status_value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_status_normal_style = StyleBoxEmpty.new()
+	_status_alert_style = _style(Color(Art.INK, 0.84), Color(Art.DANGER, 0.56), 2)
+	_status_alert_style.content_margin_left = 12
+	_status_alert_style.content_margin_right = 12
+	status_value.add_theme_stylebox_override("normal", _status_normal_style)
 	minimap_radar = WorldMap.MinimapRadar.new()
 	minimap_radar.set_bathymetry(bathy_texture)
 	_place(minimap_radar, instruments, Rect2(-172, 24, 144, 160), Vector2(1, 0))
@@ -287,14 +307,14 @@ func _build_instruments() -> void:
 	charge_bar.add_theme_stylebox_override("background", _style(Color(Art.INK, 0.7)))
 	charge_bar.add_theme_stylebox_override("fill", _style(CYAN))
 	charge_bar.hide()
-	boss_panel = _panel(instruments, Rect2(-260, 131, 520, 66), Vector2(0.5, 0))
+	boss_panel = _panel(instruments, Rect2(-260, 132, 520, 68), Vector2(0.5, 0))
 	boss_name = _label(boss_panel, "深渊领主", Rect2(16, 8, 488, 22), 14, INK)
 	boss_bar = ProgressBar.new()
 	_place(boss_bar, boss_panel, Rect2(16, 34, 488, 4))
 	boss_bar.show_percentage = false
 	boss_bar.add_theme_stylebox_override("background", _style(Color(Art.DANGER, 0.15)))
 	boss_bar.add_theme_stylebox_override("fill", _style(Art.DANGER))
-	boss_warning = _label(boss_panel, "", Rect2(16, 42, 488, 18), 11, AMBER_GOLD)
+	boss_warning = _label(boss_panel, "", Rect2(16, 42, 488, 20), 11, AMBER_GOLD)
 	boss_warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	boss_panel.hide()
 	hit_marker = _label(instruments, "×", Rect2(-14, -18, 28, 36), 22, Color(1, 1, 1, 0), Vector2(0.5, 0.5))
@@ -302,6 +322,9 @@ func _build_instruments() -> void:
 	hit_marker.visible = false
 	var life := _panel(instruments, Rect2(28, -148, 246, 100), Vector2(0, 1))
 	life.name = "LifeSupportInstrument"
+	_life_normal_style = _style(Color(Art.INK, 0.16), Color(CYAN, 0.08), 2)
+	_life_warning_style = _style(Color(Art.INK, 0.86), Color(Art.DANGER, 0.68), 2)
+	life.add_theme_stylebox_override("panel", _life_normal_style)
 	_label(life, "O₂", Rect2(15, 12, 48, 30), 23, CYAN)
 	oxygen_value = _label(life, "90", Rect2(64, 8, 66, 38), 30, INK)
 	oxygen_unit = _label(life, "秒 / 氧气", Rect2(131, 22, 100, 20), 14, MUTED)
@@ -363,6 +386,7 @@ func _build_instruments() -> void:
 	shield_label = _label(instruments, "C / 能量盾收起", Rect2(28, -178, 246, 20), 10, MUTED, Vector2(0, 1))
 	var hints := _label(instruments, "E 交互   Tab 制造   M 海图   N 声呐   O 生物   Esc 暂停", Rect2(-340, -27, 680, 18), 10, MUTED, Vector2(0.5, 1))
 	hints.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_bottom_hints = hints
 
 func _build_main() -> void:
 	var menu := _menu("main", false)
@@ -490,7 +514,8 @@ func _build_mount_board() -> void:
 		var row: int = int(i / 4)
 		var slot_idx: int = i
 		var btn := _button(card, "%02d / 尚未契约" % (i + 1), Rect2(28 + col * 224, 189 + row * 87, 212, 73), func() -> void: mount_board_select_requested.emit(slot_idx))
-		btn.add_theme_font_size_override("font_size", 12)
+		btn.add_theme_font_size_override("font_size", 14)
+		btn.clip_text = true
 		btn.disabled = true
 		mount_board_slot_buttons.append(btn)
 	_button(card, "返回潜航 / O", Rect2(28, 647, 170, 34), func() -> void: resume_requested.emit())
@@ -679,7 +704,11 @@ func update_hud(data: Dictionary) -> void:
 	var biome: String = str(data.get("biome", "浅海生态区"))
 	var oxygen_level := float(data.get("oxygen", 90.0))
 	var max_oxygen_level := maxf(float(data.get("max_oxygen", 90.0)), 1.0)
-	if not is_explore and oxygen_level < max_oxygen_level * 0.25:
+	var low_oxygen := not is_explore and oxygen_level < max_oxygen_level * 0.25
+	if low_oxygen != _low_oxygen_alert:
+		_low_oxygen_alert = low_oxygen
+		status_value.add_theme_stylebox_override("normal", _status_alert_style if low_oxygen else _status_normal_style)
+	if low_oxygen:
 		status_value.text = "氧气不足  /  请上浮、靠近巨砗磲或前往科考前哨站"
 		_set_font_color(status_value, ORANGE)
 	else:
@@ -1040,8 +1069,34 @@ func update_hud(data: Dictionary) -> void:
 	equipment_value.visible = details and not in_sub and not scoped
 	_cargo.visible = details or overweight
 	shield_label.visible = is_shield or details
-	mission_detail.visible = has_wp or fighting or details
+	var story_route := bool(data.get("mother_tree_active", false)) and not bool(data.get("escape_crafted", false))
+	var show_mission := has_wp or fighting or details or story_route
+	mission_title.visible = show_mission
+	mission_detail.visible = show_mission
 	explore_summary_label.visible = details
+	_journal_heading.modulate.a = 0.92 if show_mission else 0.28
+	if is_instance_valid(_journal_bar):
+		_journal_bar.modulate.a = 0.92 if show_mission else 0.26
+	weapon_hint.visible = details and not scoped and not in_sub and not booster_on
+	reticle.visible = not scoped and (aiming or charging or not target.is_empty() or in_sub or cur_w in ["sonic", "marker", "marker_gun"])
+	tame_panel.visible = beast_cnt > 0 and not scoped and (details or mount_idx >= 0 or fighting)
+	var life_alert := low_oxygen or float(data.get("health", 100.0)) < 30.0
+	var quiet_explore := not show_mission and not life_alert and not in_sub and not booster_on and not scoped
+	var life_panel: Panel = instruments.get_node("LifeSupportInstrument")
+	if life_alert != _life_alert:
+		_life_alert = life_alert
+		life_panel.add_theme_stylebox_override("panel", _life_warning_style if life_alert else _life_normal_style)
+	life_panel.modulate.a = 1.0 if life_alert else (0.88 if quiet_explore else 0.98)
+	if is_instance_valid(compass_strip):
+		compass_strip.modulate.a = 0.72 if quiet_explore else 0.96
+	depth_value.modulate.a = 0.90 if quiet_explore else 1.0
+	status_value.modulate.a = 1.0 if low_oxygen else (0.68 if quiet_explore else 0.90)
+	if is_instance_valid(minimap_radar):
+		minimap_radar.modulate.a = 0.80 if quiet_explore else 0.98
+	home_value.modulate.a = 0.68 if quiet_explore else 0.92
+	if is_instance_valid(_bottom_hints):
+		_bottom_hints.modulate.a = 0.48 if quiet_explore else 0.86
+	_layout_toast()
 	var seconds := int(data.get("elapsed", 0.0))
 	if bool(data.get("escape_crafted", false)):
 		win_title.text = "深渊跃迁逃生成功"
@@ -1087,6 +1142,24 @@ func toast(message: String) -> void:
 	toast_time = 3.6
 	toast_label.modulate.a = 1.0
 	toast_label.visible = active_screen in ["play", "craft", "sushi", "mount_board", "map"]
+	_layout_toast()
+
+func _layout_toast() -> void:
+	if not is_instance_valid(toast_label):
+		return
+	var safe := get_layout_safe_rect()
+	var width := minf(680.0, maxf(160.0, safe.size.x - 40.0))
+	var left := safe.position.x + (safe.size.x - width) * 0.5
+	var top := safe.position.y + 134.0
+	if is_instance_valid(status_value) and (status_value.is_visible_in_tree() or (instruments.visible and status_value.visible)):
+		top = maxf(top, status_value.get_global_rect().end.y + 12.0)
+	if is_instance_valid(boss_panel) and (boss_panel.is_visible_in_tree() or (instruments.visible and boss_panel.visible)):
+		var boss_rect := boss_panel.get_global_rect()
+		if left < boss_rect.end.x and left + width > boss_rect.position.x:
+			top = maxf(top, boss_rect.end.y + 12.0)
+	# Allow long discoveries to wrap without crossing the depth or boss readouts.
+	var height := 66.0 if toast_label.text.length() > int(width / 17.0) else 44.0
+	_set_control_rect(toast_label, Rect2(left, top, width, height))
 
 func configure_input(controller: Node) -> void:
 	input_controller = controller
@@ -1397,17 +1470,14 @@ func _apply_layout() -> void:
 		_set_control_rect(sub_hull_bar, Rect2(12, 78, center_width - 24, 4))
 		_set_control_rect(sub_hull_label, Rect2(12, 86, center_width - 24, 20))
 		if safe.size.y < 650.0:
-			_set_control_rect(boss_panel, Rect2(-294, 100, 274, 66), Vector2(1, 0))
+			_set_control_rect(boss_panel, Rect2(-294, 100, 274, 68), Vector2(1, 0))
 			_set_control_rect(boss_name, Rect2(16, 8, 242, 22))
 			_set_control_rect(boss_bar, Rect2(16, 34, 242, 4))
-			_set_control_rect(boss_warning, Rect2(16, 42, 242, 18))
+			_set_control_rect(boss_warning, Rect2(16, 42, 242, 20))
 			boss_name.clip_text = true
 			boss_warning.clip_text = true
-	elif is_instance_valid(_cargo):
-		_cargo.visible = true
-		mission_detail.visible = true
-		explore_summary_label.visible = true
 	_apply_touch_visibility()
+	_layout_toast()
 	_refresh_navigation.call_deferred()
 
 func _apply_touch_visibility() -> void:
@@ -1422,6 +1492,8 @@ func _apply_touch_visibility() -> void:
 		pinned_panel.hide()
 		tame_panel.hide()
 		weapon_hint.hide()
+	if is_instance_valid(_bottom_hints):
+		_bottom_hints.visible = not compact
 	for node in sub_panel.get_children():
 		if node is Label and str(node.get_meta("_hint_source", node.text)).begins_with("W/S"):
 			node.visible = not _touch_layout
@@ -1487,11 +1559,12 @@ func _panel(parent: Node, rect: Rect2, anchor := Vector2.ZERO) -> Panel:
 	panel.add_theme_stylebox_override("panel", _style(Color(Art.INK, 0.28) if parent == instruments else PANEL, Color(CYAN, 0.09) if parent == instruments else Color(CYAN, 0.18)))
 	return panel
 
-func _line(parent: Node, rect: Rect2, color: Color) -> void:
+func _line(parent: Node, rect: Rect2, color: Color) -> ColorRect:
 	var line := ColorRect.new()
 	_place(line, parent, rect)
 	line.color = color
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return line
 
 func _button(parent: Node, text: String, rect: Rect2, callback: Callable, primary: bool = false) -> Button:
 	var button := Button.new()

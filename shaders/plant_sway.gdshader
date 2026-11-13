@@ -1,4 +1,7 @@
 shader_type spatial;
+
+// A nonnegative override freezes only visual time for repeatable review.
+uniform float review_time = -1.0;
 render_mode cull_disabled;
 
 uniform vec4 albedo : source_color = vec4(0.2, 0.6, 0.3, 1.0);
@@ -34,7 +37,7 @@ void vertex() {
 	if (sway_strength > 0.001) {
 		// Procedural phase from world position enables sharing a single material instance across all plants
 		float auto_phase = dot(MODEL_MATRIX[3].xz, vec2(1.73, 2.41));
-		float t = TIME * sway_frequency + phase_offset + auto_phase;
+		float t = (review_time >= 0.0 ? review_time : TIME) * sway_frequency + phase_offset + auto_phase;
 		float wave1 = sin(t + world_p.x * 0.18 + world_p.z * 0.14);
 		float wave2 = cos(t * 0.72 + world_p.z * 0.16);
 		float sway = h * h * 0.045 * sway_strength;
@@ -53,7 +56,7 @@ void fragment() {
 	float luma = dot(raw_albedo, vec3(0.299, 0.587, 0.114));
 	// Preserve the imported pigments without the old saturation boost. Absorption
 	// belongs to incident sunlight, not albedo: a nearby lamp restores warm hues.
-	ALBEDO = clamp(raw_albedo * 0.76, vec3(0.0), vec3(1.0));
+	ALBEDO = clamp(raw_albedo * 0.80, vec3(0.0), vec3(1.0));
 	if (natural_palette) {
 		// Texture samples are linear. Lift their dark range smoothly rather than
 		// flattening it into bands or preserving the source's artificial colours.
@@ -61,13 +64,14 @@ void fragment() {
 		vec3 pigment = mix(palette_dark, palette_light, pigment_value);
 		ALBEDO = mix(ALBEDO, pigment, palette_strength);
 	}
-	if (dot(VERTEX, VERTEX) < 900.0) {
+	float detail_weight = 1.0 - smoothstep(9.0, 29.0, length(VERTEX));
+	if (detail_weight > 0.001) {
 		vec3 orm = texture(orm_texture, material_uv).rgb;
 		AO = orm.r;
 		ROUGHNESS = clamp(roughness * mix(0.72, 1.0, orm.g), 0.18, 1.0);
 		METALLIC = metallic * orm.b;
 		NORMAL_MAP = texture(normal_texture, material_uv).rgb;
-		NORMAL_MAP_DEPTH = normal_scale * 0.55;
+		NORMAL_MAP_DEPTH = normal_scale * 0.36 * detail_weight;
 	} else {
 		ROUGHNESS = clamp(roughness, 0.18, 1.0);
 		METALLIC = metallic;
@@ -76,7 +80,7 @@ void fragment() {
 	}
 	if (emission_energy > 0.0) {
 		float auto_phase = dot(MODEL_MATRIX[3].xz, vec2(1.73, 2.41));
-		float pulse = 0.92 + sin(TIME * 0.8 + phase_offset + auto_phase) * 0.08;
+		float pulse = 0.92 + sin((review_time >= 0.0 ? review_time : TIME) * 0.8 + phase_offset + auto_phase) * 0.08;
 		EMISSION = emission * texture(emission_texture, material_uv).rgb * (emission_energy * pulse);
 	} else {
 		EMISSION = vec3(0.0);
@@ -87,13 +91,13 @@ void light() {
 	float camera_depth = max(-INV_VIEW_MATRIX[3].y, 0.0);
 	float depth_correction = exp(clamp((camera_depth - v_world_depth) * 0.012, -8.0, 7.2));
 	vec3 transmission = LIGHT_IS_DIRECTIONAL
-		? exp(-vec3(0.022, 0.0055, 0.0) * v_world_depth) * depth_correction : vec3(1.0);
+		? exp(-vec3(0.016, 0.0045, 0.0008) * v_world_depth) * depth_correction : vec3(1.0);
 	float ndotl = max(dot(NORMAL, LIGHT), 0.0);
 	// A little transmitted light softens thin leaves without luminous outlines.
-	float foliage_diffuse = max((dot(NORMAL, LIGHT) + 0.10) / 1.10, 0.0);
+	float foliage_diffuse = max((dot(NORMAL, LIGHT) + 0.18) / 1.18, 0.0);
 	DIFFUSE_LIGHT += foliage_diffuse * LIGHT_COLOR * transmission * ATTENUATION / PI;
 	vec3 half_dir = normalize(LIGHT + VIEW);
 	float exponent = mix(64.0, 8.0, ROUGHNESS);
 	float spec = pow(max(dot(NORMAL, half_dir), 0.0), exponent) * ndotl;
-	SPECULAR_LIGHT += LIGHT_COLOR * transmission * ATTENUATION * spec * (1.0 - ROUGHNESS) * 0.07;
+	SPECULAR_LIGHT += LIGHT_COLOR * transmission * ATTENUATION * spec * (1.0 - ROUGHNESS) * 0.04;
 }

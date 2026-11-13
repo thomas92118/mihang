@@ -2390,5 +2390,9 @@ func _interact_escape_console() -> void:
 
 func _update_title_camera(delta: float) -> void:
 	_title_clock += delta
-	title_camera.position = Vector3(-11.2 + sin(_title_clock * 0.045) * 1.8, -5.7 + sin(_title_clock * 0.09) * 0.26, 13.8)
-	title_camera.look_at(Vector3(5.5, -8.8, -30.0))
+	# A distant three-quarter view gives the arch and fish stream room to breathe;
+	# the nearby escape pod no longer dominates the title's upper-right corner.
+	var at := Vector3(-19.5 + sin(_title_clock * 0.045) * 1.1, -6.2 + sin(_title_clock * 0.09) * 0.16, 9.5)
+	at.y = minf(-2.0, maxf(at.y, ocean.floor_height(at.x, at.z) + 2.8))
+	title_camera.position = at
+	title_camera.look_at(Vector3(-4.5, -8.6, -34.0))

@@ -3,35 +3,37 @@ render_mode cull_disabled;
 
 // 0: silverside, 1: lanternfish, 2: squid, 3: jellyfish, 4: abyssal jelly.
 uniform int creature_kind = 0;
+uniform float review_time = -1.0;
 varying vec3 body_position;
 varying float world_depth;
 
 void vertex() {
 	body_position = VERTEX;
+	float clock = review_time >= 0.0 ? review_time : TIME;
 	float phase_offset = INSTANCE_CUSTOM.x * 6.283185;
 	if (creature_kind <= 2) {
 		float speed = creature_kind == 2 ? 0.13 : (creature_kind == 1 ? 0.22 : 0.32);
-		float phase = phase_offset + TIME * speed;
+		float phase = phase_offset + clock * speed * (0.94 + INSTANCE_CUSTOM.y * 0.12);
 		float tail = 1.0 - smoothstep(-0.60, -0.12, VERTEX.z);
 		float undulation = creature_kind == 2 ? 0.10 : 0.075;
-		VERTEX.x += sin(TIME * (creature_kind == 2 ? 2.2 : 6.5) + phase_offset + VERTEX.z * 3.0) * tail * undulation;
+		VERTEX.x += sin(clock * (creature_kind == 2 ? 2.2 : 5.8 + INSTANCE_CUSTOM.z) + phase_offset + VERTEX.z * 3.0) * tail * undulation;
 		if (creature_kind == 2) {
-			VERTEX.xy *= 0.97 + sin(TIME * 1.9 + phase_offset) * 0.035;
+			VERTEX.xy *= 0.97 + sin(clock * 1.9 + phase_offset) * 0.035;
 		}
-		float heading = phase + 1.570796;
-		float c = cos(heading);
-		float s = sin(heading);
-		VERTEX.xz = vec2(VERTEX.x * c + VERTEX.z * s, -VERTEX.x * s + VERTEX.z * c);
-		NORMAL.xz = vec2(NORMAL.x * c + NORMAL.z * s, -NORMAL.x * s + NORMAL.z * c);
-		VERTEX.xz += vec2(sin(phase), cos(phase)) * (creature_kind == 2 ? 3.0 : 2.4);
-		VERTEX.y += sin(phase * 2.0 + INSTANCE_CUSTOM.z * 2.0) * 0.16;
+		float travel = creature_kind == 2 ? 3.0 : 2.4;
+		float vertical_phase = phase * 2.0 + INSTANCE_CUSTOM.z * 2.0;
+		vec3 forward = normalize(vec3(cos(phase) * travel, cos(vertical_phase) * 0.32, -sin(phase) * travel * 0.62));
+		vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), forward));
+		mat3 frame = mat3(right, cross(forward, right), forward);
+		VERTEX = frame * VERTEX + vec3(sin(phase) * travel, sin(vertical_phase) * 0.16, cos(phase) * travel * 0.62);
+		NORMAL = normalize(frame * NORMAL);
 	} else {
-		float pulse = sin(TIME * 1.15 + phase_offset);
+		float pulse = sin(clock * 1.15 + phase_offset);
 		float tentacle = smoothstep(0.0, 1.25, -VERTEX.y);
 		VERTEX.xz *= 0.96 + pulse * 0.065;
-		VERTEX.x += sin(TIME * 0.8 + phase_offset - VERTEX.y * 2.8) * tentacle * 0.16;
-		VERTEX.z += cos(TIME * 0.65 + phase_offset - VERTEX.y * 2.1) * tentacle * 0.12;
-		VERTEX.xz += vec2(sin(TIME * 0.09 + phase_offset), cos(TIME * 0.08 + phase_offset)) * 1.2;
+		VERTEX.x += sin(clock * 0.8 + phase_offset - VERTEX.y * 2.8) * tentacle * 0.16;
+		VERTEX.z += cos(clock * 0.65 + phase_offset - VERTEX.y * 2.1) * tentacle * 0.12;
+		VERTEX.xz += vec2(sin(clock * 0.09 + phase_offset), cos(clock * 0.08 + phase_offset)) * 1.2;
 		VERTEX.y += pulse * 0.30;
 	}
 	world_depth = max(-(MODEL_MATRIX * vec4(VERTEX, 1.0)).y, 0.0);

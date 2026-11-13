@@ -101,6 +101,20 @@ function prepareStageProject(stageDir) {
 		fs.mkdirSync(path.dirname(dst), { recursive: true });
 		fs.cpSync(src, dst, { recursive: true });
 	}
+	const srcImported = path.join(ROOT, ".godot", "imported");
+	if (fs.existsSync(srcImported)) {
+		const dstImported = path.join(resolvedStage, ".godot", "imported");
+		fs.mkdirSync(dstImported, { recursive: true });
+		for (const entry of fs.readdirSync(srcImported)) {
+			if (!entry.endsWith(".fontdata")) continue;
+			fs.copyFileSync(path.join(srcImported, entry), path.join(dstImported, entry));
+			const companionMd5 = `${entry.slice(0, -".fontdata".length)}.md5`;
+			const srcMd5 = path.join(srcImported, companionMd5);
+			if (fs.existsSync(srcMd5)) {
+				fs.copyFileSync(srcMd5, path.join(dstImported, companionMd5));
+			}
+		}
+	}
 	console.log(`[build_web] Prepared isolated Web staging project at: ${resolvedStage}`);
 }
 
@@ -189,7 +203,7 @@ function ensureLossyModelTextures(stageDir) {
 
 function runGodotImport(godotBin, stageDir, reason) {
 	console.log(`[build_web] Running Godot headless import in stage (${reason})...`);
-	const res = spawnSync(godotBin, ["--headless", "--path", stageDir, "--import"], {
+	const res = spawnSync(godotBin, ["--headless", "--audio-driver", "Dummy", "--path", stageDir, "--import"], {
 		cwd: stageDir,
 		stdio: "inherit",
 	});
@@ -206,7 +220,7 @@ function exportGodotWeb(godotBin, stageDir) {
 	console.log(`[build_web] Exporting Godot Web build from stage using: ${godotBin}`);
 	const res = spawnSync(
 		godotBin,
-		["--headless", "--path", stageDir, "--export-release", "Web", outputHtml],
+		["--headless", "--audio-driver", "Dummy", "--path", stageDir, "--export-release", "Web", outputHtml],
 		{ cwd: stageDir, stdio: "inherit" }
 	);
 	if (res.status !== 0) {

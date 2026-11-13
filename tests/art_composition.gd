@@ -15,8 +15,20 @@ func _run() -> void:
 	assert(composition.get_meta("regions").size() == 9)
 	var batches := composition.find_children("*", "MultiMeshInstance3D", true, false)
 	assert(batches.size() > 30 and batches.size() < 150, "All nine scenes must use bounded batches")
+	var fish_paths: Dictionary = {}
 	for region: String in ["core", "atoll", "kelp", "ridge", "citadel", "wreck", "bones", "caldera", "hadal"]:
-		assert(composition.get_node_or_null(region + "_ribbon") != null, region + ": missing living fish composition")
+		var shoal: MultiMeshInstance3D = composition.get_node_or_null(region + "_ribbon")
+		assert(shoal != null, region + ": missing living fish composition")
+		fish_paths[int(shoal.get_meta("curve_mode"))] = true
+		assert(shoal.multimesh.instance_count <= 80, "Richer fish motion must retain a bounded instance budget")
+		# Fish displacement happens before each instance's scale, so its animated
+		# envelope must exceed the unscaled centre path in every horizontal view.
+		var radius: float = shoal.get_meta("path_radius")
+		var stretch: Vector2 = shoal.get_meta("path_stretch")
+		var reach := radius * maxf(stretch.x, stretch.y) * 1.5 + 3.0
+		for point: Vector3 in [Vector3(reach, 0, 0), Vector3(-reach, 0, 0), Vector3(0, 0, reach), Vector3(0, 0, -reach)]:
+			assert(shoal.multimesh.custom_aabb.has_point(point), "Animated fish must not disappear at a path extremity: " + region)
+	assert(fish_paths.size() == 3, "The authored ocean needs ellipse, S-stream and crescent fish rhythms")
 	for species: String in ["table_coral", "staghorn_coral", "brain_coral", "kelp", "sea_fan", "barrel_sponge", "sea_lily"]:
 		var found := false
 		for batch: MultiMeshInstance3D in batches:
@@ -25,9 +37,10 @@ func _run() -> void:
 	# Shoot horizontally through the middle of each principal arch's opening.
 	for center: Vector2 in [Vector2(0, -28), Vector2(-260, 248), Vector2(460, -82), Vector2(60, -668)]:
 		var y := ocean.terrain_height(center.x, center.y) + 8.0
-		var query := PhysicsRayQueryParameters3D.create(Vector3(center.x, y, center.y + 3), Vector3(center.x, y, center.y - 3), 1)
-		var hit := ocean.get_world_3d().direct_space_state.intersect_ray(query)
-		assert(hit.is_empty(), "Principal arch opening must stay traversable: " + str(center))
+		for offset: float in [-2.5, 0.0, 2.5]:
+			var query := PhysicsRayQueryParameters3D.create(Vector3(center.x + offset, y, center.y + 3), Vector3(center.x + offset, y, center.y - 3), 1)
+			var hit := ocean.get_world_3d().direct_space_state.intersect_ray(query)
+			assert(hit.is_empty(), "Principal arch must retain a wide swimway, not only a clear center ray: " + str(center))
 	var hud := HUD.new()
 	root.add_child(hud)
 	hud.set_screen("play")

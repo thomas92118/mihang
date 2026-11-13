@@ -1,5 +1,8 @@
 shader_type spatial;
 
+// A nonnegative override freezes only visual time for repeatable review.
+uniform float review_time = -1.0;
+
 uniform sampler2D sediment_noise : repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D region_palette : source_color, filter_nearest, repeat_disable;
 uniform bool use_region_palette = false;
@@ -111,7 +114,7 @@ void fragment() {
 		ridge = pow(0.5 + 0.5 * sin(phase), 2.0);
 	}
 	float exposed_rock = max(steep, slope_band * smoothstep(0.28, 0.64, meso));
-	float height = ridge * 0.005 * ripple_fade + detail * mix(0.004, 0.018, exposed_rock)
+	float height = ridge * 0.0035 * ripple_fade + detail * mix(0.0025, 0.013, exposed_rock)
 		+ strata_band * 0.022 * exposed_rock
 		+ stones * mix(0.002, 0.008, shelf_band) + grain * 0.00018 * grain_fade
 		+ pow(nodule_shape, 1.5) * nodule_patch * 0.018;
@@ -161,30 +164,30 @@ void fragment() {
 	// Volcanic ash is local to the caldera instead of tinting every deep zone.
 	float caldera = 1.0 - smoothstep(100.0, 220.0, length(world_pos.xz - vec2(-440.0, -420.0)));
 	base_color = mix(base_color, mix(vec3(0.14, 0.15, 0.14), vec3(0.29, 0.27, 0.23), detail), caldera * 0.84);
-	base_color *= 0.96 + detail * 0.08 + (grain - 0.5) * 0.045 * grain_fade;
+	base_color *= 0.98 + detail * 0.04 + (grain - 0.5) * 0.018 * grain_fade;
 	base_color *= 1.0 - stones * 0.09;
-	base_color *= 1.0 - (1.0 - ridge) * 0.045 * ripple_fade;
+	base_color *= 1.0 - (1.0 - ridge) * 0.028 * ripple_fade;
 
 	float caustic_lit = 0.0;
 	if (depth < 46.0 && world_normal.y > 0.0) {
 		float fw_xz = length(fwidth(world_pos.xz));
-		float a = sin(world_pos.x * 2.3 + sin(world_pos.z * 1.7 + TIME * 0.5) + patch * 2.0 + TIME * 0.4);
-		float b = sin(world_pos.z * 2.6 - sin(world_pos.x * 1.4 - TIME * 0.4) + patch * 1.7);
+		float a = sin(world_pos.x * 2.3 + sin(world_pos.z * 1.7 + (review_time >= 0.0 ? review_time : TIME) * 0.5) + patch * 2.0 + (review_time >= 0.0 ? review_time : TIME) * 0.4);
+		float b = sin(world_pos.z * 2.6 - sin(world_pos.x * 1.4 - (review_time >= 0.0 ? review_time : TIME) * 0.4) + patch * 1.7);
 		float caustic = 1.0 - smoothstep(0.04, 0.08 + fw_xz * 3.4713, abs(a + b));
-		float a2 = sin(world_pos.x * 4.1 - cos(world_pos.z * 3.2 - TIME * 0.65) + meso * 3.0);
-		float b2 = cos(world_pos.z * 3.8 + sin(world_pos.x * 2.9 + TIME * 0.55) - patch * 2.2);
+		float a2 = sin(world_pos.x * 4.1 - cos(world_pos.z * 3.2 - (review_time >= 0.0 ? review_time : TIME) * 0.65) + meso * 3.0);
+		float b2 = cos(world_pos.z * 3.8 + sin(world_pos.x * 2.9 + (review_time >= 0.0 ? review_time : TIME) * 0.55) - patch * 2.2);
 		float caustic_fine = (1.0 - smoothstep(0.05, 0.12 + fw_xz * 5.5902, abs(a2 + b2))) * 0.52;
 		float caustic_fade = exp(-depth * 0.075) * (1.0 - smoothstep(22.0, 46.0, depth))
 			* world_normal.y;
 		caustic_lit = (caustic + caustic_fine * 0.55) * caustic_fade * 0.15;
 	}
-	ALBEDO = base_color * (0.73 + caustic_lit * 0.55);
+	ALBEDO = base_color * (0.79 + caustic_lit * 0.48);
 	float caldera_glow = 1.0 - smoothstep(8.0, 44.0, length(world_pos.xz - vec2(-440.0, -434.0)));
 	float hadal_glow = 1.0 - smoothstep(10.0, 48.0, length(world_pos.xz - vec2(60.0, -658.0)));
 	EMISSION = vec3(0.085, 0.028, 0.008) * caldera_glow * (0.75 + detail * 0.5)
 		+ vec3(0.012, 0.036, 0.058) * hadal_glow * (0.8 + meso * 0.4);
 	ROUGHNESS = clamp(0.86 + basin * 0.06 - stones * 0.10 - nodules * 0.24, 0.64, 0.96);
-	SPECULAR = 0.22;
+	SPECULAR = 0.15;
 	AO = 1.0 - (1.0 - ridge) * 0.10 * ripple_fade - stones * 0.08
 		- terrace_line * exposed_rock * 0.12 - nodules * 0.08;
 }
@@ -197,6 +200,6 @@ void light() {
 	float camera_depth = max(-INV_VIEW_MATRIX[3].y, 0.0);
 	float depth_correction = exp(clamp((camera_depth - depth) * 0.012, -8.0, 7.2));
 	vec3 transmission = LIGHT_IS_DIRECTIONAL
-		? exp(-vec3(0.022, 0.0055, 0.0) * depth) * depth_correction : vec3(1.0);
+		? exp(-vec3(0.016, 0.0045, 0.0008) * depth) * depth_correction : vec3(1.0);
 	DIFFUSE_LIGHT += max(dot(NORMAL, LIGHT), 0.0) * LIGHT_COLOR * transmission * ATTENUATION / PI;
 }

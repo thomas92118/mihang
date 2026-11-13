@@ -60,6 +60,12 @@ static func _finish_material(material: StandardMaterial3D, label: String, catego
 		color.s = minf(color.s * 1.08, 0.82)
 		color = color.lerp(ArtDirection.CYAN, 0.025)
 		material.roughness = maxf(material.roughness, 0.63)
+	elif skin_kind == "diver" and material.has_meta("diver_pigment"):
+		# The expedition suit has authored navy/teal/gold roles. Preserve those
+		# pigments rather than mapping every pale shell to the same light cyan.
+		color = original
+		material.metallic = minf(material.metallic, 0.22)
+		material.roughness = maxf(material.roughness, 0.58 if not label.contains("visor") else 0.28)
 	elif is_glass:
 		color = Color("527d8c")
 		color.a = original.a
@@ -111,6 +117,9 @@ static func _finish_material(material: StandardMaterial3D, label: String, catego
 	if not is_glass:
 		material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	if luminous:
+		if skin_kind == "diver" and material.has_meta("diver_pigment"):
+			material.emission_energy_multiplier = minf(material.emission_energy_multiplier, 0.12)
+			return
 		var is_heat := category == "environment" and warm
 		material.emission = ArtDirection.AMBER if is_heat else ArtDirection.CYAN
 		material.emission_energy_multiplier = 0.7 if is_heat else 0.22

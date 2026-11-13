@@ -68,6 +68,12 @@ const RELIC_SPECS := [
 ]
 
 var environment: Environment
+var air_sky: Sky
+var water_sky: Sky
+var water_atmosphere: ShaderMaterial
+var _atmosphere_color := Color(-1, -1, -1)
+var _atmosphere_energy := -1.0
+var _atmosphere_sunlit := -1.0
 var art_depth := 0.0
 var sun: DirectionalLight3D
 var water_surface: MeshInstance3D = null
@@ -474,6 +480,13 @@ func _create_environment() -> void:
 	sky_material.ground_horizon_color = Color(0.16, 0.28, 0.31)
 	environment.sky = Sky.new()
 	environment.sky.sky_material = sky_material
+	air_sky = environment.sky
+	water_atmosphere = ShaderMaterial.new()
+	water_atmosphere.shader = load("res://shaders/ocean_atmosphere.gdshader")
+	water_sky = Sky.new()
+	water_sky.radiance_size = Sky.RADIANCE_SIZE_32
+	water_sky.process_mode = Sky.PROCESS_MODE_QUALITY
+	water_sky.sky_material = water_atmosphere
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_sky_contribution = 0.0
@@ -544,7 +557,8 @@ func _create_environment() -> void:
 		shaft.rotation_degrees = Vector3(0, -20, -18)
 		add_child(shaft)
 
-	# 《潜水员戴夫》风格多层丁达尔阳光幕墙（保持水面顶部净空，增强浅海至断崖的纵深体积光感）
+	# Broad curtains alternate with thin shafts; their shared shader fades gently
+	# at the surface and at depth instead of filling the whole sea with glow.
 	var beam_specs := [
 		{"pos": Vector3(-11, -19.5, 2), "size": Vector2(5.2, 26.0), "rot": Vector3(0, -18, -18)},
 		{"pos": Vector3(10, -19.0, 0), "size": Vector2(5.8, 26.0), "rot": Vector3(0, -22, -17)},
@@ -792,9 +806,12 @@ func _populate() -> void:
 	add_child(beacon_light)
 	var marker := Label3D.new()
 	marker.text = "◇  LIFEPOD  /  逃生舱"
-	marker.position = HOME + Vector3(0, 6.5, 0)
+	marker.position = HOME + Vector3(0, 3.35, 0)
 	marker.modulate = Color(0.65, 1.0, 0.9)
 	_configure_label_3d(marker, 48, 0.009)
+	marker.visibility_range_end = 13.5
+	marker.visibility_range_end_margin = 2.0
+	marker.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	add_child(marker)
 
 	# Central Escape Console at Lifepod (中央逃生控制台)
@@ -862,6 +879,7 @@ func _populate() -> void:
 	c_label.position = Vector3(0, 1.6, 0)
 	c_label.modulate = Color(0.3, 0.95, 1.0)
 	_configure_label_3d(c_label, 32, 0.007)
+	c_label.visibility_range_end = 9.5
 	escape_console.add_child(c_label)
 	add_child(escape_console)
 
@@ -940,6 +958,7 @@ func _populate() -> void:
 	bb_label.position = Vector3(0, 0.85, 0)
 	bb_label.modulate = Color(0.35, 0.95, 1.0)
 	_configure_label_3d(bb_label, 32, 0.007)
+	bb_label.visibility_range_end = 9.5
 	black_box.add_child(bb_label)
 	add_child(black_box)
 
@@ -1478,9 +1497,12 @@ func _create_hydrothermal_vent(at: Vector3) -> void:
 	var light := OmniLight3D.new()
 	light.position = at + Vector3(0, chimney_height + 1.2, 0)
 	light.light_color = Color(1.0, 0.52, 0.16)
-	light.light_energy = 5.2
-	light.omni_range = 36.0
-	light.omni_attenuation = 1.15
+	light.light_energy = 4.8
+	light.omni_range = 24.0
+	light.omni_attenuation = 1.22
+	light.distance_fade_enabled = true
+	light.distance_fade_begin = 90.0
+	light.distance_fade_length = 24.0
 	add_child(light)
 	vent_lights.append(light)
 
@@ -2687,8 +2709,11 @@ func set_depth(depth: float, scoped: bool = false) -> void:
 	environment.fog_density = float(profile["fog_density"])
 	if scoped:
 		environment.fog_density *= 0.16
-	environment.background_mode = Environment.BG_SKY if depth < 0.05 else Environment.BG_COLOR
-	environment.fog_sky_affect = 0.0 if depth < 0.05 else 1.0
+	environment.background_mode = Environment.BG_SKY
+	var target_sky: Sky = air_sky if depth < 0.05 else water_sky
+	if environment.sky != target_sky:
+		environment.sky = target_sky
+	environment.fog_sky_affect = 0.0 if depth < 0.05 else 0.58
 
 	environment.fog_light_color = profile["fog_color"]
 	environment.fog_light_energy = float(profile["fog_energy"])
@@ -2704,6 +2729,8 @@ func set_depth(depth: float, scoped: bool = false) -> void:
 	var camera := get_viewport().get_camera_3d()
 	if camera != null:
 		set_art_observer(camera.global_position, depth)
+	else:
+		_update_water_atmosphere(profile.fog_color, float(profile.fog_energy), depth)
 
 func set_world_labels_visible(show_labels: bool) -> void:
 	for node in find_children("*", "Label3D", true, false):
@@ -3519,6 +3546,23 @@ func set_art_observer(at: Vector3, depth_override: float = -1.0) -> void:
 	var fog: Color = profile.fog_color.lerp(water, amount)
 	environment.fog_light_color = fog
 	environment.background_color = (fog.srgb_to_linear() * float(profile.fog_energy)).linear_to_srgb()
+	_update_water_atmosphere(fog, float(profile.fog_energy), depth)
+
+func _update_water_atmosphere(water: Color, energy: float, depth: float) -> void:
+	if water_atmosphere == null:
+		return
+	var sunlit := 1.0 - smoothstep(40.0, 190.0, depth)
+	# Avoid invalidating reflection cubemaps when an observer is stationary or
+	# crosses a tiny fraction of a regional blend; the visible fog stays smooth.
+	if Vector3(water.r, water.g, water.b).distance_squared_to(Vector3(_atmosphere_color.r, _atmosphere_color.g, _atmosphere_color.b)) > 0.000009:
+		water_atmosphere.set_shader_parameter("water_color", water)
+		_atmosphere_color = water
+	if absf(energy - _atmosphere_energy) > 0.003:
+		water_atmosphere.set_shader_parameter("water_energy", energy)
+		_atmosphere_energy = energy
+	if absf(sunlit - _atmosphere_sunlit) > 0.01:
+		water_atmosphere.set_shader_parameter("sunlit_amount", sunlit)
+		_atmosphere_sunlit = sunlit
 
 func _sync_animation_lod(observer: Vector3) -> void:
 	var prev := last_diver_pos

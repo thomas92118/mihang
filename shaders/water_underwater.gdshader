@@ -1,4 +1,7 @@
 shader_type spatial;
+
+// A nonnegative override freezes only visual time for repeatable review.
+uniform float review_time = -1.0;
 render_mode cull_disabled, blend_mix, depth_draw_never, world_vertex_coords;
 
 uniform sampler2D ripple_normal : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
@@ -10,7 +13,7 @@ varying vec2 swell_slope;
 void vertex() {
 	vec3 phase = vec3(dot(VERTEX.xz, vec2(0.16, 0.06)),
 		dot(VERTEX.xz, vec2(-0.09, 0.24)), dot(VERTEX.xz, vec2(0.31, 0.19)))
-		- TIME * vec3(0.72, 0.91, 1.17);
+		- (review_time >= 0.0 ? review_time : TIME) * vec3(0.72, 0.91, 1.17);
 	VERTEX.y += dot(sin(phase), vec3(0.28, 0.16, 0.08));
 	vec3 slope = cos(phase) * vec3(0.28, 0.16, 0.08);
 	swell_slope = vec2(dot(slope, vec3(0.16, -0.09, 0.31)), dot(slope, vec3(0.06, 0.24, 0.19)));
@@ -18,7 +21,7 @@ void vertex() {
 }
 
 void fragment() {
-	vec2 drift = TIME * vec2(0.014, -0.009);
+	vec2 drift = (review_time >= 0.0 ? review_time : TIME) * vec2(0.014, -0.009);
 	vec2 broad = texture(ripple_normal, world_pos.xz * 0.035 + drift).rg * 2.0 - 1.0;
 	vec2 fine = texture(ripple_normal, world_pos.zx * 0.083 - drift * 1.31).gr * 2.0 - 1.0;
 	float distance_to_camera = length(CAMERA_POSITION_WORLD - world_pos);
@@ -50,5 +53,9 @@ void fragment() {
 	ALBEDO = vec3(0.035, 0.13, 0.18) * skylight_visibility;
 	EMISSION = mix(reflected_water, skylight + vec3(1.0, 0.95, 0.82) * sun_glow * 1.4,
 		window * (1.0 - fresnel)) * transmission * skylight_visibility;
-	ALPHA = 1.0 - smoothstep(180.0, 300.0, camera_depth);
+	// The far grazing surface hands over to the same water atmosphere. A fully
+	// opaque, infinitely dark reflection here creates a ruler-straight horizon.
+	float grazing_fade = smoothstep(0.015, 0.24, facing);
+	float horizon_fade = (1.0 - smoothstep(55.0, 190.0, distance_to_camera)) * grazing_fade;
+	ALPHA = (1.0 - smoothstep(180.0, 300.0, camera_depth)) * horizon_fade;
 }
