@@ -4,6 +4,7 @@ const ModelFinish = preload("res://scripts/presentation/model_finish.gd")
 const DiverSilhouette = preload("res://scripts/presentation/diver_silhouette.gd")
 const BlenderArt = preload("res://scripts/presentation/blender_art.gd")
 const ReferenceDiver = preload("res://scripts/presentation/reference_diver.gd")
+const CharacterRoster = preload("res://scripts/presentation/character_roster.gd")
 
 const OceanDepths = preload("res://scripts/ocean_depths.gd")
 const Ocean = preload("res://scripts/ocean.gd")
@@ -75,6 +76,7 @@ var swim_kick_rate: float = 2.2
 var turn_bank: float = 0.0
 var reference_model_active := false
 var _reference_drivers: Dictionary = {}
+var current_character: String = CharacterRoster.DEFAULT_CHARACTER
 var body_combat_yaw: float = 0.0
 var body_combat_pitch: float = 0.0
 var body_combat_roll: float = 0.0
@@ -242,6 +244,50 @@ func toggle_lamp() -> bool:
 	if is_instance_valid(lamp_fill):
 		lamp_fill.visible = lamp.visible
 	return lamp.visible
+
+func get_character_profile() -> Dictionary:
+	return CharacterRoster.get_profile(current_character)
+
+func cycle_character(step: int = 1) -> Dictionary:
+	return set_character(CharacterRoster.next_id(current_character, step))
+
+func set_character(character_id: String) -> Dictionary:
+	var normalized := CharacterRoster.normalize_id(character_id)
+	if normalized == current_character and is_instance_valid(diver_model) and String(diver_model.get_meta("character_id", "")) == normalized:
+		return CharacterRoster.get_profile(current_character)
+	current_character = normalized
+	var prev_rot := diver_model.rotation if is_instance_valid(diver_model) else Vector3.ZERO
+	if is_instance_valid(diver_model):
+		remove_child(diver_model)
+		diver_model.free()
+		diver_model = null
+	_reference_drivers.clear()
+	_build_diver_model()
+	if is_instance_valid(diver_model):
+		diver_model.rotation = prev_rot
+		diver_model.visible = third_person_mode and not scoped and not in_submarine_mode
+	if is_instance_valid(booster_node):
+		booster_node.position = Vector3(0.0, -0.22, -0.76) if reference_model_active else Vector3(0.0, -0.14, -0.46)
+	if is_instance_valid(breath_bubbles):
+		breath_bubbles.emitting = not in_submarine_mode
+	if is_instance_valid(backpack_thruster_bubbles):
+		backpack_thruster_bubbles.emitting = false
+	_animate_diver_model(0.016)
+	return CharacterRoster.get_profile(current_character)
+
+func apply_showcase_pose(delta: float) -> void:
+	velocity = Vector3.ZERO
+	_animate_diver_model(maxf(delta, 0.016))
+	if reference_model_active and is_instance_valid(left_arm_pivot) and is_instance_valid(right_arm_pivot):
+		var sway := sin(swim_clock * 0.5)
+		head_pivot.rotation_degrees = Vector3(3.5, sway * 4.0, -sway * 2.2)
+		left_arm_pivot.rotation_degrees = Vector3(8.0 + sway * 3.0, 8.0, 4.5 - sway * 1.6)
+		right_arm_pivot.rotation_degrees = Vector3(10.0 - sway * 3.0, -8.0, -4.5 + sway * 1.6)
+		if is_instance_valid(left_forearm_pivot):
+			left_forearm_pivot.rotation_degrees = Vector3(24.0 + sway * 2.5, 10.0, -6.0)
+		if is_instance_valid(right_forearm_pivot):
+			right_forearm_pivot.rotation_degrees = Vector3(22.0 - sway * 2.5, -10.0, 6.0)
+		ReferenceDiver.sync_skin(diver_model, _reference_drivers)
 
 func trigger_dash(oxygen_available: float = 90.0) -> Dictionary:
 	if not biomod_dash_unlocked:
@@ -599,7 +645,7 @@ func _setup_booster() -> void:
 		add_child(equipment_rig)
 	booster_node = Node3D.new()
 	booster_node.name = "MiniBooster"
-	booster_node.position = Vector3(0.0, -0.14, -0.46)
+	booster_node.position = Vector3(0.0, -0.22, -0.76) if reference_model_active else Vector3(0.0, -0.14, -0.46)
 	booster_node.rotation_degrees = Vector3(5.0, 0.0, 0.0)
 	equipment_rig.add_child(booster_node)
 
@@ -1596,9 +1642,11 @@ func _update_third_person_camera(delta: float) -> void:
 		diver_model.visible = third_person_mode and not scoped and not in_submarine_mode
 
 func _build_diver_model() -> void:
-	if ReferenceDiver.available():
+	var profile := CharacterRoster.get_profile(current_character)
+	if bool(profile.get("is_mermaid", true)) and ReferenceDiver.available():
 		_build_reference_diver_model()
 		return
+	reference_model_active = false
 	diver_model = Node3D.new()
 	diver_model.name = "DiverThirdPersonModel"
 	diver_model.position = Vector3(0.0, -0.58, 0.24)
@@ -1866,6 +1914,8 @@ func _build_diver_model() -> void:
 	BlenderArt.finish_diver(diver_model)
 	diver_model.set_meta("mesh_contract", DiverSilhouette.CONTRACT_VERSION)
 	diver_model.set_meta("triangle_budget", DiverSilhouette.TRIANGLE_BUDGET)
+	diver_model.set_meta("character_id", current_character)
+	set_meta("art_finished", true)
 
 func _build_reference_diver_model() -> void:
 	reference_model_active = true
@@ -1875,27 +1925,21 @@ func _build_reference_diver_model() -> void:
 	diver_model.scale = Vector3.ONE * 1.15
 	add_child(diver_model)
 	body_pivot = ReferenceDiver.joint(diver_model, "BodyPivot", Vector3.ZERO)
-	head_pivot = ReferenceDiver.joint(body_pivot, "HeadPivot", Vector3(0, 0.34, 0))
+	head_pivot = ReferenceDiver.joint(body_pivot, "HeadPivot", Vector3(0, 0.275, 0.005))
 	left_arm_pivot = ReferenceDiver.joint(body_pivot, "LeftArmPivot", Vector3(-0.18, 0.19, 0))
 	right_arm_pivot = ReferenceDiver.joint(body_pivot, "RightArmPivot", Vector3(0.18, 0.19, 0))
 	left_forearm_pivot = ReferenceDiver.joint(left_arm_pivot, "LeftForearmPivot", Vector3(0, -0.235, 0))
 	right_forearm_pivot = ReferenceDiver.joint(right_arm_pivot, "RightForearmPivot", Vector3(0, -0.235, 0))
 	left_hand_socket = ReferenceDiver.joint(left_forearm_pivot, "LeftHandSocket", Vector3(0, -0.255, -0.005))
 	right_hand_socket = ReferenceDiver.joint(right_forearm_pivot, "RightHandSocket", Vector3(0, -0.255, -0.005))
-	left_leg_pivot = ReferenceDiver.joint(body_pivot, "LeftLegPivot", Vector3(-0.08, -0.17, 0.01))
-	right_leg_pivot = ReferenceDiver.joint(body_pivot, "RightLegPivot", Vector3(0.08, -0.17, 0.01))
+	left_leg_pivot = ReferenceDiver.joint(body_pivot, "LeftLegPivot", Vector3(-0.025, -0.17, 0.01))
+	right_leg_pivot = ReferenceDiver.joint(body_pivot, "RightLegPivot", Vector3(0.025, -0.17, 0.01))
 	left_knee_pivot = ReferenceDiver.joint(left_leg_pivot, "LeftKneePivot", Vector3(0, -0.265, 0))
 	right_knee_pivot = ReferenceDiver.joint(right_leg_pivot, "RightKneePivot", Vector3(0, -0.265, 0))
 	left_fin_pivot = ReferenceDiver.joint(left_knee_pivot, "LeftFinPivot", Vector3(0, -0.26, 0))
 	right_fin_pivot = ReferenceDiver.joint(right_knee_pivot, "RightFinPivot", Vector3(0, -0.26, 0))
-	left_fin_pivot.rotation_degrees.x = 11.5
-	right_fin_pivot.rotation_degrees.x = 11.5
 	var fin_l := ReferenceDiver.joint(left_fin_pivot, "FinMembraneDirection", Vector3.ZERO)
 	var fin_r := ReferenceDiver.joint(right_fin_pivot, "FinMembraneDirection", Vector3.ZERO)
-	# The old ankle animation adds 11.5 degrees. New fins are modeled along +Z
-	# with no hidden mesh pre-rotation, for a net 70-degree relaxed foot angle.
-	fin_l.rotation_degrees.x = 58.5
-	fin_r.rotation_degrees.x = 58.5
 	_reference_drivers = {
 		"body": body_pivot, "head": head_pivot,
 		"arm_l": left_arm_pivot, "arm_r": right_arm_pivot,
@@ -1913,38 +1957,41 @@ func _build_reference_diver_model() -> void:
 	# Breathing and sprint particles remain controller-owned, independent of the
 	# character's authored glass, skin, cloth and metallic materials.
 	var bubble := SphereMesh.new()
-	bubble.radius = 0.012
-	bubble.height = 0.024
+	bubble.radius = 0.009
+	bubble.height = 0.018
 	bubble.radial_segments = 6
 	bubble.rings = 3
 	var bubble_mat := StandardMaterial3D.new()
 	bubble_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	bubble_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bubble_mat.albedo_color = Color(0.8, 0.96, 1.0, 0.35)
+	bubble_mat.albedo_color = Color(0.86, 0.98, 1.0, 0.30)
 	bubble.material = bubble_mat
 	breath_bubbles = CPUParticles3D.new()
 	breath_bubbles.name = "RegulatorBubbles"
-	breath_bubbles.position = Vector3(0, -0.065, -0.11)
-	breath_bubbles.amount = 10
-	breath_bubbles.lifetime = 1.6
+	breath_bubbles.position = Vector3(0, 0.02, 0.09)
+	breath_bubbles.amount = 8
+	breath_bubbles.lifetime = 1.8
 	breath_bubbles.direction = Vector3.UP
-	breath_bubbles.gravity = Vector3(0, 0.8, 0)
-	breath_bubbles.initial_velocity_min = 0.25
-	breath_bubbles.initial_velocity_max = 0.5
+	breath_bubbles.gravity = Vector3(0, 0.65, 0)
+	breath_bubbles.initial_velocity_min = 0.16
+	breath_bubbles.initial_velocity_max = 0.36
 	breath_bubbles.mesh = bubble
 	head_pivot.add_child(breath_bubbles)
 	backpack_thruster_bubbles = CPUParticles3D.new()
 	backpack_thruster_bubbles.name = "BackpackThrusterJet"
-	backpack_thruster_bubbles.position = Vector3(0, -0.1, 0.16)
-	backpack_thruster_bubbles.amount = 20
-	backpack_thruster_bubbles.lifetime = 0.55
-	backpack_thruster_bubbles.direction = Vector3(0, -0.6, 1)
-	backpack_thruster_bubbles.gravity = Vector3(0, 0.6, 0)
-	backpack_thruster_bubbles.initial_velocity_min = 2.0
-	backpack_thruster_bubbles.initial_velocity_max = 3.5
+	backpack_thruster_bubbles.position = Vector3(0.025, -0.22, 0.02)
+	backpack_thruster_bubbles.amount = 24
+	backpack_thruster_bubbles.lifetime = 0.65
+	backpack_thruster_bubbles.direction = Vector3(0, -0.85, 0.45)
+	backpack_thruster_bubbles.gravity = Vector3(0, 0.55, 0)
+	backpack_thruster_bubbles.initial_velocity_min = 1.6
+	backpack_thruster_bubbles.initial_velocity_max = 3.0
 	backpack_thruster_bubbles.emitting = false
 	backpack_thruster_bubbles.mesh = bubble
-	body_pivot.add_child(backpack_thruster_bubbles)
+	left_fin_pivot.add_child(backpack_thruster_bubbles)
+	if current_character != CharacterRoster.DEFAULT_CHARACTER:
+		CharacterRoster.apply_mermaid_style(diver_model, _reference_drivers, breath_bubbles, backpack_thruster_bubbles, current_character)
+	diver_model.set_meta("character_id", current_character)
 
 func _build_limb_arm(side: float, mat_suit: Material, mat_armor: Material, mat_accent: Material, mat_cyan: Material) -> Node3D:
 	var pivot := Node3D.new()
@@ -2492,8 +2539,36 @@ func _animate_diver_model(delta: float) -> void:
 		ReferenceDiver.sync_skin(diver_model, _reference_drivers)
 
 func _animate_reference_posture(delta: float, cam_pitch: float, in_attack: bool) -> void:
-	# New anatomy rests vertically. It must not inherit the static 32/72-degree
-	# bends baked into v3's cylindrical upper-arm and forearm meshes.
+	var wave_amp := lerpf(0.09, 0.29, swim_motion_blend)
+	if sprinting or booster_active:
+		wave_amp = 0.37
+	if in_mount_mode:
+		var mount_fluke := 0.28 + sin(swim_clock * 0.7) * 0.07
+		left_leg_pivot.rotation = Vector3(-0.26, 0.0, 0.0)
+		right_leg_pivot.rotation = Vector3(-0.26, 0.0, 0.0)
+		left_knee_pivot.rotation = Vector3(-0.36, 0.0, 0.0)
+		right_knee_pivot.rotation = Vector3(-0.36, 0.0, 0.0)
+		left_fin_pivot.rotation = Vector3(mount_fluke, 0.0, -0.045)
+		right_fin_pivot.rotation = Vector3(mount_fluke, 0.0, 0.045)
+	else:
+		var tail_alpha := 1.0 - exp(-delta * 14.0)
+		var idle_sway := sin(swim_clock * 0.5) * 0.032 * (1.0 - swim_motion_blend * 0.55)
+		var hip_x := sin(swim_clock - 0.55) * wave_amp + 0.05 * (1.0 - swim_motion_blend)
+		var mid_x := sin(swim_clock - 1.48) * wave_amp * 1.28 - 0.08 * (1.0 - swim_motion_blend)
+		var fluke_x := sin(swim_clock - 2.40) * wave_amp * 1.42 + 0.09 * (1.0 - swim_motion_blend)
+		var flare := 0.026 + 0.036 * (0.5 + 0.5 * cos(swim_clock - 2.40)) * lerpf(0.45, 1.0, swim_motion_blend)
+		left_leg_pivot.rotation.x = lerpf(left_leg_pivot.rotation.x, hip_x, tail_alpha)
+		right_leg_pivot.rotation.x = left_leg_pivot.rotation.x
+		left_leg_pivot.rotation.z = idle_sway
+		right_leg_pivot.rotation.z = idle_sway
+		left_knee_pivot.rotation.x = lerpf(left_knee_pivot.rotation.x, mid_x, tail_alpha)
+		right_knee_pivot.rotation.x = left_knee_pivot.rotation.x
+		left_knee_pivot.rotation.z = idle_sway * 0.8
+		right_knee_pivot.rotation.z = idle_sway * 0.8
+		left_fin_pivot.rotation.x = lerpf(left_fin_pivot.rotation.x, fluke_x, tail_alpha)
+		right_fin_pivot.rotation.x = left_fin_pivot.rotation.x
+		left_fin_pivot.rotation.z = idle_sway * 0.5 - flare
+		right_fin_pivot.rotation.z = idle_sway * 0.5 + flare
 	if in_attack:
 		# Combat choreography already solves the wrist so the knife thrust and
 		# its blade direction agree. Idle anatomical alignment must not replace it.
@@ -2501,15 +2576,17 @@ func _animate_reference_posture(delta: float, cam_pitch: float, in_attack: bool)
 	var is_gun := current_weapon in ["sonic", "marker_gun"]
 	var aiming_gun := is_gun and (aiming or gun_trigger_held)
 	if not in_attack and combat_stance_blend < 0.05 and not in_mount_mode:
+		var torso_wave := sin(swim_clock) * wave_amp * 0.16
 		var vertical_lean := atan2(velocity.y, maxf(Vector2(velocity.x, velocity.z).length(), 1.2)) * 0.26
-		var pitch := lerpf(-0.025, -1.30, swim_motion_blend) + cam_pitch * 0.40 + vertical_lean
+		var pitch := lerpf(-0.04, -1.24, swim_motion_blend) + cam_pitch * 0.40 + vertical_lean + torso_wave
 		body_pivot.rotation.x = pitch
-		head_pivot.rotation.x = clampf(cam_pitch * 0.45 + 0.05 + swim_motion_blend * 0.58, -0.55, 0.75)
+		head_pivot.rotation.x = clampf(cam_pitch * 0.45 + 0.06 + swim_motion_blend * 0.62 - torso_wave * 0.65, -0.55, 0.78)
 	if booster_active:
-		left_arm_pivot.rotation_degrees = Vector3(65, 10, -6)
-		right_arm_pivot.rotation_degrees = Vector3(65, -10, 6)
-		left_forearm_pivot.rotation_degrees = Vector3(12, 8, 0)
-		right_forearm_pivot.rotation_degrees = Vector3(12, -8, 0)
+		var boost_pitch := 76.0 + rad_to_deg(cam_pitch - body_pivot.rotation.x)
+		left_arm_pivot.rotation_degrees = Vector3(boost_pitch, 5.0, -3.0)
+		right_arm_pivot.rotation_degrees = Vector3(boost_pitch, -5.0, 3.0)
+		left_forearm_pivot.rotation_degrees = Vector3(14.0, 6.0, 0.0)
+		right_forearm_pivot.rotation_degrees = Vector3(14.0, -6.0, 0.0)
 	elif aiming_gun and not in_attack:
 		var aim_pitch := rad_to_deg(cam_pitch - body_pivot.rotation.x) * 0.55
 		left_arm_pivot.rotation_degrees = Vector3(72 + aim_pitch, 12, -8)
@@ -2518,11 +2595,13 @@ func _animate_reference_posture(delta: float, cam_pitch: float, in_attack: bool)
 		right_forearm_pivot.rotation_degrees = Vector3(8, -7, 0)
 	elif not in_attack and combat_stance_blend < 0.05 and not shield_active and current_weapon != "axe":
 		var slow := sin(swim_clock * 0.5)
-		var stroke := lerpf(1.8, 9.0, swim_motion_blend)
-		left_arm_pivot.rotation_degrees = Vector3(3 + slow * stroke, 2, -4)
-		right_arm_pivot.rotation_degrees = Vector3(5 - slow * stroke, -2, 4)
-		left_forearm_pivot.rotation_degrees = Vector3(5 + sin(swim_clock * 0.5 - 0.5) * stroke * 0.35, 0, 0)
-		right_forearm_pivot.rotation_degrees = Vector3(7 - sin(swim_clock * 0.5 - 0.5) * stroke * 0.35, 0, 0)
+		var stroke := lerpf(3.2, 10.5, swim_motion_blend)
+		var abduct := lerpf(8.5, 5.0, swim_motion_blend) + cos(swim_clock * 0.5) * 2.2
+		var base_arm_x := lerpf(6.0, -8.0, swim_motion_blend)
+		left_arm_pivot.rotation_degrees = Vector3(base_arm_x + slow * stroke, 4.0, -abduct)
+		right_arm_pivot.rotation_degrees = Vector3(base_arm_x + 2.0 - slow * stroke * 0.7, -4.0, abduct)
+		left_forearm_pivot.rotation_degrees = Vector3(11.0 + sin(swim_clock * 0.5 - 0.6) * stroke * 0.4, 3.0, 0.0)
+		right_forearm_pivot.rotation_degrees = Vector3(12.0 - sin(swim_clock * 0.5 - 0.6) * stroke * 0.35, -3.0, 0.0)
 	for socket: Node3D in [left_hand_socket, right_hand_socket]:
 		var wrist := left_wrist_rot if socket == left_hand_socket else right_wrist_rot
 		var align := Basis.from_euler(Vector3(-PI * 0.5, 0, 0))

@@ -122,7 +122,7 @@ func _run() -> void:
 	assert(gun.to_global(Vector3(0, -0.10, 0.16)).distance_to(first.right_hand_socket.global_position) < 0.001, "Third-person gun grip is detached from the modeled hand")
 	first.in_mount_mode = true
 	first._animate_diver_model(0.1)
-	assert(is_equal_approx(first.left_leg_pivot.rotation.z, 0.22))
+	assert(is_equal_approx(first.left_leg_pivot.rotation.z, 0.0) and is_equal_approx(first.left_leg_pivot.rotation.x, first.right_leg_pivot.rotation.x), "Mermaid tail must curve symmetrically without splitting laterally")
 	first.in_mount_mode = false
 	first.set_submarine_mode(true, "scout")
 	first._update_third_person_camera(0)

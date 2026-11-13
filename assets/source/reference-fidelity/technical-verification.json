@@ -51,7 +51,7 @@
       "log": ".tools/reference-verification/character_visual.log"
     }
   ],
-  "model_sha256": "b507d3ef55477d92f5fbdd5996a517267fa31ada94cba777a6dc32b059f44542",
+  "model_sha256": "98373a6036471878a070cd770c4f13f3775e9720a6181c20239c475c3358d80b",
   "visual_fidelity_accepted": false,
   "scope": "Technical checks do not certify likeness or 100 percent reconstruction."
 }

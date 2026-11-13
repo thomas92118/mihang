@@ -3,179 +3,106 @@
   "reference": "assets/source/art-v3/concepts/diver.png",
   "reference_sha256": "4c046c20ba52f3f1ef6df565243a8618ce848edff01291e69d9b9d6c52c4fa47",
   "parts": {
-    "body__TailoredSuit": {
+    "body__PorcelainTorsoSkin": {
       "driver": "body",
-      "material": "suit",
-      "triangles": 8624,
+      "material": "body_skin",
+      "triangles": 6272,
       "authored_parts": [
-        "body__TailoredTorsoPelvisAndLegs"
+        "body__SculptedPorcelainTorso"
       ]
     },
-    "body__seam": {
+    "body__IridescentMermaidTailScales": {
       "driver": "body",
-      "material": "seam",
-      "triangles": 3344,
+      "material": "scales",
+      "triangles": 7168,
       "authored_parts": [
-        "body__SternumSuitClosure",
-        "body__PrincessPanelSeamLeft",
-        "body__UnderbustCupSeamLeft",
-        "body__BackTailoredPanelSeamLeft",
-        "body__GluteArchSeamLeft",
-        "body__PrincessPanelSeamRight",
-        "body__UnderbustCupSeamRight",
-        "body__BackTailoredPanelSeamRight",
-        "body__GluteArchSeamRight"
+        "body__SculptedMermaidTailBody"
       ]
     },
-    "leg_l__seam": {
-      "driver": "leg_l",
-      "material": "seam",
-      "triangles": 512,
-      "authored_parts": [
-        "leg_l__OuterThighSeamLeft",
-        "leg_l__InnerThighSeamLeft"
-      ]
-    },
-    "calf_l__seam": {
-      "driver": "calf_l",
-      "material": "seam",
-      "triangles": 432,
-      "authored_parts": [
-        "calf_l__SweepingShinSeamLeft",
-        "calf_l__BackCalfChevronSeamLeft"
-      ]
-    },
-    "leg_r__seam": {
-      "driver": "leg_r",
-      "material": "seam",
-      "triangles": 512,
-      "authored_parts": [
-        "leg_r__OuterThighSeamRight",
-        "leg_r__InnerThighSeamRight"
-      ]
-    },
-    "calf_r__seam": {
-      "driver": "calf_r",
-      "material": "seam",
-      "triangles": 432,
-      "authored_parts": [
-        "calf_r__SweepingShinSeamRight",
-        "calf_r__BackCalfChevronSeamRight"
-      ]
-    },
-    "arm_l__TailoredSuit": {
+    "arm_l__PorcelainTorsoSkin": {
       "driver": "arm_l",
-      "material": "suit",
-      "triangles": 3240,
+      "material": "body_skin",
+      "triangles": 2880,
       "authored_parts": [
-        "arm_l__NaturalUpperSleeveLeft"
+        "arm_l__SlenderBareArmLeft"
       ]
     },
-    "arm_l__seam": {
-      "driver": "arm_l",
-      "material": "seam",
-      "triangles": 416,
-      "authored_parts": [
-        "arm_l__UpperSleeveSeamLeft"
-      ]
-    },
-    "forearm_l__GloveThumbIndexMiddleRingLittleSuit": {
+    "forearm_l__HandThumbIndexMiddleRingLittleSkin": {
       "driver": "forearm_l",
-      "material": "suit",
-      "triangles": 168,
-      "authored_parts": [
-        "forearm_l__TailoredForearmCuffLeft"
-      ]
-    },
-    "forearm_l__GloveThumbIndexMiddleRingLittleRubber": {
-      "driver": "forearm_l",
-      "material": "rubber",
+      "material": "skin",
       "triangles": 2392,
       "authored_parts": [
-        "forearm_l__FittedGlovePalmLeft",
-        "forearm_l__GloveFingerIndexLeft",
-        "forearm_l__GloveFingerMiddleLeft",
-        "forearm_l__GloveFingerRingLeft",
-        "forearm_l__GloveFingerLittleLeft",
-        "forearm_l__GloveFingerThumbLeft"
+        "forearm_l__GracefulHandPalmLeft",
+        "forearm_l__HandFingerIndexLeft",
+        "forearm_l__HandFingerMiddleLeft",
+        "forearm_l__HandFingerRingLeft",
+        "forearm_l__HandFingerLittleLeft",
+        "forearm_l__HandFingerThumbLeft"
       ]
     },
-    "forearm_l__seam": {
+    "forearm_l__MotherOfPearlScallopShell": {
       "driver": "forearm_l",
-      "material": "seam",
-      "triangles": 180,
+      "material": "shell_pearl",
+      "triangles": 240,
       "authored_parts": [
-        "forearm_l__DorsalGloveSeamLeft-0.011",
-        "forearm_l__DorsalGloveSeamLeft0.0",
-        "forearm_l__DorsalGloveSeamLeft0.011"
+        "forearm_l__PearlFingernailIndexLeft",
+        "forearm_l__PearlFingernailMiddleLeft",
+        "forearm_l__PearlFingernailRingLeft",
+        "forearm_l__PearlFingernailLittleLeft",
+        "forearm_l__PearlFingernailThumbLeft"
       ]
     },
-    "arm_r__TailoredSuit": {
+    "arm_r__PorcelainTorsoSkin": {
       "driver": "arm_r",
-      "material": "suit",
-      "triangles": 3240,
+      "material": "body_skin",
+      "triangles": 2880,
       "authored_parts": [
-        "arm_r__NaturalUpperSleeveRight"
+        "arm_r__SlenderBareArmRight"
       ]
     },
-    "arm_r__seam": {
-      "driver": "arm_r",
-      "material": "seam",
-      "triangles": 416,
-      "authored_parts": [
-        "arm_r__UpperSleeveSeamRight"
-      ]
-    },
-    "forearm_r__GloveThumbIndexMiddleRingLittleSuit": {
+    "forearm_r__HandThumbIndexMiddleRingLittleSkin": {
       "driver": "forearm_r",
-      "material": "suit",
-      "triangles": 168,
-      "authored_parts": [
-        "forearm_r__TailoredForearmCuffRight"
-      ]
-    },
-    "forearm_r__GloveThumbIndexMiddleRingLittleRubber": {
-      "driver": "forearm_r",
-      "material": "rubber",
+      "material": "skin",
       "triangles": 2392,
       "authored_parts": [
-        "forearm_r__FittedGlovePalmRight",
-        "forearm_r__GloveFingerIndexRight",
-        "forearm_r__GloveFingerMiddleRight",
-        "forearm_r__GloveFingerRingRight",
-        "forearm_r__GloveFingerLittleRight",
-        "forearm_r__GloveFingerThumbRight"
+        "forearm_r__GracefulHandPalmRight",
+        "forearm_r__HandFingerIndexRight",
+        "forearm_r__HandFingerMiddleRight",
+        "forearm_r__HandFingerRingRight",
+        "forearm_r__HandFingerLittleRight",
+        "forearm_r__HandFingerThumbRight"
       ]
     },
-    "forearm_r__seam": {
+    "forearm_r__MotherOfPearlScallopShell": {
       "driver": "forearm_r",
-      "material": "seam",
-      "triangles": 180,
+      "material": "shell_pearl",
+      "triangles": 240,
       "authored_parts": [
-        "forearm_r__DorsalGloveSeamRight-0.011",
-        "forearm_r__DorsalGloveSeamRight0.0",
-        "forearm_r__DorsalGloveSeamRight0.011"
+        "forearm_r__PearlFingernailIndexRight",
+        "forearm_r__PearlFingernailMiddleRight",
+        "forearm_r__PearlFingernailRingRight",
+        "forearm_r__PearlFingernailLittleRight",
+        "forearm_r__PearlFingernailThumbRight"
       ]
     },
     "head__SculptedFaceSkin": {
       "driver": "head",
       "material": "skin",
-      "triangles": 12576,
+      "triangles": 13292,
       "authored_parts": [
         "head__SculptedHumanFace",
-        "head__NaturalNeck",
         "head__LeftUpperEyelid",
         "head__LeftLowerEyelid",
-        "head__LeftEar",
         "head__RightUpperEyelid",
         "head__RightLowerEyelid",
-        "head__RightEar"
+        "head__LeftDelicateEarBase",
+        "head__RightDelicateEarBase"
       ]
     },
     "head__EyeWhite": {
       "driver": "head",
       "material": "eye_white",
-      "triangles": 2216,
+      "triangles": 2520,
       "authored_parts": [
         "head__LeftRecessedSclera",
         "head__LeftEyeCatchlight",
@@ -188,640 +115,1125 @@
     "head__Iris": {
       "driver": "head",
       "material": "iris",
-      "triangles": 1456,
+      "triangles": 1800,
       "authored_parts": [
-        "head__LeftHazelIris",
-        "head__RightHazelIris"
+        "head__LeftOceanGemIris",
+        "head__RightOceanGemIris"
       ]
     },
     "head__pupil": {
       "driver": "head",
       "material": "pupil",
-      "triangles": 880,
+      "triangles": 968,
       "authored_parts": [
         "head__LeftPupil",
         "head__RightPupil"
       ]
     },
-    "head__SidePartHairBunBrows": {
+    "head__CurvedLashesAndBrows": {
       "driver": "head",
-      "material": "hair",
-      "triangles": 13518,
+      "material": "lash",
+      "triangles": 1292,
       "authored_parts": [
-        "head__LeftFineUpperLashes",
+        "head__LeftThickUpperLashLine",
+        "head__LeftWingEyelash0",
+        "head__LeftWingEyelash1",
+        "head__LeftWingEyelash2",
+        "head__LeftWingEyelash3",
         "head__LeftShapedEyebrow",
-        "head__RightFineUpperLashes",
-        "head__RightShapedEyebrow",
-        "head__SidePartedDarkHairCap",
-        "head__WavyCurtainLockL0",
-        "head__WavyCurtainLockL1",
-        "head__WavyCurtainLockL3",
-        "head__TempleWaveTendrilL",
-        "head__WavyCurtainLockR0",
-        "head__WavyCurtainLockR1",
-        "head__WavyCurtainLockR3",
-        "head__TempleWaveTendrilR",
-        "head__GatheredCrownWave00",
-        "head__GatheredCrownWave01",
-        "head__GatheredCrownWave03",
-        "head__GatheredCrownWave04",
-        "head__GatheredCrownWave05",
-        "head__GatheredCrownWave06",
-        "head__GatheredCrownWave08",
-        "head__GatheredCrownWave09",
-        "head__LowRolledChignon",
-        "head__TwistedChignonLock00",
-        "head__TwistedChignonLock02",
-        "head__TwistedChignonLock03",
-        "head__TwistedChignonLock05",
-        "head__WavyBunWisp00",
-        "head__WavyBunWisp01",
-        "head__WavyBunWisp02",
-        "head__WavyBunWisp03",
-        "head__WavyBunWisp04"
+        "head__RightThickUpperLashLine",
+        "head__RightWingEyelash0",
+        "head__RightWingEyelash1",
+        "head__RightWingEyelash2",
+        "head__RightWingEyelash3",
+        "head__RightShapedEyebrow"
       ]
     },
     "head__skin_shadow": {
       "driver": "head",
       "material": "skin_shadow",
-      "triangles": 390,
+      "triangles": 690,
       "authored_parts": [
+        "head__LeftDoubleEyelidFold",
         "head__LeftSubtleNostrilCrease",
+        "head__RightDoubleEyelidFold",
         "head__RightSubtleNostrilCrease",
-        "head__ClosedMouthCrease"
+        "head__SmilingMouthCrease"
       ]
     },
     "head__Lips": {
       "driver": "head",
       "material": "lip",
-      "triangles": 648,
+      "triangles": 600,
       "authored_parts": [
         "head__CupidBowUpperLip",
         "head__NaturalLowerLip"
       ]
     },
-    "head__hair_highlight": {
-      "driver": "head",
-      "material": "hair_highlight",
-      "triangles": 2576,
-      "authored_parts": [
-        "head__WavyCurtainLockL2",
-        "head__WavyCurtainLockR2",
-        "head__GatheredCrownWave02",
-        "head__GatheredCrownWave07",
-        "head__TwistedChignonLock01",
-        "head__TwistedChignonLock04"
-      ]
-    },
-    "head__ClearGlassVisor": {
+    "head__TranslucentSeaGlassVisorVeil": {
       "driver": "head",
       "material": "glass",
-      "triangles": 3008,
+      "triangles": 2112,
       "authored_parts": [
-        "head__ClearGlassPressureDome"
-      ]
-    },
-    "head__ivory": {
-      "driver": "head",
-      "material": "ivory",
-      "triangles": 6860,
-      "authored_parts": [
-        "head__SculptedIvoryCranialShell",
-        "head__CeramicBezelArch",
-        "head__LeftCeramicEarMount",
-        "head__LeftMandibleChinStrut",
-        "head__RightCeramicEarMount",
-        "head__RightMandibleChinStrut"
-      ]
-    },
-    "head__gold": {
-      "driver": "head",
-      "material": "gold",
-      "triangles": 7772,
-      "authored_parts": [
-        "head__FineBrassPressureInlay",
-        "head__RearBunBrassCollar",
-        "head__LowerPressureCollar",
-        "head__LeftBrassEarMechanism",
-        "head__LeftEarPlate",
-        "head__LeftMandibleBrassTrim",
-        "head__RightBrassEarMechanism",
-        "head__RightEarPlate",
-        "head__RightMandibleBrassTrim",
-        "head__ChinRegulatorHousing",
-        "head__RegulatorVerticalVent00",
-        "head__RegulatorVerticalVent01",
-        "head__RegulatorVerticalVent02",
-        "head__RegulatorVerticalVent03",
-        "head__RegulatorVerticalVent04"
-      ]
-    },
-    "head__rubber": {
-      "driver": "head",
-      "material": "rubber",
-      "triangles": 2680,
-      "authored_parts": [
-        "head__RearBunRubberGasket",
-        "head__CollarRubberSeal",
-        "head__RegulatorRecess"
+        "head__LeftSirenEarFinGlassVeil",
+        "head__RightSirenEarFinGlassVeil",
+        "head__TiaraCenterCrystalGlassVisor"
       ]
     },
     "head__gold_light": {
       "driver": "head",
       "material": "gold_light",
-      "triangles": 2768,
+      "triangles": 2086,
       "authored_parts": [
-        "head__LeftEarConcentricInlay",
-        "head__LeftEarFastener00",
-        "head__LeftEarFastener01",
-        "head__LeftEarFastener02",
-        "head__LeftEarFastener03",
-        "head__RightEarConcentricInlay",
-        "head__RightEarFastener00",
-        "head__RightEarFastener01",
-        "head__RightEarFastener02",
-        "head__RightEarFastener03",
-        "head__RegulatorBeadedRim"
+        "head__LeftSirenEarFinRay0",
+        "head__LeftSirenEarFinRay4",
+        "head__LeftEarringGoldLink",
+        "head__RightSirenEarFinRay0",
+        "head__RightSirenEarFinRay4",
+        "head__RightEarringGoldLink",
+        "head__StarfishHairpinArmL0",
+        "head__StarfishHairpinArmL1",
+        "head__StarfishHairpinArmL2",
+        "head__StarfishHairpinArmL3",
+        "head__StarfishHairpinArmL4",
+        "head__StarfishHairpinArmR0",
+        "head__StarfishHairpinArmR1",
+        "head__StarfishHairpinArmR2",
+        "head__StarfishHairpinArmR3",
+        "head__StarfishHairpinArmR4",
+        "head__TiaraLowerGoldFiligree",
+        "head__TiaraStarSpireL0.14",
+        "head__TiaraStarSpireL0.34",
+        "head__TiaraStarSpireR0.14",
+        "head__TiaraStarSpireR0.34"
       ]
     },
-    "body__leather": {
-      "driver": "body",
-      "material": "leather",
-      "triangles": 1424,
+    "head__PearlescentMermaidFin": {
+      "driver": "head",
+      "material": "fin_pearl",
+      "triangles": 1512,
       "authored_parts": [
-        "body__ShoulderHarnessL",
-        "body__RibTankStrapL",
-        "body__ShoulderHarnessR",
-        "body__RibTankStrapR",
-        "body__SternumCrossStrap",
-        "body__WaistUtilityBelt",
-        "body__RightBeltUtilityPouch",
-        "body__RightBeltPouchFlap",
-        "body__LeftRearBeltPouch",
-        "body__LeftRearBeltFlap"
+        "head__LeftSirenEarFinRay1",
+        "head__LeftSirenEarFinRay2",
+        "head__LeftSirenEarFinRay3",
+        "head__RightSirenEarFinRay1",
+        "head__RightSirenEarFinRay2",
+        "head__RightSirenEarFinRay3"
       ]
     },
-    "body__gold": {
-      "driver": "body",
+    "head__LustrousSeaPearls": {
+      "driver": "head",
+      "material": "pearl",
+      "triangles": 4428,
+      "authored_parts": [
+        "head__LeftEarringPearlDrop",
+        "head__RightEarringPearlDrop",
+        "head__StarfishHairpinCenterPearlL",
+        "head__WovenHairPearlL0",
+        "head__WovenHairPearlL1",
+        "head__WovenHairPearlL2",
+        "head__WovenHairPearlL3",
+        "head__WovenHairPearlL4",
+        "head__StarfishHairpinCenterPearlR",
+        "head__WovenHairPearlR0",
+        "head__WovenHairPearlR1",
+        "head__WovenHairPearlR2",
+        "head__WovenHairPearlR3",
+        "head__WovenHairPearlR4",
+        "head__TiaraForeheadPearlDrop",
+        "head__TiaraCrownPearlL0",
+        "head__TiaraCrownPearlL1",
+        "head__TiaraCrownPearlL2",
+        "head__TiaraCrownPearlL3",
+        "head__TiaraCrownPearlR0",
+        "head__TiaraCrownPearlR1",
+        "head__TiaraCrownPearlR2",
+        "head__TiaraCrownPearlR3"
+      ]
+    },
+    "head__FlowingMermaidHairBrows": {
+      "driver": "head",
+      "material": "hair",
+      "triangles": 2580,
+      "authored_parts": [
+        "head__SidePartedMermaidHairCap",
+        "head__FlowingMermaidHairMantle",
+        "head__CascadingSilkHairRibbon0",
+        "head__CascadingSilkHairRibbon2",
+        "head__CascadingSilkHairRibbon3",
+        "head__CascadingSilkHairRibbon5",
+        "head__WavyCurtainLockL0",
+        "head__WavyCurtainLockL2",
+        "head__ShoulderFrontWaveL0",
+        "head__WavyCurtainLockR0",
+        "head__WavyCurtainLockR2",
+        "head__ShoulderFrontWaveR0"
+      ]
+    },
+    "head__FlowingMermaidHairBrowsCascadingLocks": {
+      "driver": "head",
+      "material": "hair",
+      "triangles": 9196,
+      "authored_parts": [
+        "head__SidePartedMermaidHairCap",
+        "head__FlowingMermaidHairMantle",
+        "head__CascadingSilkHairRibbon0",
+        "head__CascadingSilkHairRibbon2",
+        "head__CascadingSilkHairRibbon3",
+        "head__CascadingSilkHairRibbon5",
+        "head__WavyCurtainLockL0",
+        "head__WavyCurtainLockL2",
+        "head__ShoulderFrontWaveL0",
+        "head__WavyCurtainLockR0",
+        "head__WavyCurtainLockR2",
+        "head__ShoulderFrontWaveR0"
+      ]
+    },
+    "head__hair_highlight": {
+      "driver": "head",
+      "material": "hair_highlight",
+      "triangles": 3224,
+      "authored_parts": [
+        "head__CascadingSilkHairRibbon1",
+        "head__CascadingSilkHairRibbon4",
+        "head__WavyCurtainLockL1",
+        "head__TempleWaveTendrilL",
+        "head__ShoulderFrontWaveL1",
+        "head__WavyCurtainLockR1",
+        "head__TempleWaveTendrilR",
+        "head__ShoulderFrontWaveR1"
+      ]
+    },
+    "head__LustrousSeaPearlsCascadingLocks": {
+      "driver": "head",
+      "material": "pearl",
+      "triangles": 1400,
+      "authored_parts": [
+        "head__LeftEarringPearlDrop",
+        "head__RightEarringPearlDrop",
+        "head__StarfishHairpinCenterPearlL",
+        "head__WovenHairPearlL0",
+        "head__WovenHairPearlL1",
+        "head__WovenHairPearlL2",
+        "head__WovenHairPearlL3",
+        "head__WovenHairPearlL4",
+        "head__StarfishHairpinCenterPearlR",
+        "head__WovenHairPearlR0",
+        "head__WovenHairPearlR1",
+        "head__WovenHairPearlR2",
+        "head__WovenHairPearlR3",
+        "head__WovenHairPearlR4",
+        "head__TiaraForeheadPearlDrop",
+        "head__TiaraCrownPearlL0",
+        "head__TiaraCrownPearlL1",
+        "head__TiaraCrownPearlL2",
+        "head__TiaraCrownPearlL3",
+        "head__TiaraCrownPearlR0",
+        "head__TiaraCrownPearlR1",
+        "head__TiaraCrownPearlR2",
+        "head__TiaraCrownPearlR3"
+      ]
+    },
+    "head__gold": {
+      "driver": "head",
       "material": "gold",
-      "triangles": 5584,
+      "triangles": 1280,
       "authored_parts": [
-        "body__ChestBuckleLFrame",
-        "body__ChestBuckleRFrame",
-        "body__SternumCenterBuckleFrame",
-        "body__WaistClaspFrame",
-        "body__BeltKeeper-0.032",
-        "body__BeltKeeper0.032",
-        "body__HipSlingBuckleLFrame",
-        "body__HipSlingBuckleRFrame",
-        "body__SpecimenCapTop",
-        "body__SpecimenCapBottom",
-        "body__SpecimenTieRod0",
-        "body__SpecimenTieRod1",
-        "body__SpecimenTieRod2",
-        "body__RightBeltPouchButton",
-        "body__TankBrassBand-10.074",
-        "body__TankBrassBand-10.192",
-        "body__TankValveStem-1",
-        "body__HoseBrassFittingTank-1",
-        "body__TankBrassBand10.074",
-        "body__TankBrassBand10.192",
-        "body__TankValveStem1",
-        "body__HoseBrassFittingTank1",
-        "body__TankManifoldBridge",
-        "body__TankBandCenterBridge"
+        "head__TiaraUpperGoldFiligree",
+        "head__TiaraCenterGoldBezel"
+      ]
+    },
+    "body__MotherOfPearlScallopShell": {
+      "driver": "body",
+      "material": "shell_pearl",
+      "triangles": 2176,
+      "authored_parts": [
+        "body__ScallopShellCupL",
+        "body__ScallopShellCupR"
       ]
     },
     "body__gold_light": {
       "driver": "body",
       "material": "gold_light",
-      "triangles": 1908,
+      "triangles": 1368,
       "authored_parts": [
-        "body__ChestBuckleLTongue",
-        "body__ChestBuckleRTongue",
-        "body__SternumCenterBuckleTongue",
-        "body__WaistClaspTongue",
-        "body__HipSlingBuckleLTongue",
-        "body__HipSlingBuckleRTongue",
-        "body__SpecimenMountingBracket",
-        "body__SpecimenStopperNozzle",
-        "body__SpecimenUpperCollarRing",
-        "body__SpecimenLowerCollarRing",
-        "body__TankValveCollar-1",
-        "body__TankValveCollar1"
+        "body__ScallopGoldFiligreeRimL",
+        "body__UnderbustPearlSwagLGoldThread",
+        "body__HalterCrossBackPearlsLGoldThread",
+        "body__ScallopGoldFiligreeRimR",
+        "body__UnderbustPearlSwagRGoldThread",
+        "body__HalterCrossBackPearlsRGoldThread",
+        "body__ClaviclePearlChokerGoldThread",
+        "body__BodiceDropLink",
+        "body__SirenVGirdleFiligree",
+        "body__HipDrapedPearlChainL0GoldThread",
+        "body__HipDrapedPearlChainL1GoldThread",
+        "body__HipDrapedPearlChainR0GoldThread",
+        "body__HipDrapedPearlChainR1GoldThread"
       ]
     },
-    "body__leather_dark": {
+    "body__gold": {
       "driver": "body",
-      "material": "leather_dark",
-      "triangles": 56,
-      "authored_parts": [
-        "body__HipSlingL",
-        "body__HipSlingR"
-      ]
-    },
-    "leg_l__leather_dark": {
-      "driver": "leg_l",
-      "material": "leather_dark",
-      "triangles": 440,
-      "authored_parts": [
-        "leg_l__ThighHarnessBandL"
-      ]
-    },
-    "leg_l__gold": {
-      "driver": "leg_l",
       "material": "gold",
-      "triangles": 402,
+      "triangles": 1544,
       "authored_parts": [
-        "leg_l__ThighBandBuckleLFrame",
-        "leg_l__LeftThighPouchStud"
+        "body__ScallopHingeGoldL",
+        "body__ScallopHingeGoldR",
+        "body__BodiceCenterGoldBezel",
+        "body__BackCrossGoldMedallion",
+        "body__SirenVGirdleGold",
+        "body__HipApexStarArm0",
+        "body__HipApexStarArm1",
+        "body__HipApexStarArm2",
+        "body__HipApexStarArm3",
+        "body__HipApexStarArm4",
+        "body__StarlightVialTopGold",
+        "body__StarlightVialBotGold",
+        "body__PeduncleGoldCrown",
+        "body__PeduncleGoldClaspFront",
+        "body__PeduncleGoldClaspBack"
+      ]
+    },
+    "body__LustrousSeaPearls": {
+      "driver": "body",
+      "material": "pearl",
+      "triangles": 4540,
+      "authored_parts": [
+        "body__UnderbustPearlSwagLPearl00",
+        "body__UnderbustPearlSwagLPearl01",
+        "body__UnderbustPearlSwagLPearl02",
+        "body__UnderbustPearlSwagLPearl03",
+        "body__UnderbustPearlSwagLPearl04",
+        "body__UnderbustPearlSwagLPearl05",
+        "body__UnderbustPearlSwagLPearl06",
+        "body__UnderbustPearlSwagLPearl07",
+        "body__UnderbustPearlSwagLPearl08",
+        "body__HalterCrossBackPearlsLPearl00",
+        "body__HalterCrossBackPearlsLPearl01",
+        "body__HalterCrossBackPearlsLPearl02",
+        "body__HalterCrossBackPearlsLPearl03",
+        "body__HalterCrossBackPearlsLPearl04",
+        "body__HalterCrossBackPearlsLPearl05",
+        "body__HalterCrossBackPearlsLPearl06",
+        "body__HalterCrossBackPearlsLPearl07",
+        "body__HalterCrossBackPearlsLPearl08",
+        "body__HalterCrossBackPearlsLPearl09",
+        "body__HalterCrossBackPearlsLPearl10",
+        "body__HalterCrossBackPearlsLPearl11",
+        "body__HalterCrossBackPearlsLPearl12",
+        "body__HalterCrossBackPearlsLPearl13",
+        "body__HalterCrossBackPearlsLPearl14",
+        "body__HalterCrossBackPearlsLPearl15",
+        "body__HalterCrossBackPearlsLPearl16",
+        "body__HalterCrossBackPearlsLPearl17",
+        "body__UnderbustPearlSwagRPearl00",
+        "body__UnderbustPearlSwagRPearl01",
+        "body__UnderbustPearlSwagRPearl02",
+        "body__UnderbustPearlSwagRPearl03",
+        "body__UnderbustPearlSwagRPearl04",
+        "body__UnderbustPearlSwagRPearl05",
+        "body__UnderbustPearlSwagRPearl06",
+        "body__UnderbustPearlSwagRPearl07",
+        "body__UnderbustPearlSwagRPearl08",
+        "body__HalterCrossBackPearlsRPearl00",
+        "body__HalterCrossBackPearlsRPearl01",
+        "body__HalterCrossBackPearlsRPearl02",
+        "body__HalterCrossBackPearlsRPearl03",
+        "body__HalterCrossBackPearlsRPearl04",
+        "body__HalterCrossBackPearlsRPearl05",
+        "body__HalterCrossBackPearlsRPearl06",
+        "body__HalterCrossBackPearlsRPearl07",
+        "body__HalterCrossBackPearlsRPearl08",
+        "body__HalterCrossBackPearlsRPearl09",
+        "body__HalterCrossBackPearlsRPearl10",
+        "body__HalterCrossBackPearlsRPearl11",
+        "body__HalterCrossBackPearlsRPearl12",
+        "body__HalterCrossBackPearlsRPearl13",
+        "body__HalterCrossBackPearlsRPearl14",
+        "body__HalterCrossBackPearlsRPearl15",
+        "body__HalterCrossBackPearlsRPearl16",
+        "body__HalterCrossBackPearlsRPearl17",
+        "body__ClaviclePearlChokerPearl00",
+        "body__ClaviclePearlChokerPearl01",
+        "body__ClaviclePearlChokerPearl02",
+        "body__ClaviclePearlChokerPearl03",
+        "body__ClaviclePearlChokerPearl04",
+        "body__ClaviclePearlChokerPearl05",
+        "body__ClaviclePearlChokerPearl06",
+        "body__ClaviclePearlChokerPearl07",
+        "body__ClaviclePearlChokerPearl08",
+        "body__ClaviclePearlChokerPearl09",
+        "body__ClaviclePearlChokerPearl10",
+        "body__ClaviclePearlChokerPearl11",
+        "body__ClaviclePearlChokerPearl12",
+        "body__BodiceTeardropPearl",
+        "body__BackCrossPearlCenter",
+        "body__GirdleStudPearl00",
+        "body__GirdleStudPearl01",
+        "body__GirdleStudPearl02",
+        "body__GirdleStudPearl03",
+        "body__GirdleStudPearl04",
+        "body__GirdleStudPearl05",
+        "body__GirdleStudPearl06",
+        "body__GirdleStudPearl07",
+        "body__GirdleStudPearl08",
+        "body__GirdleStudPearl09",
+        "body__GirdleStudPearl10",
+        "body__GirdleStudPearl11",
+        "body__GirdleStudPearl12",
+        "body__GirdleStudPearl13",
+        "body__GirdleStudPearl14",
+        "body__GirdleStudPearl15",
+        "body__GirdleStudPearl16",
+        "body__GirdleStudPearl17",
+        "body__GirdleStudPearl18",
+        "body__GirdleStudPearl19",
+        "body__HipDrapedPearlChainL0Pearl00",
+        "body__HipDrapedPearlChainL0Pearl01",
+        "body__HipDrapedPearlChainL0Pearl02",
+        "body__HipDrapedPearlChainL0Pearl03",
+        "body__HipDrapedPearlChainL0Pearl04",
+        "body__HipDrapedPearlChainL0Pearl05",
+        "body__HipDrapedPearlChainL0Pearl06",
+        "body__HipDrapedPearlChainL0Pearl07",
+        "body__HipDrapedPearlChainL0Pearl08",
+        "body__HipDrapedPearlChainL0Pearl09",
+        "body__HipDrapedPearlChainL0Pearl10",
+        "body__HipDrapedPearlChainL1Pearl00",
+        "body__HipDrapedPearlChainL1Pearl01",
+        "body__HipDrapedPearlChainL1Pearl02",
+        "body__HipDrapedPearlChainL1Pearl03",
+        "body__HipDrapedPearlChainL1Pearl04",
+        "body__HipDrapedPearlChainL1Pearl05",
+        "body__HipDrapedPearlChainL1Pearl06",
+        "body__HipDrapedPearlChainL1Pearl07",
+        "body__HipDrapedPearlChainL1Pearl08",
+        "body__HipDrapedPearlChainL1Pearl09",
+        "body__HipDrapedPearlChainL1Pearl10",
+        "body__HipDrapedPearlChainL1Pearl11",
+        "body__HipDrapedPearlChainL1Pearl12",
+        "body__HipDrapedPearlChainL1Pearl13",
+        "body__HipDrapedPearlChainR0Pearl00",
+        "body__HipDrapedPearlChainR0Pearl01",
+        "body__HipDrapedPearlChainR0Pearl02",
+        "body__HipDrapedPearlChainR0Pearl03",
+        "body__HipDrapedPearlChainR0Pearl04",
+        "body__HipDrapedPearlChainR0Pearl05",
+        "body__HipDrapedPearlChainR0Pearl06",
+        "body__HipDrapedPearlChainR0Pearl07",
+        "body__HipDrapedPearlChainR0Pearl08",
+        "body__HipDrapedPearlChainR0Pearl09",
+        "body__HipDrapedPearlChainR0Pearl10",
+        "body__HipDrapedPearlChainR1Pearl00",
+        "body__HipDrapedPearlChainR1Pearl01",
+        "body__HipDrapedPearlChainR1Pearl02",
+        "body__HipDrapedPearlChainR1Pearl03",
+        "body__HipDrapedPearlChainR1Pearl04",
+        "body__HipDrapedPearlChainR1Pearl05",
+        "body__HipDrapedPearlChainR1Pearl06",
+        "body__HipDrapedPearlChainR1Pearl07",
+        "body__HipDrapedPearlChainR1Pearl08",
+        "body__HipDrapedPearlChainR1Pearl09",
+        "body__HipDrapedPearlChainR1Pearl10",
+        "body__HipDrapedPearlChainR1Pearl11",
+        "body__HipDrapedPearlChainR1Pearl12",
+        "body__HipDrapedPearlChainR1Pearl13",
+        "body__PeduncleCrownPearl0",
+        "body__PeduncleCrownPearl1",
+        "body__PeduncleCrownPearl2",
+        "body__PeduncleCrownPearl3",
+        "body__PeduncleCrownPearl4",
+        "body__PeduncleCrownPearl5",
+        "body__PeduncleCrownPearl6",
+        "body__PeduncleCrownPearl7",
+        "body__PeduncleCrownPearl8",
+        "body__PeduncleCrownPearl9",
+        "body__PedunclePearlGemFront",
+        "body__PedunclePearlGemBack"
+      ]
+    },
+    "body__gold_lightHoseBridge": {
+      "driver": "body",
+      "material": "gold_light",
+      "triangles": 880,
+      "authored_parts": [
+        "body__ScallopGoldFiligreeRimL",
+        "body__UnderbustPearlSwagLGoldThread",
+        "body__HalterCrossBackPearlsLGoldThread",
+        "body__ScallopGoldFiligreeRimR",
+        "body__UnderbustPearlSwagRGoldThread",
+        "body__HalterCrossBackPearlsRGoldThread",
+        "body__ClaviclePearlChokerGoldThread",
+        "body__BodiceDropLink",
+        "body__SirenVGirdleFiligree",
+        "body__HipDrapedPearlChainL0GoldThread",
+        "body__HipDrapedPearlChainL1GoldThread",
+        "body__HipDrapedPearlChainR0GoldThread",
+        "body__HipDrapedPearlChainR1GoldThread"
+      ]
+    },
+    "body__LustrousSeaPearlsHoseBridge": {
+      "driver": "body",
+      "material": "pearl",
+      "triangles": 4320,
+      "authored_parts": [
+        "body__UnderbustPearlSwagLPearl00",
+        "body__UnderbustPearlSwagLPearl01",
+        "body__UnderbustPearlSwagLPearl02",
+        "body__UnderbustPearlSwagLPearl03",
+        "body__UnderbustPearlSwagLPearl04",
+        "body__UnderbustPearlSwagLPearl05",
+        "body__UnderbustPearlSwagLPearl06",
+        "body__UnderbustPearlSwagLPearl07",
+        "body__UnderbustPearlSwagLPearl08",
+        "body__HalterCrossBackPearlsLPearl00",
+        "body__HalterCrossBackPearlsLPearl01",
+        "body__HalterCrossBackPearlsLPearl02",
+        "body__HalterCrossBackPearlsLPearl03",
+        "body__HalterCrossBackPearlsLPearl04",
+        "body__HalterCrossBackPearlsLPearl05",
+        "body__HalterCrossBackPearlsLPearl06",
+        "body__HalterCrossBackPearlsLPearl07",
+        "body__HalterCrossBackPearlsLPearl08",
+        "body__HalterCrossBackPearlsLPearl09",
+        "body__HalterCrossBackPearlsLPearl10",
+        "body__HalterCrossBackPearlsLPearl11",
+        "body__HalterCrossBackPearlsLPearl12",
+        "body__HalterCrossBackPearlsLPearl13",
+        "body__HalterCrossBackPearlsLPearl14",
+        "body__HalterCrossBackPearlsLPearl15",
+        "body__HalterCrossBackPearlsLPearl16",
+        "body__HalterCrossBackPearlsLPearl17",
+        "body__UnderbustPearlSwagRPearl00",
+        "body__UnderbustPearlSwagRPearl01",
+        "body__UnderbustPearlSwagRPearl02",
+        "body__UnderbustPearlSwagRPearl03",
+        "body__UnderbustPearlSwagRPearl04",
+        "body__UnderbustPearlSwagRPearl05",
+        "body__UnderbustPearlSwagRPearl06",
+        "body__UnderbustPearlSwagRPearl07",
+        "body__UnderbustPearlSwagRPearl08",
+        "body__HalterCrossBackPearlsRPearl00",
+        "body__HalterCrossBackPearlsRPearl01",
+        "body__HalterCrossBackPearlsRPearl02",
+        "body__HalterCrossBackPearlsRPearl03",
+        "body__HalterCrossBackPearlsRPearl04",
+        "body__HalterCrossBackPearlsRPearl05",
+        "body__HalterCrossBackPearlsRPearl06",
+        "body__HalterCrossBackPearlsRPearl07",
+        "body__HalterCrossBackPearlsRPearl08",
+        "body__HalterCrossBackPearlsRPearl09",
+        "body__HalterCrossBackPearlsRPearl10",
+        "body__HalterCrossBackPearlsRPearl11",
+        "body__HalterCrossBackPearlsRPearl12",
+        "body__HalterCrossBackPearlsRPearl13",
+        "body__HalterCrossBackPearlsRPearl14",
+        "body__HalterCrossBackPearlsRPearl15",
+        "body__HalterCrossBackPearlsRPearl16",
+        "body__HalterCrossBackPearlsRPearl17",
+        "body__ClaviclePearlChokerPearl00",
+        "body__ClaviclePearlChokerPearl01",
+        "body__ClaviclePearlChokerPearl02",
+        "body__ClaviclePearlChokerPearl03",
+        "body__ClaviclePearlChokerPearl04",
+        "body__ClaviclePearlChokerPearl05",
+        "body__ClaviclePearlChokerPearl06",
+        "body__ClaviclePearlChokerPearl07",
+        "body__ClaviclePearlChokerPearl08",
+        "body__ClaviclePearlChokerPearl09",
+        "body__ClaviclePearlChokerPearl10",
+        "body__ClaviclePearlChokerPearl11",
+        "body__ClaviclePearlChokerPearl12",
+        "body__BodiceTeardropPearl",
+        "body__BackCrossPearlCenter",
+        "body__GirdleStudPearl00",
+        "body__GirdleStudPearl01",
+        "body__GirdleStudPearl02",
+        "body__GirdleStudPearl03",
+        "body__GirdleStudPearl04",
+        "body__GirdleStudPearl05",
+        "body__GirdleStudPearl06",
+        "body__GirdleStudPearl07",
+        "body__GirdleStudPearl08",
+        "body__GirdleStudPearl09",
+        "body__GirdleStudPearl10",
+        "body__GirdleStudPearl11",
+        "body__GirdleStudPearl12",
+        "body__GirdleStudPearl13",
+        "body__GirdleStudPearl14",
+        "body__GirdleStudPearl15",
+        "body__GirdleStudPearl16",
+        "body__GirdleStudPearl17",
+        "body__GirdleStudPearl18",
+        "body__GirdleStudPearl19",
+        "body__HipDrapedPearlChainL0Pearl00",
+        "body__HipDrapedPearlChainL0Pearl01",
+        "body__HipDrapedPearlChainL0Pearl02",
+        "body__HipDrapedPearlChainL0Pearl03",
+        "body__HipDrapedPearlChainL0Pearl04",
+        "body__HipDrapedPearlChainL0Pearl05",
+        "body__HipDrapedPearlChainL0Pearl06",
+        "body__HipDrapedPearlChainL0Pearl07",
+        "body__HipDrapedPearlChainL0Pearl08",
+        "body__HipDrapedPearlChainL0Pearl09",
+        "body__HipDrapedPearlChainL0Pearl10",
+        "body__HipDrapedPearlChainL1Pearl00",
+        "body__HipDrapedPearlChainL1Pearl01",
+        "body__HipDrapedPearlChainL1Pearl02",
+        "body__HipDrapedPearlChainL1Pearl03",
+        "body__HipDrapedPearlChainL1Pearl04",
+        "body__HipDrapedPearlChainL1Pearl05",
+        "body__HipDrapedPearlChainL1Pearl06",
+        "body__HipDrapedPearlChainL1Pearl07",
+        "body__HipDrapedPearlChainL1Pearl08",
+        "body__HipDrapedPearlChainL1Pearl09",
+        "body__HipDrapedPearlChainL1Pearl10",
+        "body__HipDrapedPearlChainL1Pearl11",
+        "body__HipDrapedPearlChainL1Pearl12",
+        "body__HipDrapedPearlChainL1Pearl13",
+        "body__HipDrapedPearlChainR0Pearl00",
+        "body__HipDrapedPearlChainR0Pearl01",
+        "body__HipDrapedPearlChainR0Pearl02",
+        "body__HipDrapedPearlChainR0Pearl03",
+        "body__HipDrapedPearlChainR0Pearl04",
+        "body__HipDrapedPearlChainR0Pearl05",
+        "body__HipDrapedPearlChainR0Pearl06",
+        "body__HipDrapedPearlChainR0Pearl07",
+        "body__HipDrapedPearlChainR0Pearl08",
+        "body__HipDrapedPearlChainR0Pearl09",
+        "body__HipDrapedPearlChainR0Pearl10",
+        "body__HipDrapedPearlChainR1Pearl00",
+        "body__HipDrapedPearlChainR1Pearl01",
+        "body__HipDrapedPearlChainR1Pearl02",
+        "body__HipDrapedPearlChainR1Pearl03",
+        "body__HipDrapedPearlChainR1Pearl04",
+        "body__HipDrapedPearlChainR1Pearl05",
+        "body__HipDrapedPearlChainR1Pearl06",
+        "body__HipDrapedPearlChainR1Pearl07",
+        "body__HipDrapedPearlChainR1Pearl08",
+        "body__HipDrapedPearlChainR1Pearl09",
+        "body__HipDrapedPearlChainR1Pearl10",
+        "body__HipDrapedPearlChainR1Pearl11",
+        "body__HipDrapedPearlChainR1Pearl12",
+        "body__HipDrapedPearlChainR1Pearl13",
+        "body__PeduncleCrownPearl0",
+        "body__PeduncleCrownPearl1",
+        "body__PeduncleCrownPearl2",
+        "body__PeduncleCrownPearl3",
+        "body__PeduncleCrownPearl4",
+        "body__PeduncleCrownPearl5",
+        "body__PeduncleCrownPearl6",
+        "body__PeduncleCrownPearl7",
+        "body__PeduncleCrownPearl8",
+        "body__PeduncleCrownPearl9",
+        "body__PedunclePearlGemFront",
+        "body__PedunclePearlGemBack"
+      ]
+    },
+    "body__CrystalGlassPendantAndHipVeil": {
+      "driver": "body",
+      "material": "glass",
+      "triangles": 572,
+      "authored_parts": [
+        "body__BodiceCenterCrystalGlass",
+        "body__HipApexCrystalGlass",
+        "body__HipTranslucentGlassVeilFinL",
+        "body__HipTranslucentGlassVeilFinR",
+        "body__StarlightVialGlass"
+      ]
+    },
+    "body__goldSirenTail": {
+      "driver": "body",
+      "material": "gold",
+      "triangles": 2960,
+      "authored_parts": [
+        "body__ScallopHingeGoldL",
+        "body__ScallopHingeGoldR",
+        "body__BodiceCenterGoldBezel",
+        "body__BackCrossGoldMedallion",
+        "body__SirenVGirdleGold",
+        "body__HipApexStarArm0",
+        "body__HipApexStarArm1",
+        "body__HipApexStarArm2",
+        "body__HipApexStarArm3",
+        "body__HipApexStarArm4",
+        "body__StarlightVialTopGold",
+        "body__StarlightVialBotGold",
+        "body__PeduncleGoldCrown",
+        "body__PeduncleGoldClaspFront",
+        "body__PeduncleGoldClaspBack"
+      ]
+    },
+    "body__gold_lightSirenTail": {
+      "driver": "body",
+      "material": "gold_light",
+      "triangles": 2138,
+      "authored_parts": [
+        "body__ScallopGoldFiligreeRimL",
+        "body__UnderbustPearlSwagLGoldThread",
+        "body__HalterCrossBackPearlsLGoldThread",
+        "body__ScallopGoldFiligreeRimR",
+        "body__UnderbustPearlSwagRGoldThread",
+        "body__HalterCrossBackPearlsRGoldThread",
+        "body__ClaviclePearlChokerGoldThread",
+        "body__BodiceDropLink",
+        "body__SirenVGirdleFiligree",
+        "body__HipDrapedPearlChainL0GoldThread",
+        "body__HipDrapedPearlChainL1GoldThread",
+        "body__HipDrapedPearlChainR0GoldThread",
+        "body__HipDrapedPearlChainR1GoldThread"
+      ]
+    },
+    "body__LustrousSeaPearlsSirenTail": {
+      "driver": "body",
+      "material": "pearl",
+      "triangles": 10104,
+      "authored_parts": [
+        "body__UnderbustPearlSwagLPearl00",
+        "body__UnderbustPearlSwagLPearl01",
+        "body__UnderbustPearlSwagLPearl02",
+        "body__UnderbustPearlSwagLPearl03",
+        "body__UnderbustPearlSwagLPearl04",
+        "body__UnderbustPearlSwagLPearl05",
+        "body__UnderbustPearlSwagLPearl06",
+        "body__UnderbustPearlSwagLPearl07",
+        "body__UnderbustPearlSwagLPearl08",
+        "body__HalterCrossBackPearlsLPearl00",
+        "body__HalterCrossBackPearlsLPearl01",
+        "body__HalterCrossBackPearlsLPearl02",
+        "body__HalterCrossBackPearlsLPearl03",
+        "body__HalterCrossBackPearlsLPearl04",
+        "body__HalterCrossBackPearlsLPearl05",
+        "body__HalterCrossBackPearlsLPearl06",
+        "body__HalterCrossBackPearlsLPearl07",
+        "body__HalterCrossBackPearlsLPearl08",
+        "body__HalterCrossBackPearlsLPearl09",
+        "body__HalterCrossBackPearlsLPearl10",
+        "body__HalterCrossBackPearlsLPearl11",
+        "body__HalterCrossBackPearlsLPearl12",
+        "body__HalterCrossBackPearlsLPearl13",
+        "body__HalterCrossBackPearlsLPearl14",
+        "body__HalterCrossBackPearlsLPearl15",
+        "body__HalterCrossBackPearlsLPearl16",
+        "body__HalterCrossBackPearlsLPearl17",
+        "body__UnderbustPearlSwagRPearl00",
+        "body__UnderbustPearlSwagRPearl01",
+        "body__UnderbustPearlSwagRPearl02",
+        "body__UnderbustPearlSwagRPearl03",
+        "body__UnderbustPearlSwagRPearl04",
+        "body__UnderbustPearlSwagRPearl05",
+        "body__UnderbustPearlSwagRPearl06",
+        "body__UnderbustPearlSwagRPearl07",
+        "body__UnderbustPearlSwagRPearl08",
+        "body__HalterCrossBackPearlsRPearl00",
+        "body__HalterCrossBackPearlsRPearl01",
+        "body__HalterCrossBackPearlsRPearl02",
+        "body__HalterCrossBackPearlsRPearl03",
+        "body__HalterCrossBackPearlsRPearl04",
+        "body__HalterCrossBackPearlsRPearl05",
+        "body__HalterCrossBackPearlsRPearl06",
+        "body__HalterCrossBackPearlsRPearl07",
+        "body__HalterCrossBackPearlsRPearl08",
+        "body__HalterCrossBackPearlsRPearl09",
+        "body__HalterCrossBackPearlsRPearl10",
+        "body__HalterCrossBackPearlsRPearl11",
+        "body__HalterCrossBackPearlsRPearl12",
+        "body__HalterCrossBackPearlsRPearl13",
+        "body__HalterCrossBackPearlsRPearl14",
+        "body__HalterCrossBackPearlsRPearl15",
+        "body__HalterCrossBackPearlsRPearl16",
+        "body__HalterCrossBackPearlsRPearl17",
+        "body__ClaviclePearlChokerPearl00",
+        "body__ClaviclePearlChokerPearl01",
+        "body__ClaviclePearlChokerPearl02",
+        "body__ClaviclePearlChokerPearl03",
+        "body__ClaviclePearlChokerPearl04",
+        "body__ClaviclePearlChokerPearl05",
+        "body__ClaviclePearlChokerPearl06",
+        "body__ClaviclePearlChokerPearl07",
+        "body__ClaviclePearlChokerPearl08",
+        "body__ClaviclePearlChokerPearl09",
+        "body__ClaviclePearlChokerPearl10",
+        "body__ClaviclePearlChokerPearl11",
+        "body__ClaviclePearlChokerPearl12",
+        "body__BodiceTeardropPearl",
+        "body__BackCrossPearlCenter",
+        "body__GirdleStudPearl00",
+        "body__GirdleStudPearl01",
+        "body__GirdleStudPearl02",
+        "body__GirdleStudPearl03",
+        "body__GirdleStudPearl04",
+        "body__GirdleStudPearl05",
+        "body__GirdleStudPearl06",
+        "body__GirdleStudPearl07",
+        "body__GirdleStudPearl08",
+        "body__GirdleStudPearl09",
+        "body__GirdleStudPearl10",
+        "body__GirdleStudPearl11",
+        "body__GirdleStudPearl12",
+        "body__GirdleStudPearl13",
+        "body__GirdleStudPearl14",
+        "body__GirdleStudPearl15",
+        "body__GirdleStudPearl16",
+        "body__GirdleStudPearl17",
+        "body__GirdleStudPearl18",
+        "body__GirdleStudPearl19",
+        "body__HipDrapedPearlChainL0Pearl00",
+        "body__HipDrapedPearlChainL0Pearl01",
+        "body__HipDrapedPearlChainL0Pearl02",
+        "body__HipDrapedPearlChainL0Pearl03",
+        "body__HipDrapedPearlChainL0Pearl04",
+        "body__HipDrapedPearlChainL0Pearl05",
+        "body__HipDrapedPearlChainL0Pearl06",
+        "body__HipDrapedPearlChainL0Pearl07",
+        "body__HipDrapedPearlChainL0Pearl08",
+        "body__HipDrapedPearlChainL0Pearl09",
+        "body__HipDrapedPearlChainL0Pearl10",
+        "body__HipDrapedPearlChainL1Pearl00",
+        "body__HipDrapedPearlChainL1Pearl01",
+        "body__HipDrapedPearlChainL1Pearl02",
+        "body__HipDrapedPearlChainL1Pearl03",
+        "body__HipDrapedPearlChainL1Pearl04",
+        "body__HipDrapedPearlChainL1Pearl05",
+        "body__HipDrapedPearlChainL1Pearl06",
+        "body__HipDrapedPearlChainL1Pearl07",
+        "body__HipDrapedPearlChainL1Pearl08",
+        "body__HipDrapedPearlChainL1Pearl09",
+        "body__HipDrapedPearlChainL1Pearl10",
+        "body__HipDrapedPearlChainL1Pearl11",
+        "body__HipDrapedPearlChainL1Pearl12",
+        "body__HipDrapedPearlChainL1Pearl13",
+        "body__HipDrapedPearlChainR0Pearl00",
+        "body__HipDrapedPearlChainR0Pearl01",
+        "body__HipDrapedPearlChainR0Pearl02",
+        "body__HipDrapedPearlChainR0Pearl03",
+        "body__HipDrapedPearlChainR0Pearl04",
+        "body__HipDrapedPearlChainR0Pearl05",
+        "body__HipDrapedPearlChainR0Pearl06",
+        "body__HipDrapedPearlChainR0Pearl07",
+        "body__HipDrapedPearlChainR0Pearl08",
+        "body__HipDrapedPearlChainR0Pearl09",
+        "body__HipDrapedPearlChainR0Pearl10",
+        "body__HipDrapedPearlChainR1Pearl00",
+        "body__HipDrapedPearlChainR1Pearl01",
+        "body__HipDrapedPearlChainR1Pearl02",
+        "body__HipDrapedPearlChainR1Pearl03",
+        "body__HipDrapedPearlChainR1Pearl04",
+        "body__HipDrapedPearlChainR1Pearl05",
+        "body__HipDrapedPearlChainR1Pearl06",
+        "body__HipDrapedPearlChainR1Pearl07",
+        "body__HipDrapedPearlChainR1Pearl08",
+        "body__HipDrapedPearlChainR1Pearl09",
+        "body__HipDrapedPearlChainR1Pearl10",
+        "body__HipDrapedPearlChainR1Pearl11",
+        "body__HipDrapedPearlChainR1Pearl12",
+        "body__HipDrapedPearlChainR1Pearl13",
+        "body__PeduncleCrownPearl0",
+        "body__PeduncleCrownPearl1",
+        "body__PeduncleCrownPearl2",
+        "body__PeduncleCrownPearl3",
+        "body__PeduncleCrownPearl4",
+        "body__PeduncleCrownPearl5",
+        "body__PeduncleCrownPearl6",
+        "body__PeduncleCrownPearl7",
+        "body__PeduncleCrownPearl8",
+        "body__PeduncleCrownPearl9",
+        "body__PedunclePearlGemFront",
+        "body__PedunclePearlGemBack"
+      ]
+    },
+    "body__CrystalGlassPendantAndHipVeilSirenTail": {
+      "driver": "body",
+      "material": "glass",
+      "triangles": 3152,
+      "authored_parts": [
+        "body__BodiceCenterCrystalGlass",
+        "body__HipApexCrystalGlass",
+        "body__HipTranslucentGlassVeilFinL",
+        "body__HipTranslucentGlassVeilFinR",
+        "body__StarlightVialGlass"
+      ]
+    },
+    "body__PearlescentMermaidFin": {
+      "driver": "body",
+      "material": "fin_pearl",
+      "triangles": 2424,
+      "authored_parts": [
+        "body__HipCorePetalFinL",
+        "body__HipCorePetalFinR"
       ]
     },
     "leg_l__gold_light": {
       "driver": "leg_l",
       "material": "gold_light",
-      "triangles": 20,
+      "triangles": 376,
       "authored_parts": [
-        "leg_l__ThighBandBuckleLTongue"
+        "leg_l__HipVeilFinRayL0",
+        "leg_l__HipVeilFinRayL4"
       ]
     },
-    "leg_r__leather_dark": {
-      "driver": "leg_r",
-      "material": "leather_dark",
-      "triangles": 548,
+    "leg_l__PearlescentMermaidFin": {
+      "driver": "leg_l",
+      "material": "fin_pearl",
+      "triangles": 564,
       "authored_parts": [
-        "leg_r__ThighHarnessBandR",
-        "leg_r__RightThighKnifeSheath"
-      ]
-    },
-    "leg_r__gold": {
-      "driver": "leg_r",
-      "material": "gold",
-      "triangles": 342,
-      "authored_parts": [
-        "leg_r__ThighBandBuckleRFrame",
-        "leg_r__RightKnifeThroatCollar"
+        "leg_l__HipVeilFinRayL1",
+        "leg_l__HipVeilFinRayL2",
+        "leg_l__HipVeilFinRayL3"
       ]
     },
     "leg_r__gold_light": {
       "driver": "leg_r",
       "material": "gold_light",
-      "triangles": 254,
+      "triangles": 376,
       "authored_parts": [
-        "leg_r__ThighBandBuckleRTongue",
-        "leg_r__RightKnifePommel"
+        "leg_r__HipVeilFinRayR0",
+        "leg_r__HipVeilFinRayR4"
       ]
     },
-    "body__SpecimenGlassVial": {
-      "driver": "body",
-      "material": "glass",
-      "triangles": 448,
+    "leg_r__PearlescentMermaidFin": {
+      "driver": "leg_r",
+      "material": "fin_pearl",
+      "triangles": 564,
       "authored_parts": [
-        "body__SpecimenVialGlass"
+        "leg_r__HipVeilFinRayR1",
+        "leg_r__HipVeilFinRayR2",
+        "leg_r__HipVeilFinRayR3"
       ]
     },
     "body__specimen_gold": {
       "driver": "body",
       "material": "specimen_gold",
-      "triangles": 172,
+      "triangles": 288,
       "authored_parts": [
-        "body__GoldenBioSpecimenCore",
-        "body__GoldenBioSpecimenFrond-1",
-        "body__GoldenBioSpecimenFrond1"
+        "body__StarlightEssenceCore"
       ]
     },
-    "leg_l__leather": {
-      "driver": "leg_l",
-      "material": "leather",
-      "triangles": 216,
-      "authored_parts": [
-        "leg_l__LeftThighUtilityPouch",
-        "leg_l__LeftThighPouchFlap"
-      ]
-    },
-    "leg_r__rubber": {
-      "driver": "leg_r",
-      "material": "rubber",
-      "triangles": 108,
-      "authored_parts": [
-        "leg_r__RightKnifeGrip"
-      ]
-    },
-    "body__rubber": {
-      "driver": "body",
-      "material": "rubber",
-      "triangles": 108,
-      "authored_parts": [
-        "body__DorsalTankBackplate",
-        "body__CorrugatedShoulderHose-1",
-        "body__CorrugatedShoulderHose1"
-      ]
-    },
-    "body__ivory": {
-      "driver": "body",
-      "material": "ivory",
-      "triangles": 1568,
-      "authored_parts": [
-        "body__OxygenCylinder-1",
-        "body__OxygenCylinder1"
-      ]
-    },
-    "body__rubberHoseBridge": {
-      "driver": "body",
-      "material": "rubber",
-      "triangles": 2432,
-      "authored_parts": [
-        "body__DorsalTankBackplate",
-        "body__CorrugatedShoulderHose-1",
-        "body__CorrugatedShoulderHose1"
-      ]
-    },
-    "arm_l__armor": {
+    "arm_l__gold": {
       "driver": "arm_l",
-      "material": "armor",
-      "triangles": 452,
+      "material": "gold",
+      "triangles": 514,
       "authored_parts": [
-        "arm_l__LeafShoulderArmor"
+        "arm_l__SpiralGoldArmletl"
       ]
     },
-    "arm_l__gold_light": {
+    "arm_l__LustrousSeaPearls": {
       "driver": "arm_l",
-      "material": "gold_light",
-      "triangles": 762,
+      "material": "pearl",
+      "triangles": 756,
       "authored_parts": [
-        "arm_l__LeafShoulderArmorFineBrassRim",
-        "arm_l__LeafShoulderArmorVoronoiCellRidge0",
-        "arm_l__LeafShoulderArmorVoronoiCellRidge1",
-        "arm_l__LeafShoulderArmorVoronoiCellRidge2"
-      ]
-    },
-    "forearm_l__armor": {
-      "driver": "forearm_l",
-      "material": "armor",
-      "triangles": 452,
-      "authored_parts": [
-        "forearm_l__FittedForearmBracer"
+        "arm_l__ArmletPearll0",
+        "arm_l__ArmletPearll18",
+        "arm_l__ArmletPearll36"
       ]
     },
     "forearm_l__gold_light": {
       "driver": "forearm_l",
       "material": "gold_light",
-      "triangles": 762,
+      "triangles": 346,
       "authored_parts": [
-        "forearm_l__FittedForearmBracerFineBrassRim",
-        "forearm_l__FittedForearmBracerVoronoiCellRidge0",
-        "forearm_l__FittedForearmBracerVoronoiCellRidge1",
-        "forearm_l__FittedForearmBracerVoronoiCellRidge2"
+        "forearm_l__WristGoldBraceletl"
       ]
     },
-    "forearm_l__leather_dark": {
+    "forearm_l__LustrousSeaPearls": {
       "driver": "forearm_l",
-      "material": "leather_dark",
-      "triangles": 460,
+      "material": "pearl",
+      "triangles": 1344,
       "authored_parts": [
-        "forearm_l__WristLeatherSeal"
+        "forearm_l__WristPearll0",
+        "forearm_l__WristPearll1",
+        "forearm_l__WristPearll2",
+        "forearm_l__WristPearll3",
+        "forearm_l__WristPearll4",
+        "forearm_l__WristPearll5",
+        "forearm_l__WristPearll6",
+        "forearm_l__WristPearll7"
       ]
     },
-    "forearm_l__gold": {
+    "forearm_l__TranslucentSeaGlassVisorVeil": {
       "driver": "forearm_l",
-      "material": "gold",
-      "triangles": 784,
+      "material": "glass",
+      "triangles": 464,
       "authored_parts": [
-        "forearm_l__WristBrassClasp",
-        "forearm_l__WristGaugeHousing"
+        "forearm_l__ForearmGlassFinFrilll"
       ]
     },
-    "forearm_l__gauge": {
+    "forearm_l__PearlescentMermaidFin": {
       "driver": "forearm_l",
-      "material": "gauge",
-      "triangles": 224,
+      "material": "fin_pearl",
+      "triangles": 344,
       "authored_parts": [
-        "forearm_l__WristGaugeDial"
+        "forearm_l__ForearmFinRayl0",
+        "forearm_l__ForearmFinRayl4",
+        "forearm_l__ForearmFinRayl8",
+        "forearm_l__ForearmFinRayl12"
       ]
     },
-    "calf_l__rubber": {
-      "driver": "calf_l",
-      "material": "rubber",
-      "triangles": 256,
-      "authored_parts": [
-        "calf_l__ContouredKneeProtection"
-      ]
-    },
-    "calf_l__gold_light": {
-      "driver": "calf_l",
-      "material": "gold_light",
-      "triangles": 458,
-      "authored_parts": [
-        "calf_l__KneeProtectionGoldRim"
-      ]
-    },
-    "fin_l__rubber": {
-      "driver": "fin_l",
-      "material": "rubber",
-      "triangles": 336,
-      "authored_parts": [
-        "fin_l__StructuredDiveBoot"
-      ]
-    },
-    "fin_l__gold_lightBootCuff": {
-      "driver": "fin_l",
-      "material": "gold_light",
-      "triangles": 402,
-      "authored_parts": [
-        "fin_l__BootFlaredVCuff",
-        "fin_l__BootHeelCounterBand",
-        "fin_l__BootInstepBuckleTongue",
-        "fin_l__FinLongitudinalRib-1",
-        "fin_l__FinLongitudinalRib1",
-        "fin_l__FinBootDorsalVKeel"
-      ]
-    },
-    "fin_l__leather_dark": {
-      "driver": "fin_l",
-      "material": "leather_dark",
-      "triangles": 640,
-      "authored_parts": [
-        "fin_l__BootUpperAnkleStrap",
-        "fin_l__BootForefootStrap"
-      ]
-    },
-    "fin_l__gold": {
-      "driver": "fin_l",
-      "material": "gold",
-      "triangles": 1122,
-      "authored_parts": [
-        "fin_l__BootOuterAnkleRingBuckle",
-        "fin_l__BootInstepBuckleFrame",
-        "fin_l__FinOuterAmberRail-1",
-        "fin_l__FinOuterAmberRail1"
-      ]
-    },
-    "fin_l__gold_light": {
-      "driver": "fin_l",
-      "material": "gold_light",
-      "triangles": 610,
-      "authored_parts": [
-        "fin_l__BootFlaredVCuff",
-        "fin_l__BootHeelCounterBand",
-        "fin_l__BootInstepBuckleTongue",
-        "fin_l__FinLongitudinalRib-1",
-        "fin_l__FinLongitudinalRib1",
-        "fin_l__FinBootDorsalVKeel"
-      ]
-    },
-    "fin_l__fin_ivory": {
-      "driver": "fin_l",
-      "material": "fin_ivory",
-      "triangles": 1056,
-      "authored_parts": [
-        "fin_l__SwallowtailBioFinBlade-1",
-        "fin_l__SwallowtailBioFinBlade1"
-      ]
-    },
-    "arm_r__armor": {
+    "arm_r__gold": {
       "driver": "arm_r",
-      "material": "armor",
-      "triangles": 452,
+      "material": "gold",
+      "triangles": 514,
       "authored_parts": [
-        "arm_r__LeafShoulderArmor"
+        "arm_r__SpiralGoldArmletr"
       ]
     },
-    "arm_r__gold_light": {
+    "arm_r__LustrousSeaPearls": {
       "driver": "arm_r",
-      "material": "gold_light",
-      "triangles": 762,
+      "material": "pearl",
+      "triangles": 756,
       "authored_parts": [
-        "arm_r__LeafShoulderArmorFineBrassRim",
-        "arm_r__LeafShoulderArmorVoronoiCellRidge0",
-        "arm_r__LeafShoulderArmorVoronoiCellRidge1",
-        "arm_r__LeafShoulderArmorVoronoiCellRidge2"
-      ]
-    },
-    "forearm_r__armor": {
-      "driver": "forearm_r",
-      "material": "armor",
-      "triangles": 452,
-      "authored_parts": [
-        "forearm_r__FittedForearmBracer"
+        "arm_r__ArmletPearlr0",
+        "arm_r__ArmletPearlr18",
+        "arm_r__ArmletPearlr36"
       ]
     },
     "forearm_r__gold_light": {
       "driver": "forearm_r",
       "material": "gold_light",
-      "triangles": 762,
+      "triangles": 346,
       "authored_parts": [
-        "forearm_r__FittedForearmBracerFineBrassRim",
-        "forearm_r__FittedForearmBracerVoronoiCellRidge0",
-        "forearm_r__FittedForearmBracerVoronoiCellRidge1",
-        "forearm_r__FittedForearmBracerVoronoiCellRidge2"
+        "forearm_r__WristGoldBraceletr"
       ]
     },
-    "forearm_r__leather_dark": {
+    "forearm_r__LustrousSeaPearls": {
       "driver": "forearm_r",
-      "material": "leather_dark",
-      "triangles": 460,
+      "material": "pearl",
+      "triangles": 1344,
       "authored_parts": [
-        "forearm_r__WristLeatherSeal"
+        "forearm_r__WristPearlr0",
+        "forearm_r__WristPearlr1",
+        "forearm_r__WristPearlr2",
+        "forearm_r__WristPearlr3",
+        "forearm_r__WristPearlr4",
+        "forearm_r__WristPearlr5",
+        "forearm_r__WristPearlr6",
+        "forearm_r__WristPearlr7"
       ]
     },
-    "forearm_r__gold": {
+    "forearm_r__TranslucentSeaGlassVisorVeil": {
       "driver": "forearm_r",
+      "material": "glass",
+      "triangles": 464,
+      "authored_parts": [
+        "forearm_r__ForearmGlassFinFrillr"
+      ]
+    },
+    "forearm_r__PearlescentMermaidFin": {
+      "driver": "forearm_r",
+      "material": "fin_pearl",
+      "triangles": 344,
+      "authored_parts": [
+        "forearm_r__ForearmFinRayr0",
+        "forearm_r__ForearmFinRayr4",
+        "forearm_r__ForearmFinRayr8",
+        "forearm_r__ForearmFinRayr12"
+      ]
+    },
+    "calf_l__TranslucentSeaGlassVisorVeil": {
+      "driver": "calf_l",
+      "material": "glass",
+      "triangles": 676,
+      "authored_parts": [
+        "calf_l__TailDorsalGlassCrest"
+      ]
+    },
+    "calf_l__PearlescentMermaidFin": {
+      "driver": "calf_l",
+      "material": "fin_pearl",
+      "triangles": 348,
+      "authored_parts": [
+        "calf_l__TailDorsalFinRay0",
+        "calf_l__TailDorsalFinRay2",
+        "calf_l__TailDorsalFinRay4"
+      ]
+    },
+    "calf_r__PearlescentMermaidFin": {
+      "driver": "calf_r",
+      "material": "fin_pearl",
+      "triangles": 232,
+      "authored_parts": [
+        "calf_r__TailDorsalFinRay1",
+        "calf_r__TailDorsalFinRay3"
+      ]
+    },
+    "fin_l__PearlescentMermaidFin": {
+      "driver": "fin_l",
+      "material": "fin_pearl",
+      "triangles": 2732,
+      "authored_parts": [
+        "fin_l__MermaidCaudalCoreLobel",
+        "fin_l__CaudalRadiatingRayl1",
+        "fin_l__CaudalRadiatingRayl3",
+        "fin_l__CaudalRadiatingRayl5"
+      ]
+    },
+    "fin_l__TranslucentSeaGlassVisorVeil": {
+      "driver": "fin_l",
+      "material": "glass",
+      "triangles": 1916,
+      "authored_parts": [
+        "fin_l__MermaidCaudalGlassVeill"
+      ]
+    },
+    "fin_l__gold": {
+      "driver": "fin_l",
       "material": "gold",
-      "triangles": 784,
+      "triangles": 332,
       "authored_parts": [
-        "forearm_r__WristBrassClasp",
-        "forearm_r__WristGaugeHousing"
+        "fin_l__CaudalLeadingGoldArchl"
       ]
     },
-    "forearm_r__gauge": {
-      "driver": "forearm_r",
-      "material": "gauge",
-      "triangles": 224,
-      "authored_parts": [
-        "forearm_r__WristGaugeDial"
-      ]
-    },
-    "calf_r__rubber": {
-      "driver": "calf_r",
-      "material": "rubber",
-      "triangles": 256,
-      "authored_parts": [
-        "calf_r__ContouredKneeProtection"
-      ]
-    },
-    "calf_r__gold_light": {
-      "driver": "calf_r",
+    "fin_l__gold_light": {
+      "driver": "fin_l",
       "material": "gold_light",
-      "triangles": 458,
+      "triangles": 1088,
       "authored_parts": [
-        "calf_r__KneeProtectionGoldRim"
+        "fin_l__CaudalRadiatingRayl0",
+        "fin_l__CaudalRadiatingRayl2",
+        "fin_l__CaudalRadiatingRayl4",
+        "fin_l__CaudalRadiatingRayl6"
       ]
     },
-    "fin_r__rubber": {
+    "fin_r__PearlescentMermaidFin": {
       "driver": "fin_r",
-      "material": "rubber",
-      "triangles": 336,
+      "material": "fin_pearl",
+      "triangles": 2732,
       "authored_parts": [
-        "fin_r__StructuredDiveBoot"
+        "fin_r__MermaidCaudalCoreLober",
+        "fin_r__CaudalRadiatingRayr1",
+        "fin_r__CaudalRadiatingRayr3",
+        "fin_r__CaudalRadiatingRayr5"
       ]
     },
-    "fin_r__gold_lightBootCuff": {
+    "fin_r__TranslucentSeaGlassVisorVeil": {
       "driver": "fin_r",
-      "material": "gold_light",
-      "triangles": 402,
+      "material": "glass",
+      "triangles": 1916,
       "authored_parts": [
-        "fin_r__BootFlaredVCuff",
-        "fin_r__BootHeelCounterBand",
-        "fin_r__BootInstepBuckleTongue",
-        "fin_r__FinLongitudinalRib-1",
-        "fin_r__FinLongitudinalRib1",
-        "fin_r__FinBootDorsalVKeel"
-      ]
-    },
-    "fin_r__leather_dark": {
-      "driver": "fin_r",
-      "material": "leather_dark",
-      "triangles": 640,
-      "authored_parts": [
-        "fin_r__BootUpperAnkleStrap",
-        "fin_r__BootForefootStrap"
+        "fin_r__MermaidCaudalGlassVeilr"
       ]
     },
     "fin_r__gold": {
       "driver": "fin_r",
       "material": "gold",
-      "triangles": 1122,
+      "triangles": 332,
       "authored_parts": [
-        "fin_r__BootOuterAnkleRingBuckle",
-        "fin_r__BootInstepBuckleFrame",
-        "fin_r__FinOuterAmberRail-1",
-        "fin_r__FinOuterAmberRail1"
+        "fin_r__CaudalLeadingGoldArchr"
       ]
     },
     "fin_r__gold_light": {
       "driver": "fin_r",
       "material": "gold_light",
-      "triangles": 610,
+      "triangles": 1088,
       "authored_parts": [
-        "fin_r__BootFlaredVCuff",
-        "fin_r__BootHeelCounterBand",
-        "fin_r__BootInstepBuckleTongue",
-        "fin_r__FinLongitudinalRib-1",
-        "fin_r__FinLongitudinalRib1",
-        "fin_r__FinBootDorsalVKeel"
-      ]
-    },
-    "fin_r__fin_ivory": {
-      "driver": "fin_r",
-      "material": "fin_ivory",
-      "triangles": 1056,
-      "authored_parts": [
-        "fin_r__SwallowtailBioFinBlade-1",
-        "fin_r__SwallowtailBioFinBlade1"
+        "fin_r__CaudalRadiatingRayr0",
+        "fin_r__CaudalRadiatingRayr2",
+        "fin_r__CaudalRadiatingRayr4",
+        "fin_r__CaudalRadiatingRayr6"
       ]
     }
   },
-  "triangles": 117578,
+  "triangles": 132718,
   "drivers": {
     "body": [
       null,
@@ -835,8 +1247,8 @@
       "body",
       [
         0,
-        0.34,
-        0
+        0.275,
+        0.005
       ]
     ],
     "arm_l": [
@@ -874,7 +1286,7 @@
     "leg_l": [
       "body",
       [
-        -0.08,
+        -0.025,
         -0.17,
         0.01
       ]
@@ -882,7 +1294,7 @@
     "leg_r": [
       "body",
       [
-        0.08,
+        0.025,
         -0.17,
         0.01
       ]
@@ -922,6 +1334,6 @@
   },
   "skinned": true,
   "bones": 12,
-  "model_sha256": "b507d3ef55477d92f5fbdd5996a517267fa31ada94cba777a6dc32b059f44542",
+  "model_sha256": "98373a6036471878a070cd770c4f13f3775e9720a6181c20239c475c3358d80b",
   "not_a_100_percent_fidelity_certificate": true
 }

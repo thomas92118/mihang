@@ -3,6 +3,7 @@ extends CanvasLayer
 const WorldMap = preload("res://scripts/world_map.gd")
 const Art = preload("res://scripts/art_direction.gd")
 const OceanUiTheme = preload("res://scripts/presentation/ocean_ui_theme.gd")
+const CharacterRoster = preload("res://scripts/presentation/character_roster.gd")
 
 signal start_requested(mode: String)
 signal resume_requested
@@ -23,6 +24,8 @@ signal fast_travel_requested(target_id: String, world_pos: Vector3, target_name:
 signal sonar_ping_requested
 signal action_requested(action: String)
 signal input_settings_requested(values: Dictionary)
+signal character_selected(character_id: String)
+signal character_cycled(step: int)
 signal close_requested
 
 const INK := Art.PAPER
@@ -145,6 +148,11 @@ var _hint_generation := 0
 var _touch_layout := false
 var _instrument_layout: Dictionary = {}
 var _settings_syncing := false
+var main_char_title: Label
+var main_char_subtitle: Label
+var main_char_buttons: Dictionary = {}
+var pause_char_btn: Button
+var _displayed_character_id := ""
 
 const QUICK_ACTIONS := [
 	["weapon_1", "潜水战术刀"], ["weapon_2", "破拆战斧"], ["weapon_3", "蓝光静滞枪"], ["weapon_4", "光标指示枪"],
@@ -154,7 +162,8 @@ const QUICK_ACTIONS := [
 	["craft_menu", "装备制造台"], ["sushi_menu", "料理 / 商店 / 图鉴"], ["world_map", "海图与跃迁"],
 	["camera_closer", "拉近第三人称视角"], ["camera_farther", "拉远第三人称视角"],
 	["mount_slot_1", "选择伙伴 1"], ["mount_slot_2", "选择伙伴 2"], ["mount_slot_3", "选择伙伴 3"],
-	["mount_slot_4", "选择伙伴 4"], ["mount_slot_5", "选择伙伴 5"], ["mount_slot_6", "选择伙伴 6"]
+	["mount_slot_4", "选择伙伴 4"], ["mount_slot_5", "选择伙伴 5"], ["mount_slot_6", "选择伙伴 6"],
+	["character_switch", "切换角色外观"]
 ]
 
 func _ready() -> void:
@@ -186,7 +195,7 @@ func _ready() -> void:
 	_build_controls()
 	_prepare_menu_scrolling()
 	_cache_instrument_layout()
-	_hint_regex.compile("(?<![A-Za-z0-9])(WASD|W/S|A/D|A D|空格/Ctrl|空格 Ctrl|T/Y|1—4|Shift|Ctrl|Tab|Esc|空格|按 2|按 3|W(?=\\s*前进)|[RTYCEMNOGZVHQFB])(?![A-Za-z0-9₂:]|\\s*轴|\\s*北|\\s*东)")
+	_hint_regex.compile("(?<![A-Za-z0-9])(WASD|W/S|A/D|A D|空格/Ctrl|空格 Ctrl|T/Y|1—4|Shift|Ctrl|Tab|Esc|空格|按 2|按 3|W(?=\\s*前进)|[RTYCEMNOGZVHQFBP])(?![A-Za-z0-9₂:]|\\s*轴|\\s*北|\\s*东)")
 	root.resized.connect(_apply_layout)
 	toast_label = _label(root, "", Rect2(-390, 130, 780, 44), 15, CYAN, Vector2(0.5, 0))
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -199,6 +208,7 @@ func _ready() -> void:
 	toast_style.content_margin_bottom = 6
 	toast_label.add_theme_stylebox_override("normal", toast_style)
 	toast_label.hide()
+	set_selected_character(CharacterRoster.DEFAULT_CHARACTER)
 	set_screen("main")
 	_apply_layout()
 
@@ -384,7 +394,7 @@ func _build_instruments() -> void:
 	tame_mount_label = _label(tame_panel, "O 生物应援板", Rect2(15, 34, 216, 20), 10, MUTED)
 	tame_panel.hide()
 	shield_label = _label(instruments, "C / 能量盾收起", Rect2(28, -178, 246, 20), 10, MUTED, Vector2(0, 1))
-	var hints := _label(instruments, "E 交互   Tab 制造   M 海图   N 声呐   O 生物   Esc 暂停", Rect2(-340, -27, 680, 18), 10, MUTED, Vector2(0.5, 1))
+	var hints := _label(instruments, "E 交互   Tab 制造   M 海图   N 声呐   P 角色   O 生物   Esc 暂停", Rect2(-370, -27, 740, 18), 10, MUTED, Vector2(0.5, 1))
 	hints.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_bottom_hints = hints
 
@@ -410,23 +420,49 @@ func _build_main() -> void:
 	_button(menu, "自由探险  /  EXPLORE", Rect2(78, 536, 390, 52), func() -> void: start_requested.emit("explore"), true)
 	_button(menu, "生存航程  /  SURVIVE", Rect2(78, 598, 390, 46), func() -> void: start_requested.emit("survival"))
 	_button(menu, "操作设置 / 触摸屏与手柄", Rect2(78, 654, 390, 42), func() -> void: action_requested.emit("controls"))
+	var character_card := _panel(menu, Rect2(-356, 86, 336, 468), Vector2(1, 0))
+	character_card.name = "CharacterSelectPanel"
+	_line(character_card, Rect2(20, 26, 26, 2), AMBER_GOLD)
+	_label(character_card, "潜航形态  /  P 切换", Rect2(56, 15, 260, 22), 14, CYAN)
+	main_char_title = _label(character_card, "珊瑚晨曦人鱼", Rect2(20, 44, 296, 34), 24, INK)
+	main_char_title.set_meta("_no_hint", true)
+	main_char_subtitle = _label(character_card, "绯莓长发 · 珠母贝衣 · 碧海粉绡尾", Rect2(20, 82, 296, 22), 14, MUTED)
+	main_char_subtitle.set_meta("_no_hint", true)
+	var prev_btn := _button(character_card, "◀ 上一位", Rect2(20, 112, 144, 38), func() -> void: character_cycled.emit(-1))
+	prev_btn.set_meta("_no_hint", true)
+	var next_btn := _button(character_card, "下一位 ▶", Rect2(172, 112, 144, 38), func() -> void: character_cycled.emit(1))
+	next_btn.set_meta("_no_hint", true)
+	_line(character_card, Rect2(20, 160, 296, 1), Color(CYAN, 0.16))
+	for i in range(CharacterRoster.CHARACTER_ORDER.size()):
+		var cid: String = CharacterRoster.CHARACTER_ORDER[i]
+		var prof: Dictionary = CharacterRoster.get_profile(cid)
+		var c_btn := _button(character_card, str(prof["name"]), Rect2(20, 172 + i * 46, 296, 40), func() -> void: character_selected.emit(cid), cid == CharacterRoster.DEFAULT_CHARACTER)
+		c_btn.name = "CharSelect_" + cid
+		c_btn.set_meta("_no_hint", true)
+		main_char_buttons[cid] = c_btn
 	_label(menu, "九片海域  ·  一段属于你的潜航记录", Rect2(78, -52, 540, 28), 14, MUTED, Vector2(0, 1))
 	_label(menu, "THE LIVING OCEAN
 00 — 600 m", Rect2(-300, -94, 240, 58), 14, Art.PAPER, Vector2(1, 1)).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
 func _build_pause() -> void:
 	var menu := _menu("pause")
-	var card := _panel(menu, Rect2(-250, -215, 500, 430), Vector2(0.5, 0.5))
+	var card := _panel(menu, Rect2(-250, -242, 500, 484), Vector2(0.5, 0.5))
 	_line(card, Rect2(32, 31, 28, 2), AMBER_GOLD)
 	_label(card, "潜航日志 / 暂停", Rect2(75, 20, 380, 24), 11, MUTED)
 	_label(card, "在此稍作停留", Rect2(31, 78, 438, 54), 31, INK)
 	_label(card, "生命支持已暂停。准备好后，继续你的航程。", Rect2(33, 140, 434, 42), 13, MUTED)
 	_button(card, "继续潜航", Rect2(32, 205, 436, 46), func() -> void: resume_requested.emit(), true)
-	var map_button := _button(card, "M / 勘测海图", Rect2(32, 263, 436, 42), func() -> void: open_map_requested.emit())
+	var map_button := _button(card, "M / 勘测海图", Rect2(32, 261, 436, 42), func() -> void: open_map_requested.emit())
 	map_button.name = "OpenSeaChartButton"
-	_button(card, "操作设置", Rect2(32, 317, 208, 42), func() -> void: action_requested.emit("controls"))
-	_button(card, "重新开始", Rect2(252, 317, 216, 42), func() -> void: restart_requested.emit())
-	_label(card, "Esc 返回海底", Rect2(32, 382, 436, 20), 10, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var p_prev := _button(card, "◀", Rect2(32, 313, 52, 42), func() -> void: character_cycled.emit(-1))
+	p_prev.set_meta("_no_hint", true)
+	pause_char_btn = _button(card, "P / 角色：珊瑚晨曦人鱼", Rect2(92, 313, 316, 42), func() -> void: character_cycled.emit(1))
+	pause_char_btn.name = "PauseCharacterButton"
+	var p_next := _button(card, "▶", Rect2(416, 313, 52, 42), func() -> void: character_cycled.emit(1))
+	p_next.set_meta("_no_hint", true)
+	_button(card, "操作设置", Rect2(32, 367, 208, 42), func() -> void: action_requested.emit("controls"))
+	_button(card, "重新开始", Rect2(252, 367, 216, 42), func() -> void: restart_requested.emit())
+	_label(card, "Esc 返回海底", Rect2(32, 434, 436, 20), 10, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 func _build_craft() -> void:
 	var menu := _menu("craft")
@@ -1114,8 +1150,37 @@ func update_hud(data: Dictionary) -> void:
 		win_title.text = "深海收到了回声"
 		win_desc.text = "求救信标已重新上线。\n救援船正在驶来，你将平安返航。"
 		win_time.text = "本次潜航  %02d:%02d  /  救援协议已启动" % [floori(float(seconds) / 60.0), seconds % 60]
+	if data.has("character_id"):
+		set_selected_character(str(data["character_id"]))
 	_apply_device_hints()
 	_apply_touch_visibility()
+
+func set_selected_character(character_id: String) -> void:
+	var cid := CharacterRoster.normalize_id(character_id)
+	if _displayed_character_id == cid:
+		return
+	_displayed_character_id = cid
+	var profile: Dictionary = CharacterRoster.get_profile(cid)
+	var cname := str(profile.get("name", cid))
+	if is_instance_valid(main_char_title):
+		main_char_title.text = cname
+		_set_font_color(main_char_title, profile.get("badge_color", INK))
+	if is_instance_valid(main_char_subtitle):
+		main_char_subtitle.text = str(profile.get("subtitle", ""))
+	for id: String in main_char_buttons:
+		var btn: Button = main_char_buttons[id]
+		if not is_instance_valid(btn):
+			continue
+		var p: Dictionary = CharacterRoster.get_profile(id)
+		var active_sel := id == cid
+		btn.text = ("✦  " if active_sel else "") + str(p.get("name", id))
+		OceanUiTheme.button(btn, active_sel)
+	if is_instance_valid(pause_char_btn):
+		var src := "P / 角色：" + cname
+		pause_char_btn.set_meta("_hint_source", src)
+		pause_char_btn.text = format_input_text(src)
+		pause_char_btn.set_meta("_hint_rendered", pause_char_btn.text)
+		pause_char_btn.set_meta("_hint_generation", _hint_generation)
 
 func set_screen(screen: String) -> void:
 	var focused := root.get_viewport().gui_get_focus_owner()
@@ -1192,7 +1257,7 @@ func _on_input_settings_changed() -> void:
 func get_input_hint(action: String) -> String:
 	if is_instance_valid(input_controller):
 		return str(input_controller.hint(action))
-	return str({"forward": "W", "backward": "S", "left": "A", "right": "D", "ascend": "空格", "descend": "Ctrl", "attack": "R", "aim": "T", "scope": "Y", "interact": "E", "craft_menu": "Tab", "pause_game": "Esc", "world_map": "M", "sonar_ping": "N", "mount_board": "O", "toggle_shield": "C", "dash": "Q", "booster": "H", "lamp": "F", "sprint": "Shift", "recall_pets": "Z", "mount_toggle": "G", "salvage_drone": "V", "sushi_menu": "B", "weapon_2": "2", "weapon_3": "3", "quick_menu": "快捷操作"}.get(action, action))
+	return str({"forward": "W", "backward": "S", "left": "A", "right": "D", "ascend": "空格", "descend": "Ctrl", "attack": "R", "aim": "T", "scope": "Y", "interact": "E", "craft_menu": "Tab", "pause_game": "Esc", "world_map": "M", "sonar_ping": "N", "mount_board": "O", "toggle_shield": "C", "dash": "Q", "booster": "H", "lamp": "F", "sprint": "Shift", "recall_pets": "Z", "mount_toggle": "G", "salvage_drone": "V", "sushi_menu": "B", "character_switch": "P", "weapon_2": "2", "weapon_3": "3", "quick_menu": "快捷操作"}.get(action, action))
 
 func _join_hints(first_action: String, second_action: String, separator := "/") -> String:
 	var first := get_input_hint(first_action)
@@ -1225,7 +1290,7 @@ func format_input_text(text: String) -> String:
 			"Y": get_input_hint("scope"), "C": get_input_hint("toggle_shield"), "E": get_input_hint("interact"),
 			"M": get_input_hint("world_map"), "N": get_input_hint("sonar_ping"), "O": get_input_hint("mount_board"),
 			"G": get_input_hint("mount_toggle"), "Z": get_input_hint("recall_pets"), "V": get_input_hint("salvage_drone"),
-			"H": get_input_hint("booster"), "Q": get_input_hint("dash"), "F": get_input_hint("lamp"), "B": get_input_hint("sushi_menu")
+			"H": get_input_hint("booster"), "Q": get_input_hint("dash"), "F": get_input_hint("lamp"), "B": get_input_hint("sushi_menu"), "P": get_input_hint("character_switch")
 		}
 	var result := ""
 	var cursor := 0
@@ -1373,7 +1438,7 @@ func _refresh_navigation() -> void:
 			controls[0].grab_focus()
 
 func _prepare_menu_scrolling() -> void:
-	menu_min_sizes = {"main": Vector2(720, 740), "pause": Vector2(532, 462), "craft": Vector2(932, 732), "sushi": Vector2(1032, 748), "mount_board": Vector2(972, 732), "map": Vector2(1092, 760), "win": Vector2(712, 512), "quick": Vector2(892, 732), "controls": Vector2(732, 672)}
+	menu_min_sizes = {"main": Vector2(860, 740), "pause": Vector2(532, 516), "craft": Vector2(932, 732), "sushi": Vector2(1032, 748), "mount_board": Vector2(972, 732), "map": Vector2(1092, 760), "win": Vector2(712, 512), "quick": Vector2(892, 732), "controls": Vector2(732, 672)}
 	for key: String in menus:
 		var menu: Control = menus[key]
 		var children := menu.get_children()

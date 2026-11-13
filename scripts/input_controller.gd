@@ -23,11 +23,11 @@ const ACTIONS: Array[String] = [
 	"mount_toggle", "toggle_shield", "recall_pets", "salvage_drone", "sushi_menu",
 	"mount_board", "world_map", "sonar_ping", "mount_slot_1", "mount_slot_2",
 	"mount_slot_3", "mount_slot_4", "mount_slot_5", "mount_slot_6",
-	"quick_menu", "camera_closer", "camera_farther", "ui_cancel",
+	"quick_menu", "character_switch", "camera_closer", "camera_farther", "ui_cancel",
 ]
 const MENU_ACTIONS: Array[String] = [
 	"pause_game", "world_map", "craft_menu", "sushi_menu", "mount_board",
-	"sonar_ping", "quick_menu", "ui_cancel",
+	"sonar_ping", "quick_menu", "character_switch", "ui_cancel",
 ]
 const CONTINUOUS_ACTIONS: Array[String] = [
 	"forward", "backward", "left", "right", "ascend", "descend", "sprint",
@@ -41,7 +41,7 @@ const KEY_HINTS := {
 	"toggle_shield": "C", "recall_pets": "Z", "salvage_drone": "V", "sushi_menu": "B",
 	"mount_board": "O", "world_map": "M", "sonar_ping": "N", "mount_slot_1": "5",
 	"mount_slot_2": "6", "mount_slot_3": "7", "mount_slot_4": "8", "mount_slot_5": "9",
-	"mount_slot_6": "0", "quick_menu": "J", "camera_closer": "滚轮上",
+	"mount_slot_6": "0", "quick_menu": "J", "character_switch": "P", "camera_closer": "滚轮上",
 	"camera_farther": "滚轮下", "ui_cancel": "Esc",
 }
 const ACTION_LABELS := {
@@ -52,6 +52,7 @@ const ACTION_LABELS := {
 	"craft_menu": "制造", "sushi_menu": "料理 / 图鉴", "mount_board": "契约板",
 	"mount_toggle": "骑乘 / 离鞍", "recall_pets": "召回", "salvage_drone": "无人机",
 	"sonar_ping": "声呐", "booster": "助推器", "lamp": "灯", "quick_menu": "快捷操作",
+	"character_switch": "切换角色",
 	"weapon_1": "战术刀", "weapon_2": "战斧", "weapon_3": "蓝光枪", "weapon_4": "指示枪",
 	"mount_slot_1": "伙伴 1", "mount_slot_2": "伙伴 2", "mount_slot_3": "伙伴 3",
 	"mount_slot_4": "伙伴 4", "mount_slot_5": "伙伴 5", "mount_slot_6": "伙伴 6",

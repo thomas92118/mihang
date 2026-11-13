@@ -126,6 +126,7 @@ const EXPLORER_RANKS := [
 ]
 
 var mode: String = "survival"
+var selected_character: String = "coral_mermaid"
 var inventory: Dictionary = {
 	"titanium": 0, "copper": 0, "quartz": 0, "kelp": 0, "fish_small": 0,
 	"shark_fragment": 0, "abyss_fragment": 0

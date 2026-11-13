@@ -1,339 +1,449 @@
-"""Reference-visible expedition equipment: tailored plates, brass, straps, fins."""
+"""Royal Siren shell bodice, draped Akoya pearls, translucent gossamer hip/arm fins & grand caudal fluke."""
 import math
 from mathutils import Vector
 
 
-def build(api):
-    tau=math.tau
-    def box(name,center,size,material,driver='body',bevel=.002):
-        import bpy
-        x,y,z=center; a,b,c=[v/2 for v in size]
-        verts=[(x+sx*a,y+sy*b,z+sz*c) for sx,sy,sz in [(-1,-1,-1),(1,-1,-1),(1,1,-1),(-1,1,-1),(-1,-1,1),(1,-1,1),(1,1,1),(-1,1,1)]]
-        faces=[(0,3,2,1),(4,5,6,7),(0,1,5,4),(1,2,6,5),(2,3,7,6),(3,0,4,7)]
-        obj=api.surface(name,verts,faces,material,driver)
-        if bevel:
-            mod=obj.modifiers.new('Hand finished edge','BEVEL');mod.width=bevel;mod.segments=2
-            bpy.context.view_layer.objects.active=obj
-            bpy.ops.object.modifier_apply(modifier=mod.name)
-        return obj
+TAU = math.tau
 
-    def loop(name,center,rx,rz,y,material='gold',driver='body',thickness=.0022,segs=40):
-        pts=[(center[0]+rx*math.cos(i/segs*tau),y,center[2]+rz*math.sin(i/segs*tau)) for i in range(segs+1)]
-        return api.tube(name,pts,[thickness]*(segs+1),material,driver,sides=8)
 
-    def cylinder_domed(name,center,rx,rz,y0,y1,material,driver='body',segs=28,cap_rings=5):
-        cx,_,cz=center; verts=[]; uv=[]; faces=[]
-        r_avg=(rx+rz)*.5; ys=[]
-        for i in range(cap_rings):
-            a=math.pi*.5*(1-i/cap_rings)
-            ys.append((y1+r_avg*math.sin(a),math.cos(a)))
-        for i in range(6):
-            t=i/5; ys.append((y1*(1-t)+y0*t,1.0))
-        for i in range(1,cap_rings+1):
-            a=math.pi*.5*(i/cap_rings)
-            ys.append((y0-r_avg*math.sin(a),math.cos(a)))
-        verts.append((cx,ys[0][0]+.001,cz)); uv.append((.5,1.0))
-        ring_rows=ys[1:-1]
-        for r_i,(yy,sc) in enumerate(ring_rows):
-            for j in range(segs):
-                ang=j/segs*tau
-                verts.append((cx+rx*sc*math.cos(ang),yy,cz+rz*sc*math.sin(ang)))
-                uv.append((j/segs,1-r_i/max(1,len(ring_rows)-1)))
-        bot_idx=len(verts); verts.append((cx,ys[-1][0]-.001,cz)); uv.append((.5,0.0))
-        for j in range(segs):
-            j1=(j+1)%segs
-            faces.append((0,1+j1,1+j))
-            for r_i in range(len(ring_rows)-1):
-                a=1+r_i*segs+j; b=1+r_i*segs+j1
-                faces.append((a,b,b+segs,a+segs))
-            last_r=1+(len(ring_rows)-1)*segs
-            faces.append((bot_idx,last_r+j,last_r+j1))
-        return api.surface(name,verts,faces,material,driver,uv=uv)
+def _thick_grid(api, name, grid, thickness, material, driver='body', deform_mode=None, uv_fn=None):
+    """Convert a (rows x cols) 3D surface grid into a watertight 3D thin solid."""
+    rows = len(grid)
+    cols = len(grid[0])
+    verts, uv, faces = [], [], []
+    for shell in (0, 1):
+        sgn = .5 if shell == 0 else -.5
+        for r in range(rows):
+            for c in range(cols):
+                p = Vector(grid[r][c])
+                p_u = Vector(grid[r][min(cols - 1, c + 1)]) - Vector(grid[r][max(0, c - 1)])
+                p_v = Vector(grid[min(rows - 1, r + 1)][c]) - Vector(grid[max(0, r - 1)][c])
+                nrm = p_u.cross(p_v)
+                if nrm.length < 1e-8:
+                    nrm = Vector((0, 0, 1))
+                else:
+                    nrm.normalize()
+                fade = 1.0 - .58 * (r / max(1, rows - 1))
+                pt = p + nrm * (thickness * fade * sgn)
+                verts.append((pt.x, pt.y, pt.z))
+                if uv_fn:
+                    uv.append(uv_fn(r, c, rows, cols))
+                else:
+                    uv.append((c / max(1, cols - 1), r / max(1, rows - 1)))
+    stride = rows * cols
+    for sh in (0, 1):
+        for r in range(rows - 1):
+            for c in range(cols - 1):
+                k = sh * stride + r * cols + c
+                q = (k, k + 1, k + cols + 1, k + cols)
+                faces.append(q if sh == 0 else tuple(reversed(q)))
+    for r in range(rows - 1):
+        for c, flip in ((0, True), (cols - 1, False)):
+            a, b = r * cols + c, (r + 1) * cols + c
+            q = (a, b, b + stride, a + stride)
+            faces.append(q if flip else tuple(reversed(q)))
+    for r, flip in ((0, False), (rows - 1, True)):
+        for c in range(cols - 1):
+            a = r * cols + c
+            q = (a, a + 1, a + 1 + stride, a + stride)
+            faces.append(q if flip else tuple(reversed(q)))
+    return api.surface(name, verts, faces, material, driver=driver, uv=uv, deform_mode=deform_mode)
 
-    def buckle(name,at,width=.018,height=.021,driver='body'):
-        x,y,z=at; r=.0025
-        pts=[]
-        for cx,cy,start in [(x+width/2-r,y+height/2-r,0),(x-width/2+r,y+height/2-r,90),
-                            (x-width/2+r,y-height/2+r,180),(x+width/2-r,y-height/2+r,270)]:
-            for j in range(4):
-                a=math.radians(start+j/3*90)
-                pts.append((cx+r*math.cos(a),cy+r*math.sin(a),z))
-        pts.append(pts[0])
-        api.tube(name+'Frame',pts,[.0018]*len(pts),'gold',driver,sides=7)
-        api.tube(name+'Tongue',[(x,y-height*.34,z-.001),(x,y+height*.26,z-.001)],[.0011,.0011],'gold_light',driver,sides=6)
 
-    def wrapped_armor_plate(name,driver,side_sign,rows_spec,mat='armor',rim_mat='gold_light',voronoi_veins=True,thick=.0035):
-        cols=19; verts=[]; uv=[]; faces=[]
-        seeds=[(.22,.24),(.52,.19),(.79,.27),(.18,.53),(.46,.49),(.74,.55),(.31,.78),(.63,.81),(.50,.66)]
-        def cell_relief(u01,v01):
-            if not voronoi_veins:return 0.0
-            ds=sorted((u01-sx)**2+(v01-sy)**2 for sx,sy in seeds)
-            edge=math.sqrt(ds[1])-math.sqrt(ds[0])
-            return -.0011*math.exp(-(edge/.028)**2)+.0006*(1.0-min(1.0,ds[0]/.04))
-        outer_grid=[]
-        for shell in (0,1):
-            dr=0.0 if shell==0 else -thick
-            for r_i,(yb,cx,cz,rx,rz,arc,scallop) in enumerate(rows_spec):
-                v01=r_i/max(1,len(rows_spec)-1)
-                row_pts=[]
-                for j in range(cols):
-                    u=j/(cols-1)*2-1; u01=(u+1)*.5; ang=u*arc
-                    rel=cell_relief(u01,v01) if shell==0 else 0.0
-                    rr_x=max(.002,rx+dr+rel); rr_z=max(.002,rz+dr+rel)
-                    px=cx+side_sign*rr_x*math.cos(ang); pz=cz+rr_z*math.sin(ang)
-                    py=yb+scallop*math.cos(u*math.pi*1.5)
-                    verts.append((px,py,pz)); uv.append((u01,v01))
-                    if shell==0:row_pts.append((px,py,pz))
-                if shell==0:outer_grid.append(row_pts)
-        stride=len(rows_spec)*cols
-        for sh in (0,1):
-            for i in range(len(rows_spec)-1):
-                for j in range(cols-1):
-                    k=sh*stride+i*cols+j; q=(k,k+1,k+cols+1,k+cols)
-                    faces.append(q if (sh==0 and side_sign<0) or (sh==1 and side_sign>0) else tuple(reversed(q)))
-        for i in range(len(rows_spec)-1):
-            for j,flip in ((0,False),(cols-1,True)):
-                a=i*cols+j; b=(i+1)*cols+j; q=(a,b,b+stride,a+stride)
-                faces.append(q if (flip^(side_sign>0)) else tuple(reversed(q)))
-        for i,flip in ((0,True),(len(rows_spec)-1,False)):
-            for j in range(cols-1):
-                a=i*cols+j; q=(a,a+1,a+1+stride,a+stride)
-                faces.append(q if (flip^(side_sign>0)) else tuple(reversed(q)))
-        api.surface(name,verts,faces,mat,driver,uv=uv)
-        rim=[outer_grid[i][0] for i in range(len(rows_spec))]+[outer_grid[-1][j] for j in range(1,cols)]+[
-            outer_grid[i][-1] for i in range(len(rows_spec)-2,-1,-1)]+[outer_grid[0][j] for j in range(cols-2,-1,-1)]
-        api.tube(name+'FineBrassRim',rim,[.00155]*len(rim),rim_mat,driver,sides=7)
-        if voronoi_veins:
-            for idx,u_track in enumerate((-.42,.05,.44)):
-                v_pts=[]
-                for r_i in range(1,len(rows_spec)-1):
-                    c_f=(u_track+.22*math.sin(r_i*1.1+idx*2.1)+1)*.5*(cols-1)
-                    c0=max(0,min(cols-2,int(c_f))); frac=c_f-c0
-                    p0,p1=outer_grid[r_i][c0],outer_grid[r_i][c0+1]
-                    v_pts.append(tuple(p0[k]*(1-frac)+p1[k]*frac+(side_sign*.0004 if k==0 else 0) for k in range(3)))
-                api.tube(name+'VoronoiCellRidge'+str(idx),v_pts,[.00055]*len(v_pts),'gold_light',driver,sides=5)
+def _pearl_strand(api, prefix, waypoints, count, min_r=.0026, max_r=.0040, driver='body', deform_mode=None):
+    """Drape a smooth cord of gold thread studded with graduated Akoya pearls."""
+    pts = [Vector(p) for p in waypoints]
+    dense = []
+    steps = max(4, count * 2)
+    for s in range(steps + 1):
+        t = s / steps * (len(pts) - 1)
+        i = min(len(pts) - 2, int(t))
+        f = t - i
+        p0 = pts[max(0, i - 1)]
+        p1, p2 = pts[i], pts[i + 1]
+        p3 = pts[min(len(pts) - 1, i + 2)]
+        pt = .5 * (2 * p1 + (-p0 + p2) * f + (2 * p0 - 5 * p1 + 4 * p2 - p3) * f * f
+                   + (-p0 + 3 * p1 - 3 * p2 + p3) * (f ** 3))
+        dense.append((pt.x, pt.y, pt.z))
+    cord = api.tube(prefix + 'GoldThread', dense, [.0008] * len(dense), 'gold_light', driver=driver, sides=6)
+    if deform_mode:
+        cord['deform_mode'] = deform_mode
+    for k in range(count):
+        u = (k + .5) / count
+        idx = min(len(dense) - 1, int(round(u * (len(dense) - 1))))
+        pr = min_r + (max_r - min_r) * math.sin(u * math.pi)
+        pearl = api.ellipsoid(f'{prefix}Pearl{k:02d}', dense[idx], (pr, pr, pr),
+                              'pearl', driver=driver, segments=10, rings=7)
+        if deform_mode:
+            pearl['deform_mode'] = deform_mode
 
-    belt_y_at=lambda x: -.058 + .010*(x/.13)
-    for sign,label in [(-1,'L'),(1,'R')]:
-        raw=[(sign*.070,.242),(sign*.072,.184),(sign*.082,.128),(sign*.066,.068),
-             (sign*.060,.008),(sign*.068,belt_y_at(sign*.068))]
-        front_h=[(x,y,api.fit_front(x,y,.0028)) for x,y in raw]
-        over_shoulder=[(sign*.066,.225,.058),(sign*.068,.246,.012),front_h[0]]+front_h[1:]
-        api.strap('ShoulderHarness'+label,over_shoulder,.013,'leather',thickness=.0028)
-        buckle('ChestBuckle'+label,(sign*.072,.182,api.fit_front(sign*.072,.182,.0055)),.018,.021)
-        side_ang=0.0 if sign>0 else math.pi
-        rib_pts=[(sign*.078,.112,api.fit_front(sign*.078,.112,.003)),
-                 api.fit_radial(side_ang+sign*.45,.110,.003),
-                 api.fit_radial(side_ang,.112,.003),(sign*.052,.118,.072)]
-        api.strap('RibTankStrap'+label,rib_pts,.011,'leather',thickness=.0024)
-    sternum_pts=[(x,.176,api.fit_front(x,.176,.0032)) for x in (-.068,-.034,0.0,.034,.068)]
-    api.strap('SternumCrossStrap',sternum_pts,.0115,'leather',thickness=.0025)
-    buckle('SternumCenterBuckle',(0.0,.176,api.fit_front(0.0,.176,.0058)),.016,.018)
 
-    belt_pts=[api.fit_radial(i/48*tau,belt_y_at(math.cos(i/48*tau)*.11),.0035) for i in range(49)]
-    api.tube('WaistUtilityBelt',belt_pts,[.0075]*len(belt_pts),'leather','body',sides=8)
-    buckle('WaistClasp',(0.0,belt_y_at(0),api.fit_front(0.0,belt_y_at(0),.008)),.028,.025)
-    for kx in (-.032,.032):
-        ky=belt_y_at(kx); box('BeltKeeper'+str(kx),(kx,ky,api.fit_front(kx,ky,.006)),(.008,.024,.012),'gold',bevel=.001)
+def _fit_back(api, x, y, offset=.0022):
+    import bpy
+    from mathutils.bvhtree import BVHTree
+    torso = next(o for o in api.objects if o['driver'] == 'body' and 'torso' in o.name.lower())
+    tree = BVHTree.FromObject(torso, bpy.context.evaluated_depsgraph_get())
+    hit, _, _, _ = tree.ray_cast(Vector((x, -1.0, y)), Vector((0, 1.0, 0)))
+    return -hit.y + offset if hit is not None else .056
 
-    for sign,label,drv_leg in [(-1,'L','leg_l'),(1,'R','leg_r')]:
-        by0=belt_y_at(sign*.088)
-        sling=[(sign*.076,by0,api.fit_front(sign*.076,by0,.005)),(sign*.112,-.135,-.048),
-               (sign*.124,-.205,-.022),(sign*.122,-.235,-.006)]
-        s_obj=api.strap('HipSling'+label,sling,.0115,'leather_dark',thickness=.0025)
-        s_obj['deform_mode']='hip_sling'
-        buckle('HipSlingBuckle'+label,(sign*.112,-.138,-.052),.016,.020)
-        thigh_loop=[(-sign*.002+.048*math.cos(j/36*tau),-.065,.052*math.sin(j/36*tau)) for j in range(37)]
-        api.tube('ThighHarnessBand'+label,thigh_loop,[.0048]*37,'leather_dark',drv_leg,sides=6)
-        buckle('ThighBandBuckle'+label,(sign*.012,-.065,-.053),.014,.017,driver=drv_leg)
 
-    vx,vy,vz=-.136,-.138,-.036
-    api.strap('SpecimenMountingBracket',[(-.116,belt_y_at(-.116),-.034),(vx,vy+.054,vz)],.012,'gold_light',thickness=.003)
-    cylinder_domed('SpecimenCapTop',(vx,0,vz),.020,.020,vy+.036,vy+.054,'gold',segs=24,cap_rings=4)
-    cylinder_domed('SpecimenStopperNozzle',(vx,0,vz),.009,.009,vy+.054,vy+.064,'gold_light',segs=16,cap_rings=3)
-    cylinder_domed('SpecimenCapBottom',(vx,0,vz),.020,.020,vy-.054,vy-.036,'gold',segs=24,cap_rings=4)
-    loop('SpecimenUpperCollarRing',(vx,0,vz),.0215,.0215,vy+.036,'gold_light',thickness=.0020,segs=28)
-    loop('SpecimenLowerCollarRing',(vx,0,vz),.0215,.0215,vy-.036,'gold_light',thickness=.0020,segs=28)
-    cylinder_domed('SpecimenVialGlass',(vx,0,vz),.0182,.0182,vy-.037,vy+.037,'glass',segs=28,cap_rings=2)
-    for rod_i in range(3):
-        ra=rod_i/3*tau+.4; rx_r,rz_r=vx+.0198*math.cos(ra),vz+.0198*math.sin(ra)
-        api.tube('SpecimenTieRod'+str(rod_i),[(rx_r,vy-.038,rz_r),(rx_r,vy+.038,rz_r)],[.0011,.0011],'gold',sides=6)
-    spec_core=[(vx+.003*math.sin(t*4),vy-.026+.052*t,vz+.003*math.cos(t*4)) for t in (0,.25,.5,.75,1.0)]
-    api.tube('GoldenBioSpecimenCore',spec_core,[.0022,.0048,.0062,.0045,.0018],'specimen_gold',sides=10)
-    for fr in (-1,1):
-        frond=[(vx,vy-.004,vz),(vx+fr*.007,vy-.016,vz+fr*.004),(vx+fr*.009,vy-.028,vz-fr*.003)]
-        api.tube('GoldenBioSpecimenFrond'+str(fr),frond,[.0024,.0016,.0007],'specimen_gold',sides=7)
+def _shell_bodice_and_pearls(api):
+    """Sculpted 3D fluted Mother-of-Pearl Scallop Shell cups, crystal pendant & bare-back pearl drapes."""
+    for side, tag in ((-1, 'L'), (1, 'R')):
+        hinge_x, hinge_y = side * .018, .098
+        rows_s, cols_s = 13, 21
+        grid = []
+        for r in range(rows_s):
+            tr = r / (rows_s - 1)
+            row = []
+            for c in range(cols_s):
+                tc = c / (cols_s - 1)
+                ang = -.18 + tc * 1.62
+                scallop = 1.0 + .055 * math.cos(tc * math.pi * 8.0) * (tr ** 1.6)
+                rad = (.008 + .072 * (tr ** .86)) * scallop
+                px = hinge_x + side * rad * math.sin(ang) * 1.05
+                py = hinge_y + rad * (.46 + .54 * math.cos(ang - .58))
+                flute = .0026 * math.cos(tc * math.pi * 8.0) * math.sin(tr * math.pi * .9)
+                cup_dome = .0038 * math.sin(tr * math.pi) * math.sin(tc * math.pi)
+                pz = api.fit_front(px, py, .0022 + flute + cup_dome)
+                row.append((px, py, pz))
+            grid.append(row)
+        _thick_grid(api, 'ScallopShellCup' + tag, grid, .0028, 'shell_pearl', driver='body')
+        rim_pts = [grid[-1][c] for c in range(cols_s)]
+        api.tube('ScallopGoldFiligreeRim' + tag, rim_pts, [.0013] * cols_s, 'gold_light', 'body', sides=7)
+        hz = api.fit_front(hinge_x, hinge_y, .0045)
+        api.ellipsoid('ScallopHingeGold' + tag, (hinge_x, hinge_y, hz), (.005, .005, .003), 'gold', 'body', 16, 10)
 
-    box('RightBeltUtilityPouch',(.106,belt_y_at(.106)-.006,-.052),(.036,.042,.024),'leather',bevel=.004)
-    box('RightBeltPouchFlap',(.106,belt_y_at(.106)+.008,-.062),(.038,.018,.007),'leather',bevel=.002)
-    api.ellipsoid('RightBeltPouchButton',(.106,belt_y_at(.106)-.002,-.066),(.0035,.0035,.002),'gold',segments=12,rings=8)
-    box('LeftRearBeltPouch',(-.096,belt_y_at(-.096)-.008,.062),(.038,.044,.024),'leather',bevel=.004)
-    box('LeftRearBeltFlap',(-.096,belt_y_at(-.096)+.008,.072),(.040,.018,.007),'leather',bevel=.002)
-    box('LeftThighUtilityPouch',(-.048,-.052,.018),(.028,.068,.044),'leather',driver='leg_l',bevel=.005)
-    box('LeftThighPouchFlap',(-.052,-.025,.018),(.031,.022,.046),'leather',driver='leg_l',bevel=.0025)
-    api.ellipsoid('LeftThighPouchStud',(-.068,-.036,.018),(.0022,.004,.004),'gold',driver='leg_l',segments=12,rings=8)
-    box('RightThighKnifeSheath',(.047,-.058,-.004),(.018,.082,.028),'leather_dark',driver='leg_r',bevel=.004)
-    box('RightKnifeThroatCollar',(.048,-.016,-.004),(.021,.011,.031),'gold',driver='leg_r',bevel=.002)
-    box('RightKnifeGrip',(.048,.004,-.004),(.013,.030,.020),'rubber',driver='leg_r',bevel=.003)
-    api.tube('RightKnifePommel',[(.048,.024+.0085*math.cos(j/16*tau),-.004+.0085*math.sin(j/16*tau)) for j in range(17)],[.0020]*17,'gold_light','leg_r',sides=7)
+        swag = []
+        for i in range(9):
+            u = i / 8
+            sx = side * (.012 + .084 * u)
+            sy = .102 - .022 * math.sin(u * math.pi) + .016 * u
+            swag.append((sx, sy, api.fit_front(sx, sy, .0032)))
+        _pearl_strand(api, 'UnderbustPearlSwag' + tag, swag, 9, .0024, .0036)
 
-    box('DorsalTankBackplate',(0.0,.135,.074),(.118,.185,.012),'rubber',bevel=.003)
-    for sign in (-1,1):
-        tx,tz=sign*.043,.108
-        cylinder_domed('OxygenCylinder'+str(sign),(tx,0,tz),.033,.033,.042,.222,'ivory',segs=28,cap_rings=5)
-        for by in (.074,.192):
-            loop('TankBrassBand'+str(sign)+str(by),(tx,0,tz),.035,.035,by,'gold',thickness=.0042,segs=28)
-        api.tube('TankValveStem'+str(sign),[(tx,.248,tz),(tx,.268,tz)],[.0055,.0055],'gold',sides=10)
-        loop('TankValveCollar'+str(sign),(tx,0,tz),.009,.009,.254,'gold_light',thickness=.0022,segs=16)
-        hose_ctrl=[(tx,.266,tz),(sign*.078,.288,.092),(sign*.112,.284,.044),
-                   (sign*.108,.264,-.008),(sign*.072,.252,-.030),(sign*.048,.252,-.012)]
-        dense_h=[]
-        for idx in range(len(hose_ctrl)-1):
-            p0=hose_ctrl[max(0,idx-1)]; p1=hose_ctrl[idx]; p2=hose_ctrl[idx+1]; p3=hose_ctrl[min(len(hose_ctrl)-1,idx+2)]
-            for s_i in range(12):
-                t=s_i/12
-                dense_h.append(tuple(.5*(2*b+(-a+c)*t+(2*a-5*b+4*c-d)*t*t+(-a+3*b-3*c+d)*t**3)
-                                     for a,b,c,d in zip(p0,p1,p2,p3)))
-        dense_h.append(hose_ctrl[-1])
-        radii_h=[.0088+.0017*math.sin(k*math.pi) for k in range(len(dense_h))]
-        h_obj=api.tube('CorrugatedShoulderHose'+str(sign),dense_h,radii_h,'rubber','body',sides=10)
-        h_obj['deform_mode']='hose_bridge'
-        loop('HoseBrassFittingTank'+str(sign),(tx,0,tz),.0095,.0095,.266,'gold',thickness=.0022,segs=16)
-    api.tube('TankManifoldBridge',[(-.043,.260,.108),(.043,.260,.108)],[.0048,.0048],'gold',sides=8)
-    box('TankBandCenterBridge',(0.0,.133,.108),(.024,.135,.014),'gold',bevel=.002)
-
-    for side,side_sign in [('l',-1),('r',1)]:
-        wrapped_armor_plate('LeafShoulderArmor','arm_'+side,side_sign,[
-            (.042,-side_sign*.062,.003,.024,.025,.65,.000),
-            (.025,-side_sign*.054,.003,.036,.035,1.08,.002),
-            (-.006,-side_sign*.045,.002,.040,.039,1.24,.004),
-            (-.042,-side_sign*.038,.002,.039,.039,1.18,.006),
-            (-.074,-side_sign*.032,.001,.037,.037,.96,.009),
-            (-.098,-side_sign*.028,.001,.034,.034,.48,.004),
-        ],mat='armor',rim_mat='gold_light',voronoi_veins=True,thick=.004)
-
-        wrapped_armor_plate('FittedForearmBracer','forearm_'+side,side_sign,[
-            (-.012,0.0,.001,.028,.028,.36,.000),
-            (-.042,side_sign*.001,.000,.031,.030,.92,.003),
-            (-.088,side_sign*.002,-.001,.030,.029,1.05,.003),
-            (-.140,side_sign*.003,-.002,.026,.025,.96,.002),
-            (-.182,side_sign*.004,-.003,.023,.022,.82,.001),
-            (-.200,side_sign*.004,-.003,.022,.021,.55,.000),
-        ],mat='armor',rim_mat='gold_light',voronoi_veins=True,thick=.0032)
-
-        loop('WristLeatherSeal',(side_sign*.004,0,-.004),.022,.021,-.207,'leather_dark','forearm_'+side,.0038,segs=28)
-        loop('WristBrassClasp',(side_sign*.004,0,-.004),.023,.022,-.213,'gold','forearm_'+side,.0016,segs=28)
-        api.ellipsoid('WristGaugeHousing',(side_sign*.025,-.206,-.004),(.004,.011,.011),'gold','forearm_'+side,segments=18,rings=10)
-        api.ellipsoid('WristGaugeDial',(side_sign*.028,-.206,-.004),(.002,.008,.008),'gauge','forearm_'+side,segments=16,rings=8)
-
-        kn_levels=[(.042,.010,-.028),(.022,.024,-.032),(.000,.028,-.033),(-.024,.024,-.031),(-.046,.010,-.028)]
-        kn_v=[]; kn_f=[]; kn_uv=[]; kn_c=13; kn_grid=[]
-        for sh in (0,1):
-            dz=.003 if sh else 0.0
-            for r_i,(ky,kw,kz) in enumerate(kn_levels):
-                row_p=[]
-                for j in range(kn_c):
-                    u=j/(kn_c-1)*2-1; px=side_sign*.002+u*kw; pz=kz+.010*u*u+dz
-                    kn_v.append((px,ky,pz)); kn_uv.append(((u+1)*.5,r_i/(len(kn_levels)-1)))
-                    if sh==0:row_p.append((px,ky,pz))
-                if sh==0:kn_grid.append(row_p)
-        kn_st=len(kn_levels)*kn_c
-        for sh in (0,1):
-            for i in range(len(kn_levels)-1):
-                for j in range(kn_c-1):
-                    k=sh*kn_st+i*kn_c+j
-                    kn_f.append((k,k+1,k+kn_c+1,k+kn_c) if sh==0 else (k+kn_c,k+kn_c+1,k+1,k))
-        for i in range(len(kn_levels)-1):
-            for j in (0,kn_c-1):
-                a=i*kn_c+j; b=(i+1)*kn_c+j; kn_f.append((a,b,b+kn_st,a+kn_st))
-        for i in (0,len(kn_levels)-1):
-            for j in range(kn_c-1):
-                a=i*kn_c+j; kn_f.append((a,a+1,a+1+kn_st,a+kn_st))
-        api.surface('ContouredKneeProtection',kn_v,kn_f,'rubber','calf_'+side,uv=kn_uv)
-        kn_rim=[kn_grid[i][0] for i in range(len(kn_levels))]+[kn_grid[-1][j] for j in range(1,kn_c)]+[
-            kn_grid[i][-1] for i in range(len(kn_levels)-2,-1,-1)]+[kn_grid[0][j] for j in range(kn_c-2,-1,-1)]
-        api.tube('KneeProtectionGoldRim',kn_rim,[.0014]*len(kn_rim),'gold_light','calf_'+side,sides=7)
-
-        boot_sec=[
-            (-.078,0.0,-.060,.018,.019,.015),
-            (-.064,0.0,-.040,.024,.027,.023),
-            (-.042,0.0,-.012,.028,.032,.042),
-            (-.014,0.0,.002,.026,.028,.032),
-            (.018,0.0,.001,.025,.026,.027),
-            (.048,0.0,.000,.026,.027,.028),
+        halter = [
+            (side * .058, .164, api.fit_front(side * .058, .164, .003)),
+            (side * .066, .206, api.fit_front(side * .066, .206, .003)),
+            (side * .068, .222, .008),
+            (side * .062, .205, _fit_back(api, side * .062, .205, .003)),
+            (0.0, .148, _fit_back(api, 0.0, .148, .004)),
+            (-side * .072, .098, _fit_back(api, -side * .072, .098, .003)),
+            (-side * .088, .112, .002),
+            (-side * .084, .118, api.fit_front(-side * .084, .118, .003)),
         ]
-        b_verts=[]; b_uv=[]; b_faces=[]; b_sides=28
-        for r_i,(by,bcx,bcz,brx,bfront,bback) in enumerate(boot_sec):
-            for j in range(b_sides):
-                phi=j/b_sides*tau; s,c=math.sin(phi),math.cos(phi)
-                v_dip=-.012*max(0.0,c)**3 if r_i>=4 else 0.0
-                b_verts.append((bcx+brx*s,by+v_dip,bcz+(-bfront*c if c>0 else -bback*c)))
-                b_uv.append((j/b_sides,r_i/(len(boot_sec)-1)))
-        for r_i in range(len(boot_sec)-1):
-            for j in range(b_sides):
-                j1=(j+1)%b_sides; p=r_i*b_sides+j; q=r_i*b_sides+j1
-                b_faces.append((p,q,q+b_sides,p+b_sides))
-        for last,idx_r in ((False,0),(True,len(boot_sec)-1)):
-            by,bcx,bcz,_,_,_=boot_sec[idx_r]
-            cc=len(b_verts); b_verts.append((bcx,by,bcz)); b_uv.append((.5,.5))
-            for j in range(b_sides):
-                p=idx_r*b_sides+j; q=idx_r*b_sides+(j+1)%b_sides
-                b_faces.append((cc,p,q) if last else (cc,q,p))
-        boot_obj=api.surface('StructuredDiveBoot',b_verts,b_faces,'rubber','fin_'+side,uv=b_uv)
-        boot_obj['deform_mode']='boot_cuff'
-        cuff_pts=[b_verts[(len(boot_sec)-1)*b_sides+(j%b_sides)] for j in range(b_sides+1)]
-        cuff_obj=api.tube('BootFlaredVCuff',[(x*1.04,y,z*1.04) for x,y,z in cuff_pts],[.0038]*len(cuff_pts),'gold_light','fin_'+side,sides=7)
-        cuff_obj['deform_mode']='boot_cuff'
-        ankle_strap=[(.027*math.sin(j/28*tau),.012,-.029*math.cos(j/28*tau) if math.cos(j/28*tau)>0 else -.031*math.cos(j/28*tau)) for j in range(29)]
-        api.tube('BootUpperAnkleStrap',ankle_strap,[.0032]*len(ankle_strap),'leather_dark','fin_'+side,sides=6)
-        buck_ring=[(side_sign*.028,.012+.009*math.cos(j/18*tau),.002+.009*math.sin(j/18*tau)) for j in range(19)]
-        api.tube('BootOuterAnkleRingBuckle',buck_ring,[.0016]*19,'gold','fin_'+side,sides=6)
-        heel_band=[(0.0,-.044,.043),(side_sign*.028,-.032,.015),(0.0,-.032,-.030),(-side_sign*.028,-.032,.015),(0.0,-.044,.043)]
-        api.tube('BootHeelCounterBand',heel_band,[.0032]*5,'gold_light','fin_'+side,sides=6)
-        fore_strap=[(.026*math.sin(j/24*tau),-.058,-.036-.028*math.cos(j/24*tau)) for j in range(25)]
-        api.tube('BootForefootStrap',fore_strap,[.0030]*25,'leather_dark','fin_'+side,sides=6)
-        buckle('BootInstepBuckle',(0.0,-.056,-.066),.014,.012,driver='fin_'+side)
+        _pearl_strand(api, 'HalterCrossBackPearls' + tag, halter, 18, .0024, .0035, deform_mode='hose_bridge')
 
-        def fin_spine(t):
-            return (-.074 - .304*t + .040*(t**2.2), -.056 - .138*t - .094*(t**1.72))
+    neck_pts = []
+    for i in range(13):
+        u = i / 12 * 2.0 - 1.0
+        nx = u * .068
+        ny = .208 - .026 * (1.0 - u * u)
+        neck_pts.append((nx, ny, api.fit_front(nx, ny, .0028)))
+    _pearl_strand(api, 'ClaviclePearlChoker', neck_pts, 13, .0022, .0034)
 
-        for lobe in (-1,1):
-            rows_f=24; cols_f=12; f_verts=[]; f_uv=[]; f_faces=[]
-            outer_rail_pts=[]; spine_rib_pts=[]
-            for i in range(rows_f):
-                t=i/(rows_f-1); fy,fz=fin_spine(t)
-                x_outer=.024 + .056*(math.sin(t*math.pi*.76)**.78) - .010*(t**3)
-                x_inner=0.0 if t<=.40 else .002 + .066*(((t-.40)/.60)**1.35)
-                x_outer=max(x_inner+.0018,x_outer)
-                mid_x=.5*(x_inner+x_outer); half_w=.5*(x_outer-x_inner); thick_f=.0092*(1-.74*t)
-                for j in range(cols_f):
-                    ang=j/(cols_f-1)*tau; ca,sa=math.cos(ang),math.sin(ang)
-                    lx=lobe*(mid_x + half_w*ca)
-                    camber=.0065*math.sin(t*math.pi)*(1-ca*ca*.4)
-                    ly=fy + (thick_f*sa + camber)*.58
-                    lz=fz + (thick_f*sa + camber)*(-.81)
-                    f_verts.append((lx,ly,lz))
-                    u_tex=.5*(1-ca) if t>.40 else (x_outer-abs(lx))/max(.01,x_outer)
-                    f_uv.append((max(0.0,min(1.0,u_tex)),t))
-                outer_rail_pts.append((lobe*x_outer,fy+.004,fz-.005))
-                if t<=.90:
-                    spine_rib_pts.append((lobe*(.010+.036*t),fy+.0065*(1-.6*t),fz-.0085*(1-.6*t)))
-            for i in range(rows_f-1):
-                for j in range(cols_f-1):
-                    a=i*cols_f+j; b=i*cols_f+j+1; q=(a,b,b+cols_f,a+cols_f)
-                    f_faces.append(q if lobe>0 else tuple(reversed(q)))
-            for cap_end,row_idx in ((False,0),(True,rows_f-1)):
-                cx_c=sum(f_verts[row_idx*cols_f+j][0] for j in range(cols_f))/cols_f
-                cy_c=sum(f_verts[row_idx*cols_f+j][1] for j in range(cols_f))/cols_f
-                cz_c=sum(f_verts[row_idx*cols_f+j][2] for j in range(cols_f))/cols_f
-                ci=len(f_verts); f_verts.append((cx_c,cy_c,cz_c)); f_uv.append((.2,1.0 if cap_end else 0.0))
-                for j in range(cols_f-1):
-                    p=row_idx*cols_f+j; q=p+1
-                    f_faces.append((ci,p,q) if (cap_end^(lobe<0)) else (ci,q,p))
-            api.surface('SwallowtailBioFinBlade'+str(lobe),f_verts,f_faces,'fin_ivory','fin_'+side,uv=f_uv)
-            api.tube('FinOuterAmberRail'+str(lobe),outer_rail_pts,
-                     [.0036*(1-.58*i/(rows_f-1)) for i in range(rows_f)],'gold','fin_'+side,sides=7)
-            api.tube('FinLongitudinalRib'+str(lobe),spine_rib_pts,
-                     [.0028*(1-.68*i/max(1,len(spine_rib_pts)-1)) for i in range(len(spine_rib_pts))],'gold_light','fin_'+side,sides=6)
-        v_shroud=[(-.024,-.068,-.048),(0.0,-.082,-.072),(.024,-.068,-.048)]
-        api.tube('FinBootDorsalVKeel',v_shroud,[.0036,.0048,.0036],'gold_light','fin_'+side,sides=7)
+    cz = api.fit_front(0.0, .114, .0065)
+    api.ellipsoid('BodiceCenterGoldBezel', (0.0, .114, cz + .0015), (.0095, .0125, .0035), 'gold', 'body', 22, 14)
+    api.ellipsoid('BodiceCenterCrystalGlass', (0.0, .114, cz - .0012), (.0072, .0100, .0042), 'glass', 'body', 22, 14)
+    api.tube('BodiceDropLink', [(0.0, .102, cz), (0.0, .086, cz + .002)], [.0009, .0009], 'gold_light', 'body', 6)
+    api.ellipsoid('BodiceTeardropPearl', (0.0, .080, cz + .002), (.0046, .0062, .0046), 'pearl', 'body', 18, 14)
+
+    bz = _fit_back(api, 0.0, .148, .005)
+    api.ellipsoid('BackCrossGoldMedallion', (0.0, .148, bz), (.008, .008, .003), 'gold', 'body', 18, 12)
+    api.ellipsoid('BackCrossPearlCenter', (0.0, .148, bz + .002), (.0045, .0045, .0035), 'pearl', 'body', 16, 12)
+
+
+def _siren_hip_girdle_and_veil_fins(api):
+    """V-contoured Gold & Pearl Siren Hip Girdle, Starlight Vial & fluttering Lateral Hip Veil-Fins."""
+    girdle_upper, girdle_lower = [], []
+    segs = 64
+    for j in range(segs + 1):
+        phi = j / segs * TAU
+        s, c = math.sin(phi), math.cos(phi)
+        y_v = -.052 - .040 * (c ** 2)
+        rx, front, back, shift = .109, .057, .065, .003
+        x = rx * s
+        z = shift + (-front * c if c > 0 else -back * c)
+        girdle_upper.append((x, y_v + .003, z))
+        girdle_lower.append((x * 1.02, y_v - .007, z * 1.02))
+    g_up = api.tube('SirenVGirdleGold', girdle_upper, [.0026] * len(girdle_upper), 'gold', 'body', sides=8)
+    g_up['deform_mode'] = 'mermaid_tail'
+    g_lo = api.tube('SirenVGirdleFiligree', girdle_lower, [.0016] * len(girdle_lower), 'gold_light', 'body', sides=7)
+    g_lo['deform_mode'] = 'mermaid_tail'
+
+    for k in range(20):
+        idx = int(round(k / 20 * segs))
+        px, py, pz = girdle_upper[idx]
+        pr = .0034 if k in (0, 10) else .0026
+        p_obj = api.ellipsoid(f'GirdleStudPearl{k:02d}', (px * 1.02, py, pz * 1.02),
+                              (pr, pr, pr), 'pearl', 'body', 10, 7)
+        p_obj['deform_mode'] = 'mermaid_tail'
+
+    fx, fy, fz = 0.0, -.094, -.058
+    for arm_i in range(5):
+        a = arm_i / 5 * TAU - math.pi * .5
+        st = api.tube(f'HipApexStarArm{arm_i}',
+                      [(fx, fy, fz), (fx + .016 * math.cos(a), fy + .016 * math.sin(a), fz + .002)],
+                      [.0036, .0009], 'gold', 'body', sides=7)
+        st['deform_mode'] = 'mermaid_tail'
+    gem = api.ellipsoid('HipApexCrystalGlass', (fx, fy, fz - .0025), (.0065, .0082, .0038), 'glass', 'body', 20, 12)
+    gem['deform_mode'] = 'mermaid_tail'
+
+    for side, tag in ((-1, 'L'), (1, 'R')):
+        for tier, drop in enumerate((.042, .072)):
+            chain = []
+            for i in range(11):
+                u = i / 10
+                ang = u * math.pi
+                c_a, s_a = math.cos(ang), math.sin(ang)
+                sag = drop * math.sin(u * math.pi)
+                cy = -.056 - .038 * (c_a ** 2) - sag
+                rx_h = .112 + .022 * min(1.0, (-cy - .055) / .09)
+                fr_h = .058 + .006 * min(1.0, (-cy - .055) / .09)
+                bk_h = .066 + .016 * min(1.0, (-cy - .055) / .09)
+                cx = side * rx_h * s_a
+                cz = .006 + (-fr_h * c_a if c_a > 0 else -bk_h * c_a)
+                chain.append((cx, cy, cz))
+            _pearl_strand(api, f'HipDrapedPearlChain{tag}{tier}', chain, 11 + tier * 3,
+                          .0023, .0036, deform_mode='mermaid_tail')
+
+        rows_f, cols_f = 16, 19
+        core_grid, veil_grid = [], []
+        for r in range(rows_f):
+            tr = r / (rows_f - 1)
+            c_row, v_row = [], []
+            for c in range(cols_f):
+                tc = c / (cols_f - 1)
+                ang = .55 + tc * 1.85
+                s_a, c_a = math.sin(ang), math.cos(ang)
+                root_y = -.058 - .032 * (c_a ** 2) - .028 * tc
+                root_x = side * .108 * s_a
+                root_z = .005 + (-.056 * c_a if c_a > 0 else -.068 * c_a)
+
+                # Rounded orchid/butterfly petal envelope (zero square corners, sweeps gracefully aft!)
+                petal_arch = math.sin((tc * .86 + .07) * math.pi) ** .68
+                petal_flare = math.sin(tr * math.pi * .78) * petal_arch
+                scallop = 1.0 + .08 * math.cos(tc * math.pi * 5.0) * (tr ** 1.3)
+                pleat = .0085 * math.sin(tc * math.pi * 5.0 + tr * 1.6) * tr * petal_arch
+                tr_c = tr * .62
+                flare_c = (.048 * math.sin(tr_c * math.pi * .82) * petal_arch) * scallop
+                drop_c = (.165 * (tr_c ** 1.04)) * (.55 + .55 * petal_arch)
+                c_row.append((root_x + side * flare_c * (.55 + .45 * s_a) - side * .018 * (tr_c ** 1.8),
+                              root_y - drop_c,
+                              root_z + .042 * tr_c + pleat * .6))
+                flare_v = (.072 * petal_flare) * scallop
+                drop_v = (.255 * (tr ** 1.04)) * (.52 + .58 * petal_arch)
+                v_row.append((root_x + side * flare_v * (.55 + .45 * s_a) - side * .028 * (tr ** 1.8),
+                              root_y - drop_v,
+                              root_z + .064 * tr + pleat))
+            core_grid.append(c_row)
+            veil_grid.append(v_row)
+        _thick_grid(api, 'HipCorePetalFin' + tag, core_grid, .0024, 'fin_pearl',
+                    driver='body', deform_mode='mermaid_tail')
+        _thick_grid(api, 'HipTranslucentGlassVeilFin' + tag, veil_grid, .0016, 'glass',
+                    driver='body', deform_mode='mermaid_tail')
+        base_leg = (-.025 if side < 0 else .025, -.17, .01)
+        for ray_i in range(5):
+            ci = int(round((ray_i + .5) / 5 * (cols_f - 1)))
+            local_pts = [(veil_grid[r][ci][0] - base_leg[0],
+                          veil_grid[r][ci][1] - base_leg[1],
+                          veil_grid[r][ci][2] - base_leg[2]) for r in range(rows_f)]
+            ray = api.tube(f'HipVeilFinRay{tag}{ray_i}', local_pts,
+                           [.0018 * (1.0 - .68 * r / (rows_f - 1)) for r in range(rows_f)],
+                           'gold_light' if ray_i in (0, 4) else 'fin_pearl',
+                           'leg_l' if side < 0 else 'leg_r', sides=6)
+            ray['deform_mode'] = 'mermaid_tail'
+
+    vx, vy, vz = -.128, -.126, -.024
+    for nm, cy0, rx0, ry0, mat in [
+        ('StarlightVialTopGold', vy + .030, .011, .008, 'gold'),
+        ('StarlightVialBotGold', vy - .030, .011, .008, 'gold'),
+        ('StarlightVialGlass', vy, .013, .028, 'glass'),
+        ('StarlightEssenceCore', vy, .0065, .018, 'specimen_gold'),
+    ]:
+        o = api.ellipsoid(nm, (vx, cy0, vz), (rx0, ry0, rx0), mat, 'body', 16, 10)
+        o['deform_mode'] = 'mermaid_tail'
+
+
+def _arm_jewelry_and_fins(api):
+    """Coiled Sea-Gold & Pearl upper armlets, wrist bracelets & translucent forearm fin-frills."""
+    for side, tag in ((-1, 'l'), (1, 'r')):
+        drv_arm = 'arm_' + tag
+        drv_fore = 'forearm_' + tag
+        sgn = -1 if side < 0 else 1
+        coil = []
+        for i in range(37):
+            t = i / 36
+            a = t * TAU * 1.65
+            yy = -.068 - .058 * t
+            cx = -sgn * (.033 - .015 * t)
+            r = .0325 - .0025 * t
+            coil.append((cx + r * math.cos(a), yy, .001 + r * math.sin(a)))
+        armlet = api.tube('SpiralGoldArmlet' + tag, coil, [.0020] * len(coil), 'gold', drv_arm, sides=7)
+        armlet['deform_mode'] = 'suit_arm'
+        for p_k in (0, 18, 36):
+            ap = api.ellipsoid(f'ArmletPearl{tag}{p_k}', coil[p_k], (.0032, .0032, .0032),
+                               'pearl', drv_arm, 14, 10)
+            ap['deform_mode'] = 'suit_arm'
+
+        wrist_ring = [(sgn * .004 + .0185 * math.cos(i / 24 * TAU),
+                       -.202,
+                       -.004 + .0185 * math.sin(i / 24 * TAU)) for i in range(25)]
+        api.tube('WristGoldBracelet' + tag, wrist_ring, [.0016] * 25, 'gold_light', drv_fore, sides=7)
+        for pk in range(8):
+            idx = pk * 3
+            api.ellipsoid(f'WristPearl{tag}{pk}', wrist_ring[idx], (.0026, .0026, .0026),
+                          'pearl', drv_fore, 12, 8)
+
+        rows_a, cols_a = 9, 13
+        f_grid = []
+        for r in range(rows_a):
+            tr = r / (rows_a - 1)
+            row = []
+            for c in range(cols_a):
+                tc = c / (cols_a - 1)
+                root_y = -.035 - .145 * tc
+                root_x = sgn * (.016 + .006 * tc)
+                root_z = .016 - .004 * tc
+                scallop = 1.0 + .12 * math.cos(tc * math.pi * 4.0) * tr
+                span = (.056 * math.sin((tc * .85 + .10) * math.pi) * (tr ** .88)) * scallop
+                pleat = .0045 * math.sin(tc * math.pi * 4.0) * tr
+                row.append((root_x + sgn * span * .38 + pleat,
+                            root_y - span * .32,
+                            root_z + span * .92))
+            f_grid.append(row)
+        _thick_grid(api, 'ForearmGlassFinFrill' + tag, f_grid, .0014, 'glass', driver=drv_fore)
+        for ri in (0, 4, 8, 12):
+            r_pts = [f_grid[r][ri] for r in range(rows_a)]
+            api.tube(f'ForearmFinRay{tag}{ri}', r_pts,
+                     [.0013 * (1.0 - .65 * r / (rows_a - 1)) for r in range(rows_a)],
+                     'fin_pearl', drv_fore, sides=5)
+
+
+def _dorsal_crest_and_peduncle_crown(api):
+    """Graceful translucent dorsal tail crest & ornate gold-pearl caudal peduncle crown."""
+    rows_d, cols_d = 10, 17
+    d_grid = []
+    for r in range(rows_d):
+        tr = r / (rows_d - 1)
+        row = []
+        for c in range(cols_d):
+            tc = c / (cols_d - 1)
+            wy = -.310 - .350 * tc
+            t_tail = (-wy - .052) / (.736 - .052)
+            back_z = .009 + (.062 * (1.0 - t_tail) + .018 * t_tail) * .96
+            scallop = 1.0 + .10 * math.cos(tc * math.pi * 5.0) * tr
+            height = .068 * math.sin((tc * .88 + .06) * math.pi) * (tr ** .86) * scallop
+            wave_x = .0055 * math.sin(tc * math.pi * 5.0) * tr
+            row.append((wave_x, wy - height * .38, back_z + height * .94))
+        d_grid.append(row)
+    calf_l_grid = [[(x + .025, y + .435, z - .01) for (x, y, z) in row] for row in d_grid]
+    _thick_grid(api, 'TailDorsalGlassCrest', calf_l_grid, .0016, 'glass',
+                driver='calf_l', deform_mode='mermaid_tail')
+    for ri in range(5):
+        ci = int(round(ri / 4 * (cols_d - 1)))
+        drv = 'calf_l' if ri % 2 == 0 else 'calf_r'
+        bx = -.025 if drv == 'calf_l' else .025
+        pts = [(d_grid[r][ci][0] - bx, d_grid[r][ci][1] + .435, d_grid[r][ci][2] - .01) for r in range(rows_d)]
+        ray = api.tube(f'TailDorsalFinRay{ri}', pts,
+                       [.0017 * (1.0 - .65 * r / (rows_d - 1)) for r in range(rows_d)],
+                       'fin_pearl', drv, sides=6)
+        ray['deform_mode'] = 'mermaid_tail'
+
+    crown_pts = []
+    for j in range(41):
+        phi = j / 40 * TAU
+        s, c = math.sin(phi), math.cos(phi)
+        wy = -.678 - .018 * (c ** 2)
+        wx = .026 * s
+        wz = .010 - .020 * c
+        crown_pts.append((wx, wy, wz))
+    ped = api.tube('PeduncleGoldCrown', crown_pts, [.0026] * len(crown_pts), 'gold', 'body', sides=8)
+    ped['deform_mode'] = 'mermaid_tail'
+    for pk in range(10):
+        px, py, pz = crown_pts[pk * 4]
+        po = api.ellipsoid(f'PeduncleCrownPearl{pk}', (px * 1.08, py, pz),
+                           (.0028, .0028, .0028), 'pearl', 'body', 10, 7)
+        po['deform_mode'] = 'mermaid_tail'
+    for fb_sgn, fb_tag in ((-1, 'Front'), (1, 'Back')):
+        clasp_z = .010 + fb_sgn * .018
+        clasp_b = api.ellipsoid('PeduncleGoldClasp' + fb_tag, (0.0, -.692, clasp_z),
+                                (.010, .016, .0045), 'gold', 'body', 16, 10)
+        clasp_b['deform_mode'] = 'mermaid_tail'
+        clasp_p = api.ellipsoid('PedunclePearlGem' + fb_tag, (0.0, -.692, clasp_z + fb_sgn * .0025),
+                                (.0065, .0105, .0040), 'pearl', 'body', 14, 10)
+        clasp_p['deform_mode'] = 'mermaid_tail'
+
+
+def _royal_caudal_fluke(api):
+    """Grand sweeping Crescent/Butterfly Swallowtail Mermaid Caudal Fluke (0.58m span x 0.55m sweep!)."""
+    for side, tag in ((-1, 'l'), (1, 'r')):
+        drv = 'fin_' + tag
+        bx, by, bz = (-.025 if side < 0 else .025), -.695, .010
+
+        def to_local(wx, wy, wz):
+            return (wx - bx, wy - by, wz - bz)
+
+        rows_c, cols_c = 24, 20
+        core_grid, veil_grid = [], []
+        leading_arch = []
+
+        for r in range(rows_c):
+            tr = r / (rows_c - 1)
+            c_row, v_row = [], []
+            for c in range(cols_c):
+                tc = c / (cols_c - 1)
+                outer_x_core = .020 + .235 * (math.sin(tr * math.pi * .72) ** .78) - .025 * (tr ** 2.6)
+                inner_x_core = 0.0 if tr <= .20 else .004 + .168 * (((tr - .20) / .80) ** 1.32)
+                wx_c = side * (inner_x_core + (outer_x_core - inner_x_core) * (tc ** .86))
+                sweep_len_c = .32 + .17 * (tc ** .75)
+                wy_c = -.692 - sweep_len_c * (tr ** .95)
+                s_camber_c = .034 * math.sin(tr * math.pi * .95) - .024 * (tr ** 2.2)
+                flute_c = .0075 * math.sin(tc * math.pi * 5.0) * math.sin(tr * math.pi * .85)
+                wz_c = .010 + s_camber_c + flute_c - .010 * (1.0 - tc) * tr
+                c_row.append(to_local(wx_c, wy_c, wz_c))
+
+                scallop = 1.0 + .075 * math.cos(tc * math.pi * 6.0) * (tr ** 1.4)
+                outer_x_veil = (.022 + .272 * (math.sin(tr * math.pi * .74) ** .76) - .020 * (tr ** 2.6)) * scallop
+                inner_x_veil = 0.0 if tr <= .26 else .002 + .142 * (((tr - .26) / .74) ** 1.38)
+                wx_v = side * (inner_x_veil + (outer_x_veil - inner_x_veil) * (tc ** .86))
+                sweep_len_v = (.38 + .185 * (tc ** .75)) * scallop
+                wy_v = -.692 - sweep_len_v * (tr ** .95)
+                s_camber_v = .038 * math.sin(tr * math.pi * .95) - .028 * (tr ** 2.2)
+                pleat_v = .0125 * math.sin(tc * math.pi * 6.0 - tr * 1.2) * (tr ** .85)
+                wz_v = .010 + s_camber_v + pleat_v - .012 * (1.0 - tc) * tr
+                v_row.append(to_local(wx_v, wy_v, wz_v))
+
+            core_grid.append(c_row)
+            veil_grid.append(v_row)
+            leading_arch.append(c_row[-1])
+
+        _thick_grid(api, 'MermaidCaudalCoreLobe' + tag, core_grid, .0058, 'fin_pearl',
+                    driver=drv, deform_mode='caudal_fluke',
+                    uv_fn=lambda r, c, nr, nc: (c / max(1, nc - 1), r / max(1, nr - 1)))
+        _thick_grid(api, 'MermaidCaudalGlassVeil' + tag, veil_grid, .0022, 'glass',
+                    driver=drv, deform_mode='caudal_fluke',
+                    uv_fn=lambda r, c, nr, nc: (c / max(1, nc - 1), r / max(1, nr - 1)))
+
+        lead = api.tube('CaudalLeadingGoldArch' + tag, leading_arch,
+                        [.0036 * (1.0 - .66 * i / (rows_c - 1)) for i in range(rows_c)],
+                        'gold', drv, sides=7)
+        lead['deform_mode'] = 'caudal_fluke'
+
+        for ray_i in range(7):
+            ci = int(round((ray_i + 1) / 8 * (cols_c - 1)))
+            r_pts = [veil_grid[r][ci] for r in range(rows_c - 1)]
+            mat_r = 'gold_light' if ray_i % 2 == 0 else 'fin_pearl'
+            ray = api.tube(f'CaudalRadiatingRay{tag}{ray_i}', r_pts,
+                           [.0024 * (1.0 - .74 * r / max(1, len(r_pts) - 1)) for r in range(len(r_pts))],
+                           mat_r, drv, sides=6)
+            ray['deform_mode'] = 'caudal_fluke'
+
+
+def build(api):
+    """Build Scallop-Shell Bodice, Akoya Pearls, Hip/Arm Gossamer Fins & Grand Caudal Fluke."""
+    _shell_bodice_and_pearls(api)
+    _siren_hip_girdle_and_veil_fins(api)
+    _arm_jewelry_and_fins(api)
+    _dorsal_crest_and_peduncle_crown(api)
+    _royal_caudal_fluke(api)

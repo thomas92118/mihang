@@ -12,6 +12,7 @@ const Submarine = preload("res://scripts/submarine.gd")
 const SubmarineTorpedoCls = preload("res://scripts/submarine_torpedo.gd")
 const GameInput = preload("res://scripts/input_controller.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
+const CharacterRoster = preload("res://scripts/presentation/character_roster.gd")
 
 const LANDMARK_SPECS := {
 	"shallows": {"name": "逃生舱浅礁", "pos": Vector3(0, -9, 8), "radius": 28.0, "desc": "阳光明媚的浅海珊瑚林"},
@@ -55,6 +56,7 @@ var has_target_pos: bool = false
 var hud: CanvasLayer
 var state = Survival.new()
 var title_camera: Camera3D
+var title_showcase_diver: CharacterBody3D = null
 var _title_clock := 0.0
 var screen: String = "main"
 var target: Node3D
@@ -109,18 +111,25 @@ func _ready() -> void:
 	add_child(ocean)
 	ocean.boss_encounter_started.connect(_on_boss_encounter_started)
 	ocean.boss_defeated.connect(_on_boss_defeated)
+	var initial_char := CharacterRoster.load_saved_character()
+	state.selected_character = initial_char
 	diver = Diver.new()
 	diver.input_controller = input_controller
 	add_child(diver)
+	diver.set_character(initial_char)
 	_reset_position()
 	title_camera = Camera3D.new()
 	title_camera.fov = 62.0
 	title_camera.far = 280.0
 	add_child(title_camera)
+	_setup_title_showcase(initial_char)
 	_update_title_camera(0.0)
 	hud = HUD.new()
 	add_child(hud)
 	hud.configure_input(input_controller)
+	hud.set_selected_character(initial_char)
+	hud.character_selected.connect(func(cid: String) -> void: _select_character(cid, true))
+	hud.character_cycled.connect(_cycle_character)
 	hud.action_requested.connect(_on_hud_action_requested)
 	hud.input_settings_requested.connect(func(values: Dictionary): input_controller.apply_settings(values))
 	hud.close_requested.connect(_close_input_screen)
@@ -186,7 +195,8 @@ func _setup_input() -> void:
 		"mount_slot_3": KEY_7,
 		"mount_slot_4": KEY_8,
 		"mount_slot_5": KEY_9,
-		"mount_slot_6": KEY_0
+		"mount_slot_6": KEY_0,
+		"character_switch": KEY_P
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -330,13 +340,77 @@ func _restart() -> void:
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 
+func _setup_title_showcase(initial_char: String) -> void:
+	title_showcase_diver = Diver.new()
+	title_showcase_diver.name = "TitleShowcaseDiver"
+	title_showcase_diver.set_process(false)
+	title_showcase_diver.set_physics_process(false)
+	add_child(title_showcase_diver)
+	title_showcase_diver.collision_layer = 0
+	title_showcase_diver.collision_mask = 0
+	if is_instance_valid(title_showcase_diver.body_collision):
+		title_showcase_diver.body_collision.disabled = true
+	if is_instance_valid(title_showcase_diver.camera):
+		title_showcase_diver.camera.current = false
+	if is_instance_valid(title_showcase_diver.equipment_rig):
+		title_showcase_diver.equipment_rig.visible = false
+	title_showcase_diver.set_character(initial_char)
+	var key_light := OmniLight3D.new()
+	key_light.name = "TitleShowcaseKeyLight"
+	key_light.position = Vector3(0.85, 0.95, -1.35)
+	key_light.light_color = Color(0.96, 0.98, 1.0)
+	key_light.light_energy = 0.85
+	key_light.omni_range = 4.2
+	title_camera.add_child(key_light)
+	var rim_light := OmniLight3D.new()
+	rim_light.name = "TitleShowcaseRimLight"
+	rim_light.position = Vector3(-0.65, 0.55, -2.95)
+	rim_light.light_color = Color(0.55, 0.92, 1.0)
+	rim_light.light_energy = 0.65
+	rim_light.omni_range = 4.0
+	title_camera.add_child(rim_light)
+
+func _cycle_character(step: int = 1) -> void:
+	var next_char := CharacterRoster.next_id(diver.current_character if is_instance_valid(diver) else state.selected_character, step)
+	_select_character(next_char, true)
+
+func _select_character(character_id: String, announce: bool = true) -> void:
+	var cid := CharacterRoster.normalize_id(character_id)
+	state.selected_character = cid
+	CharacterRoster.save_character(cid)
+	var profile: Dictionary = CharacterRoster.get_profile(cid)
+	if is_instance_valid(diver):
+		profile = diver.set_character(cid)
+	if is_instance_valid(title_showcase_diver):
+		title_showcase_diver.set_character(cid)
+		if screen == "main":
+			title_showcase_diver.apply_showcase_pose(0.016)
+	if is_instance_valid(hud):
+		hud.set_selected_character(cid)
+	if announce and is_inside_tree():
+		UnderwaterAudio.play_sound(get_tree(), "weapon_equip", -3.0, 1.18)
+		if screen == "main" and is_instance_valid(title_showcase_diver):
+			CombatVFX.spawn_tame_ring(self, title_showcase_diver.global_position + Vector3(0.0, -0.55, 0.0), 1.45)
+		elif screen == "play" and is_instance_valid(diver) and not is_instance_valid(active_submarine):
+			CombatVFX.spawn_tame_ring(self, diver.global_position + Vector3(0.0, -0.45, 0.0), 1.75)
+			CombatVFX.spawn_clam_bubbles(self, diver.global_position + Vector3(0.0, -0.55, 0.0))
+		if is_instance_valid(hud) and screen in ["play", "craft", "sushi", "mount_board", "map"]:
+			hud.toast("【角色切换】%s · %s (按 P 随时切换)" % [str(profile.get("name", cid)), str(profile.get("subtitle", ""))])
+
 func _set_screen(value: String) -> void:
 	screen = value
 	if is_instance_valid(ocean):
 		ocean.set_world_labels_visible(screen != "main")
+	if is_instance_valid(title_showcase_diver):
+		title_showcase_diver.visible = screen == "main"
 	if is_instance_valid(title_camera):
+		for l_name in ["TitleShowcaseKeyLight", "TitleShowcaseRimLight"]:
+			var tl := title_camera.get_node_or_null(l_name)
+			if is_instance_valid(tl):
+				tl.visible = screen == "main"
 		if screen == "main":
 			title_camera.make_current()
+			_update_title_camera(0.0)
 		else:
 			diver.camera.make_current()
 	if is_instance_valid(input_controller):
@@ -547,6 +621,8 @@ func _handle_action_event(event: InputEvent) -> void:
 			hud.toast("【单手能量盾已收起】")
 	elif event.is_action_pressed("recall_pets") and screen == "play":
 		_recall_pets()
+	elif event.is_action_pressed("character_switch") and screen in ["play", "main", "pause"]:
+		_cycle_character(1)
 
 func _switch_weapon(weapon_id: String) -> void:
 	var names := {"knife": "潜水战术刀", "axe": "破拆战斧", "sonic": "蓝光静滞枪", "marker_gun": "光标指示枪"}
@@ -1093,6 +1169,7 @@ func _process(delta: float) -> void:
 		"conquered_bosses_count": ocean.conquered_bosses.size() if is_instance_valid(ocean) else 0,
 		"escape_crafted": state.escape_crafted,
 		"shield_active": diver.shield_active,
+		"character_id": diver.current_character,
 		"gold": state.gold,
 		"dishes_served": state.dishes_served,
 		"sushi_reputation": state.sushi_reputation,
@@ -2396,3 +2473,10 @@ func _update_title_camera(delta: float) -> void:
 	at.y = minf(-2.0, maxf(at.y, ocean.floor_height(at.x, at.z) + 2.8))
 	title_camera.position = at
 	title_camera.look_at(Vector3(-4.5, -8.6, -34.0))
+	if is_instance_valid(title_showcase_diver) and title_showcase_diver.visible:
+		var bob := sin(_title_clock * 1.35) * 0.035
+		var cam_xf := title_camera.global_transform
+		var local_pos := Vector3(0.20, 0.63 + bob, -2.54)
+		var local_basis := Basis(Vector3.UP, deg_to_rad(156.0 + sin(_title_clock * 0.65) * 5.0))
+		title_showcase_diver.global_transform = Transform3D(cam_xf.basis * local_basis, cam_xf * local_pos)
+		title_showcase_diver.apply_showcase_pose(delta)

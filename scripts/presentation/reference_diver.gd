@@ -40,6 +40,50 @@ static func _source_materials(part: MeshInstance3D) -> Array[Material]:
 		materials.append(part.get_active_material(surface))
 	return materials
 
+static func _infer_material_role(mat: Material, part_name: String) -> String:
+	if mat != null:
+		var res_name := String(mat.resource_name)
+		if res_name.begins_with("Reference_"):
+			return res_name.trim_prefix("Reference_")
+	var low := part_name.to_lower()
+	if low.contains("scales"):
+		return "scales"
+	if low.contains("pearlescentmermaidfin"):
+		return "fin_pearl"
+	if low.contains("scallopshell"):
+		return "shell_pearl"
+	if low.contains("lustrousseapearls"):
+		return "pearl"
+	if low.contains("hair_highlight"):
+		return "hair_highlight"
+	if low.contains("hair"):
+		return "hair"
+	if low.contains("iris"):
+		return "iris"
+	if low.contains("lips") or low.ends_with("__lip"):
+		return "lip"
+	if low.contains("eyewhite"):
+		return "eye_white"
+	if low.contains("pupil"):
+		return "pupil"
+	if low.contains("lashes"):
+		return "lash"
+	if low.contains("skin_shadow"):
+		return "skin_shadow"
+	if low.contains("faceskin"):
+		return "skin"
+	if low.contains("skin"):
+		return "body_skin"
+	if low.contains("glass") or low.contains("visor"):
+		return "glass"
+	if low.contains("specimen_gold"):
+		return "specimen_gold"
+	if low.contains("gold_light"):
+		return "gold_light"
+	if low.contains("gold"):
+		return "gold"
+	return ""
+
 static func populate(drivers: Dictionary) -> Dictionary:
 	if not available():
 		return {"parts": 0, "triangles": 0}
@@ -65,6 +109,7 @@ static func populate(drivers: Dictionary) -> Dictionary:
 					# bindings exactly as authored. ModelFinish never sees this rig.
 					var copy := original.duplicate(false) as Material
 					copy.set_meta("reference_material", true)
+					copy.set_meta("reference_role", _infer_material_role(original, String(record.name)))
 					material_copies[id] = copy
 				part.set_surface_override_material(surface, material_copies[id])
 			var arrays := part.mesh.surface_get_arrays(surface)
@@ -99,6 +144,7 @@ static func _populate_skin(drivers: Dictionary) -> Dictionary:
 				if not copies.has(id):
 					var material := source.duplicate(false) as Material
 					material.set_meta("reference_material", true)
+					material.set_meta("reference_role", _infer_material_role(source, String(part.name)))
 					copies[id] = material
 				part.set_surface_override_material(surface, copies[id])
 			var arrays := part.mesh.surface_get_arrays(surface)

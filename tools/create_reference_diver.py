@@ -23,10 +23,10 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT/'assets/source/reference-fidelity'
 REFERENCE = ROOT/'assets/source/art-v3/concepts/diver.png'
 DRIVERS = {
-    'body':(None,(0,0,0)), 'head':('body',(0,.34,0)),
+    'body':(None,(0,0,0)), 'head':('body',(0,.275,.005)),
     'arm_l':('body',(-.18,.19,0)), 'arm_r':('body',(.18,.19,0)),
     'forearm_l':('arm_l',(0,-.235,0)), 'forearm_r':('arm_r',(0,-.235,0)),
-    'leg_l':('body',(-.08,-.17,.01)), 'leg_r':('body',(.08,-.17,.01)),
+    'leg_l':('body',(-.025,-.17,.01)), 'leg_r':('body',(.025,-.17,.01)),
     'calf_l':('leg_l',(0,-.265,0)), 'calf_r':('leg_r',(0,-.265,0)),
     'fin_l':('calf_l',(0,-.26,0)), 'fin_r':('calf_r',(0,-.26,0)),
 }
@@ -65,17 +65,15 @@ class Atelier:
 
     def _materials(self):
         settings={
-            'suit':('223244',.59,.02), 'seam':('d4c295',.40,.22),
-            'rubber':('1c242e',.65,.03), 'armor':('abbfb4',.35,.08),
-            'armor_shadow':('6e857d',.46,.10), 'gold':('b7924c',.30,.78),
-            'gold_light':('dac490',.31,.60), 'leather':('8e724b',.56,.02),
-            'leather_dark':('4e4237',.62,.02), 'ivory':('dbd1bd',.39,.05),
-            'fin_ivory':('e8d9bb',.32,.04), 'skin':('c99b82',.46,.0),
-            'skin_shadow':('986c5a',.54,.0), 'lip':('9e5b52',.38,.0),
-            'eye_white':('e2d8cb',.22,.0), 'iris':('483326',.22,.04),
-            'pupil':('111115',.15,.0), 'hair':('221b18',.46,.02),
-            'hair_highlight':('3a2d27',.43,.03), 'glass':('cfe9ef',.04,.0),
-            'specimen_gold':('e2b150',.28,.16), 'gauge':('243c44',.20,.15),
+            'skin':('fbe0d2',.36,.0), 'body_skin':('fbe0d2',.37,.0),
+            'skin_shadow':('c9827b',.44,.0), 'lip':('e25b70',.16,.0),
+            'eye_white':('fcf8f7',.12,.0), 'iris':('1d9db8',.10,.04),
+            'pupil':('0b0d18',.08,.0), 'lash':('26141d',.34,.0),
+            'hair':('5a1f36',.29,.04), 'hair_highlight':('9c3d5c',.27,.06),
+            'scales':('24b6c8',.20,.20), 'fin_pearl':('7ce0dc',.22,.14),
+            'shell_pearl':('fae8e4',.21,.12), 'pearl':('fdf7f2',.14,.12),
+            'gold':('d4aa5a',.23,.82), 'gold_light':('eed9a2',.25,.70),
+            'glass':('92f0ed',.08,.02), 'specimen_gold':('f2c86b',.22,.18),
         }
         rng=np.random.default_rng(41)
         for key,(pigment,rough,metallic) in settings.items():
@@ -87,69 +85,170 @@ class Atelier:
             bsdf.inputs['Roughness'].default_value=rough
             bsdf.inputs['Metallic'].default_value=metallic
             if key=='glass':
-                # Crystal-clear bubble glass (< 0.5 alpha) with minimal face occlusion.
-                bsdf.inputs['Alpha'].default_value=.10
-                bsdf.inputs['IOR'].default_value=1.16
+                # Translucent sea-crystal & gossamer mermaid fin veil (< 0.5 alpha).
+                bsdf.inputs['Alpha'].default_value=.42
+                bsdf.inputs['IOR'].default_value=1.36
                 if 'Specular IOR Level' in bsdf.inputs:
-                    bsdf.inputs['Specular IOR Level'].default_value=.18
-                mat.diffuse_color=rgba(pigment)[:3]+(.10,)
+                    bsdf.inputs['Specular IOR Level'].default_value=.58
+                if 'Emission Color' in bsdf.inputs:
+                    bsdf.inputs['Emission Color'].default_value=rgba('8af2ef')
+                    bsdf.inputs['Emission Strength'].default_value=.06
+                mat.diffuse_color=rgba(pigment)[:3]+(.42,)
                 mat.surface_render_method='BLENDED'
                 mat.use_backface_culling=True
+            elif key=='specimen_gold':
+                if 'Emission Color' in bsdf.inputs:
+                    bsdf.inputs['Emission Color'].default_value=rgba('ffd984')
+                    bsdf.inputs['Emission Strength'].default_value=.10
             pig_srgb=np.asarray([int(pigment[i:i+2],16)/255 for i in (0,2,4)],dtype=np.float32)
-            if key in {'suit','rubber'}:
-                size=512; yy,xx=np.mgrid[:size,:size].astype(np.float32)
-                weave=np.sin((xx+yy)*math.pi*.35)*np.cos((xx-yy)*math.pi*.35)*.012
-                grain=rng.normal(0,.004,(size,size)).astype(np.float32)
-                tone=.98+weave+grain
-                px=np.ones((size,size,4),dtype=np.float32); px[:,:,:3]=pig_srgb[None,None,:]*tone[:,:,None]
-                dy,dx=np.gradient(weave)
-                nm=np.ones_like(px); nm[:,:,0]=.5-dx*3.5; nm[:,:,1]=.5-dy*3.5
-                self._pack_tex(mat,bsdf,key,px,nm,.32)
-            elif key=='armor':
-                # Genuine cellular Voronoi crackle plate relief matching diver.png!
-                size=512; yy,xx=(np.mgrid[:size,:size].astype(np.float32)+.5)/size
-                pts=rng.uniform(.04,.96,(34,2)).astype(np.float32)
-                d2=(xx[:,:,None]-pts[None,None,:,0])**2+(yy[:,:,None]-pts[None,None,:,1])**2
-                part=np.partition(d2,1,axis=2)
-                f1,f2=np.sqrt(part[:,:,0]),np.sqrt(part[:,:,1])
-                edge=f2-f1
-                groove=np.exp(-(edge/.013)**2)
-                highlight=np.exp(-((edge-.016)/.012)**2)*.05
-                cell_id=np.argmin(d2,axis=2)
-                cell_var=(rng.uniform(-.025,.025,34).astype(np.float32))[cell_id]
-                height=.04*(1.0-groove)+.015*(1.0-np.clip(f1/.14,0,1))
-                px=np.ones((size,size,4),dtype=np.float32)
-                groove_col=np.asarray([.46,.56,.52],dtype=np.float32)
-                base_col=pig_srgb[None,None,:]*(1.0+cell_var[:,:,None]+highlight[:,:,None])
-                px[:,:,:3]=base_col*(1.0-.68*groove[:,:,None])+groove_col[None,None,:]*(.68*groove[:,:,None])
+            if key=='scales':
+                # 1024x1024 Iridescent Mermaid Tail Scales:
+                # v=1 (waist) warm rose-pearl transition -> aquamarine/turquoise -> royal sapphire -> pearl-gold peduncle (v=0)
+                size=1024; vv,uu=(np.mgrid[:size,:size].astype(np.float32)+.5)/size
+                cols_s,rows_s=34.0,54.0
+                gy=vv*rows_s
+                row_i=np.floor(gy)
+                fy=gy-row_i
+                gx=uu*cols_s + (np.mod(row_i,2.0)*.5)
+                fx=(gx-np.floor(gx))-.5
+                dist_rim=np.sqrt((fx*1.12)**2 + ((fy-.42)*1.05)**2)
+                dome=np.clip(1.0 - dist_rim**1.85,0.0,1.0)
+                rim_band=np.exp(-((dist_rim-.82)/.085)**2) * (fy>.18).astype(np.float32)
+                groove=np.exp(-((dist_rim-.93)/.055)**2)
+                striations=np.sin(fx*math.pi*16.0)*0.015*dome
+                ventral=np.cos(uu*math.tau)*.5+.5
+                lateral=np.sin(uu*math.pi)**2
+                waist_blend=np.clip((vv-.85)/.15,0.0,1.0)**1.35
+                peduncle_blend=np.clip((.16-vv)/.16,0.0,1.0)**1.4
+                c_aqua=np.asarray([.15,.76,.82],dtype=np.float32)
+                c_sapphire=np.asarray([.11,.36,.68],dtype=np.float32)
+                c_seafoam=np.asarray([.54,.93,.89],dtype=np.float32)
+                c_rose=np.asarray([.94,.67,.76],dtype=np.float32)
+                c_gold=np.asarray([.96,.84,.58],dtype=np.float32)
+                c_skin=np.asarray([.96,.84,.78],dtype=np.float32)
+                body_c=(c_sapphire[None,None,:]*(1.0-ventral[:,:,None])*.65
+                        + c_aqua[None,None,:]*(.55+.35*lateral[:,:,None])
+                        + c_seafoam[None,None,:]*(ventral[:,:,None]*.42))
+                body_c=np.clip(body_c,0.0,1.0)
+                irid=.5+.5*np.sin(vv*15.0 + uu*math.tau*2.0)
+                body_c=body_c*(1.0-.24*irid[:,:,None]*lateral[:,:,None]) + c_rose[None,None,:]*(.24*irid[:,:,None]*lateral[:,:,None])
+                col=body_c*(.72 + .34*dome[:,:,None] + striations[:,:,None])
+                rim_c=c_gold[None,None,:]*.58 + c_rose[None,None,:]*.42
+                col=col*(1.0-.52*rim_band[:,:,None]) + rim_c*(.52*rim_band[:,:,None])
+                col*=(1.0 - .32*groove[:,:,None])
+                ped_c=c_rose*.45 + c_gold*.30 + c_seafoam*.25
+                col=col*(1.0-peduncle_blend[:,:,None]*.55) + ped_c[None,None,:]*(peduncle_blend[:,:,None]*.55)
+                col=col*(1.0-waist_blend[:,:,None]*.82) + c_skin[None,None,:]*(waist_blend[:,:,None]*.82)
+                px=np.ones((size,size,4),dtype=np.float32); px[:,:,:3]=np.clip(col,0.0,1.0)
+                height=(dome*.085 - groove*.045 + striations)*(1.0 - waist_blend*.55)
                 dy,dx=np.gradient(height)
-                nm=np.ones_like(px); nm[:,:,0]=.5-dx*8.0; nm[:,:,1]=.5-dy*8.0
-                self._pack_tex(mat,bsdf,key,px,nm,.55)
-            elif key=='fin_ivory':
-                # Creamy pearl-ivory membrane blending into warm amber-gold outer rails & tips!
+                nm=np.ones_like(px); nm[:,:,0]=.5-dx*9.5; nm[:,:,1]=.5-dy*9.5
+                self._pack_tex(mat,bsdf,key,px,nm,.58)
+            elif key=='fin_pearl':
                 size=512; vv,uu=(np.mgrid[:size,:size].astype(np.float32)+.5)/size
-                amber_w=np.clip((1.0-uu*2.6),0.0,1.0)**1.6 * .65 + (vv**2.2)*.75
-                amber_w=np.clip(amber_w,0.0,1.0)
-                rays=np.sin(uu*math.pi*26.0 + vv*4.0)*.018*(1.0-amber_w*.4)
-                ivory_c=np.asarray([.92,.86,.74],dtype=np.float32)
-                amber_c=np.asarray([.85,.58,.23],dtype=np.float32)
+                c_root=np.asarray([.42,.88,.86],dtype=np.float32)
+                c_mid=np.asarray([.95,.68,.78],dtype=np.float32)
+                c_tip=np.asarray([.97,.86,.64],dtype=np.float32)
+                w_mid=np.exp(-((vv-.54)/.30)**2)
+                w_tip=np.clip((vv-.45)/.55,0.0,1.0)**1.5
+                w_root=np.clip(1.0-vv*1.5,0.0,1.0)
+                tot=np.maximum(1e-5,w_root+w_mid+w_tip)
+                base=(c_root[None,None,:]*w_root[:,:,None]+c_mid[None,None,:]*w_mid[:,:,None]+c_tip[None,None,:]*w_tip[:,:,None])/tot[:,:,None]
+                rays=np.sin(uu*math.pi*38.0)*.035*(1.0-.25*vv)
+                shimmer=.04*np.cos(uu*math.pi*12.0 - vv*6.0)
                 px=np.ones((size,size,4),dtype=np.float32)
-                px[:,:,:3]=(ivory_c[None,None,:]*(1.0-amber_w[:,:,None])+amber_c[None,None,:]*amber_w[:,:,None])*(1.0+rays[:,:,None])
+                px[:,:,:3]=np.clip(base*(1.0+rays[:,:,None]+shimmer[:,:,None]),0.0,1.0)
                 dy,dx=np.gradient(rays)
-                nm=np.ones_like(px); nm[:,:,0]=.5-dx*5.0; nm[:,:,1]=.5-dy*5.0
-                self._pack_tex(mat,bsdf,key,px,nm,.28)
-            elif key=='skin':
-                # Subtle natural facial warmth (soft cheek/nose rose & orbital shading)
-                size=256; vv,uu=(np.mgrid[:size,:size].astype(np.float32)+.5)/size
-                cheek=np.exp(-((np.abs(uu-.5)-.10)/.07)**2 - ((vv-.44)/.09)**2)
-                nose_w=np.exp(-((uu-.5)/.04)**2 - ((vv-.36)/.05)**2)
-                orbit=np.exp(-((np.abs(uu-.5)-.08)/.05)**2 - ((vv-.54)/.05)**2)
+                nm=np.ones_like(px); nm[:,:,0]=.5-dx*6.0; nm[:,:,1]=.5-dy*6.0
+                self._pack_tex(mat,bsdf,key,px,nm,.34)
+            elif key=='shell_pearl':
+                size=512; vv,uu=(np.mgrid[:size,:size].astype(np.float32)+.5)/size
+                flute=np.sin(uu*math.pi*18.0)*.032
+                ivory=np.asarray([.98,.92,.90],dtype=np.float32)
+                rose=np.asarray([.95,.70,.77],dtype=np.float32)
+                aqua=np.asarray([.76,.95,.93],dtype=np.float32)
+                blush=np.clip(1.0-vv*1.3,0.0,1.0)*.48
+                irid=np.clip(vv-.35,0.0,1.0)*.36*(.5+.5*np.cos(uu*math.tau*2.0))
+                col=ivory[None,None,:]*(1.0-blush[:,:,None]-irid[:,:,None])+rose[None,None,:]*blush[:,:,None]+aqua[None,None,:]*irid[:,:,None]
                 px=np.ones((size,size,4),dtype=np.float32)
-                warm=np.asarray([.78,.50,.44],dtype=np.float32)
-                shade=np.asarray([.66,.46,.39],dtype=np.float32)
-                col=pig_srgb[None,None,:]*(1.0-.16*cheek[:,:,None]-.12*nose_w[:,:,None])+warm[None,None,:]*(.16*cheek[:,:,None]+.12*nose_w[:,:,None])
-                px[:,:,:3]=col*(1.0-.12*orbit[:,:,None])+shade[None,None,:]*(.12*orbit[:,:,None])
+                px[:,:,:3]=np.clip(col*(1.0+flute[:,:,None]),0.0,1.0)
+                dy,dx=np.gradient(flute)
+                nm=np.ones_like(px); nm[:,:,0]=.5-dx*5.0; nm[:,:,1]=.5-dy*5.0
+                self._pack_tex(mat,bsdf,key,px,nm,.30)
+            elif key=='skin':
+                size=512; vv,uu=(np.mgrid[:size,:size].astype(np.float32)+.5)/size
+                cheek=np.exp(-((np.abs(uu-.5)-.090)/.068)**2 - ((vv-.44)/.080)**2)
+                nose_tip=np.exp(-((uu-.5)/.030)**2 - ((vv-.38)/.036)**2)
+                chin_rosy=np.exp(-((uu-.5)/.050)**2 - ((vv-.14)/.055)**2)
+                eyeshadow=np.exp(-((np.abs(uu-.5)-.070)/.050)**2 - ((vv-.545)/.038)**2)
+                bridge_hi=np.exp(-((uu-.5)/.015)**2 - ((vv-.46)/.075)**2)
+                px=np.ones((size,size,4),dtype=np.float32)
+                blush_c=np.asarray([.97,.60,.65],dtype=np.float32)
+                shadow_c=np.asarray([.90,.56,.63],dtype=np.float32)
+                hi_c=np.asarray([1.0,.96,.93],dtype=np.float32)
+                w_b=.30*cheek + .18*nose_tip + .12*chin_rosy
+                col=pig_srgb[None,None,:]*(1.0-w_b[:,:,None]) + blush_c[None,None,:]*w_b[:,:,None]
+                col=col*(1.0-.22*eyeshadow[:,:,None]) + shadow_c[None,None,:]*(.22*eyeshadow[:,:,None])
+                col=col*(1.0-.16*bridge_hi[:,:,None]) + hi_c[None,None,:]*(.16*bridge_hi[:,:,None])
+                px[:,:,:3]=np.clip(col,0.0,1.0)
                 self._pack_tex(mat,bsdf,key,px,None)
+            elif key=='body_skin':
+                size=512; vv,uu=(np.mgrid[:size,:size].astype(np.float32)+.5)/size
+                shimmer=np.clip((.18-vv)/.18,0.0,1.0)**1.5
+                warmth=np.exp(-((vv-.74)/.18)**2)*.12
+                rose_c=np.asarray([.97,.68,.70],dtype=np.float32)
+                pearl_c=np.asarray([.86,.95,.94],dtype=np.float32)
+                col=pig_srgb[None,None,:]*(1.0-warmth[:,:,None]) + rose_c[None,None,:]*warmth[:,:,None]
+                col=col*(1.0-.22*shimmer[:,:,None]) + pearl_c[None,None,:]*(.22*shimmer[:,:,None])
+                px=np.ones((size,size,4),dtype=np.float32); px[:,:,:3]=np.clip(col,0.0,1.0)
+                self._pack_tex(mat,bsdf,key,px,None)
+            elif key=='lip':
+                size=256; vv,uu=(np.mgrid[:size,:size].astype(np.float32)+.5)/size
+                inner=np.clip(1.0-vv*1.15,0.0,1.0)
+                center=np.exp(-((uu-.5)/.32)**2)
+                gloss_hi=np.exp(-((uu-.48)/.14)**2 - ((vv-.42)/.12)**2)*.24
+                deep=np.asarray([.84,.26,.38],dtype=np.float32)
+                soft=np.asarray([.96,.58,.65],dtype=np.float32)
+                w=np.clip(inner*.74*center+.20,0.0,1.0)
+                px=np.ones((size,size,4),dtype=np.float32)
+                col=deep[None,None,:]*w[:,:,None] + soft[None,None,:]*(1.0-w[:,:,None])
+                px[:,:,:3]=np.clip(col + gloss_hi[:,:,None]*np.asarray([1.0,.92,.94],dtype=np.float32)*.35,0.0,1.0)
+                self._pack_tex(mat,bsdf,key,px,None)
+            elif key=='iris':
+                size=256; yy,xx=(np.mgrid[:size,:size].astype(np.float32)+.5)/size*2.0-1.0
+                rr=np.sqrt(xx**2+yy**2); ang=np.arctan2(yy,xx)
+                # Note: planar_xy_uv maps ly=+1 (top of iris) to v=1 (yy=+1), ly=-1 (bottom) to v=0 (yy=-1)
+                limbal=np.clip((rr-.66)/.30,0.0,1.0)**1.25
+                upper_shade=np.clip((yy+.10)/.95,0.0,1.0)**1.35
+                lower_glow=np.exp(-((rr-.54)/.18)**2)*np.clip(-yy+.15,0.0,1.0)
+                gold_ring=np.exp(-((rr-.35)/.11)**2)
+                fibers=.5+.5*np.sin(ang*36.0 + np.sin(rr*8.0)*1.1)
+                c_lim=np.asarray([.03,.09,.24],dtype=np.float32)
+                c_deep=np.asarray([.06,.20,.46],dtype=np.float32)
+                c_turq=np.asarray([.12,.68,.84],dtype=np.float32)
+                c_aqua=np.asarray([.48,.98,.95],dtype=np.float32)
+                c_gold=np.asarray([.98,.82,.52],dtype=np.float32)
+                mid=c_turq[None,None,:]*(1.0-.32*fibers[:,:,None]) + c_aqua[None,None,:]*(.32*fibers[:,:,None])
+                col=mid*(1.0-upper_shade[:,:,None]*.78) + c_deep[None,None,:]*(upper_shade[:,:,None]*.78)
+                col=col*(1.0-gold_ring[:,:,None]*.48) + c_gold[None,None,:]*(gold_ring[:,:,None]*.48)
+                col=col + c_aqua[None,None,:]*(lower_glow[:,:,None]*.52)
+                col=col*(1.0-limbal[:,:,None]*.90) + c_lim[None,None,:]*(limbal[:,:,None]*.90)
+                px=np.ones((size,size,4),dtype=np.float32); px[:,:,:3]=np.clip(col,0.0,1.0)
+                self._pack_tex(mat,bsdf,key,px,None)
+            elif key in {'hair','hair_highlight'}:
+                size=512; vv,uu=(np.mgrid[:size,:size].astype(np.float32)+.5)/size
+                strands=np.sin(uu*math.tau*38.0)*.042 + np.sin(uu*math.tau*14.0)*.028
+                angel_halo=np.exp(-((vv-.28)/.085)**2)*(.5+.5*np.cos(uu*math.tau*2.0))*.16
+                ombre=np.clip((vv-.25)/.75,0.0,1.0)**1.25
+                root_c=np.asarray([.26,.09,.18] if key=='hair' else [.42,.15,.27],dtype=np.float32)
+                tip_c=np.asarray([.72,.26,.40] if key=='hair' else [.89,.46,.59],dtype=np.float32)
+                halo_c=np.asarray([.96,.68,.76],dtype=np.float32)
+                col=root_c[None,None,:]*(1.0-ombre[:,:,None]) + tip_c[None,None,:]*ombre[:,:,None]
+                col=col*(1.0+strands[:,:,None]) + halo_c[None,None,:]*angel_halo[:,:,None]
+                px=np.ones((size,size,4),dtype=np.float32); px[:,:,:3]=np.clip(col,0.0,1.0)
+                dy,dx=np.gradient(strands)
+                nm=np.ones_like(px); nm[:,:,0]=.5-dx*5.5; nm[:,:,1]=.5-dy*5.5
+                self._pack_tex(mat,bsdf,key,px,nm,.26)
             self.materials[key]=mat
 
     def fit_front(self,x,y,offset=.0015):
@@ -269,19 +368,22 @@ def merge_draw_groups(api):
     original=dict(api.entries);groups={};merged=[];entries={}
     for obj in api.objects:
         groups.setdefault((obj['driver'],obj['material_role'],obj.get('deform_mode','')),[]).append(obj)
-    semantics={'skin':'SculptedFaceSkin','hair':'SidePartHairBunBrows','glass':'ClearGlassVisor',
-               'eye_white':'EyeWhite','iris':'Iris','lip':'Lips','suit':'TailoredSuit'}
+    semantics={'skin':'SculptedFaceSkin','body_skin':'PorcelainTorsoSkin',
+               'hair':'FlowingMermaidHairBrows','lash':'CurvedLashesAndBrows',
+               'glass':'TranslucentSeaGlassVisorVeil','scales':'IridescentMermaidTailScales',
+               'fin_pearl':'PearlescentMermaidFin','shell_pearl':'MotherOfPearlScallopShell',
+               'pearl':'LustrousSeaPearls','eye_white':'EyeWhite','iris':'Iris','lip':'Lips'}
     suffixes={'hose_bridge':'HoseBridge','hip_sling':'HipSling','boot_cuff':'BootCuff',
-              'suit_body':'Continuous','suit_arm':'Sleeve'}
+              'suit_body':'Continuous','suit_arm':'ContinuousArm','long_hair':'CascadingLocks',
+              'torso_skin':'SculptedTorso','mermaid_tail':'SirenTail','caudal_fluke':'RoyalFluke'}
     for (driver,material,deform),objects in groups.items():
         bpy.ops.object.select_all(action='DESELECT')
         for obj in objects:obj.select_set(True)
         bpy.context.view_layer.objects.active=objects[0]
         bpy.ops.object.join();obj=bpy.context.object
         label=semantics.get(material,material)
-        if driver.startswith('forearm') and material=='suit':label='GloveThumbIndexMiddleRingLittleSuit'
-        elif driver.startswith('forearm') and material=='rubber':label='GloveThumbIndexMiddleRingLittleRubber'
-        elif driver=='body' and material=='glass':label='SpecimenGlassVial'
+        if driver.startswith('forearm') and material=='skin':label='HandThumbIndexMiddleRingLittleSkin'
+        elif driver=='body' and material=='glass':label='CrystalGlassPendantAndHipVeil'
         if deform in suffixes and (driver,material,'') in groups:
             label=label+suffixes[deform]
         obj.name=driver+'__'+label;obj['driver']=driver;obj['material_role']=material
@@ -296,6 +398,20 @@ def merge_draw_groups(api):
 def _sstep(e0,e1,x):
     t=max(0.0,min(1.0,(x-e0)/(e1-e0)))
     return t*t*(3.0-2.0*t)
+
+
+def _mermaid_tail_field(point):
+    """Unified C1-continuous bone weight field shared by waist, hip fins, tail & dorsal crest."""
+    hip=_sstep(-.060,-.215,point.y)
+    calf=_sstep(-.340,-.490,point.y)
+    fin=_sstep(-.620,-.710,point.y)
+    right=_sstep(-.045,.045,point.x)
+    wl=hip*(1.0-right); wr=hip*right
+    return {
+        'body':1.0-hip,
+        'leg_l':wl*(1.0-calf), 'calf_l':wl*calf*(1.0-fin), 'fin_l':wl*calf*fin,
+        'leg_r':wr*(1.0-calf), 'calf_r':wr*calf*(1.0-fin), 'fin_r':wr*calf*fin,
+    }
 
 
 def skin_character(api):
@@ -321,22 +437,31 @@ def skin_character(api):
             point+=base
             v.co=(point.x,-point.z,point.y)
             weights={driver:1.}
-            if deform=='suit_body' or (mat_role=='seam' and driver in {'body','leg_l','leg_r','calf_l','calf_r'}):
-                if point.y>.11:
-                    neck=_sstep(.235,.285,point.y)*.28
-                    sh=_sstep(.085,.122,abs(point.x))*_sstep(.13,.22,point.y)*.24*(1-neck)
+            if deform=='torso_skin':
+                if point.y>.10:
+                    neck=_sstep(.200,.275,point.y)
+                    sh=_sstep(.075,.135,abs(point.x))*_sstep(.13,.225,point.y)*.34*(1-neck)
                     arm_k='arm_r' if point.x>=0 else 'arm_l'
                     weights={'body':1-neck-sh,'head':neck,arm_k:sh}
-                elif point.y<-.085:
-                    hip=_sstep(-.085,-.225,point.y)
-                    right=_sstep(-.032,.032,point.x)
-                    calf=_sstep(-.385,-.485,point.y)
-                    fin=_sstep(-.665,-.710,point.y)
-                    wl=hip*(1-right); wr=hip*right
-                    weights={'body':1-hip,'leg_l':wl*(1-calf),'calf_l':wl*calf*(1-fin),'fin_l':wl*calf*fin,
-                             'leg_r':wr*(1-calf),'calf_r':wr*calf*(1-fin),'fin_r':wr*calf*fin}
+                elif point.y<-.055:
+                    weights=_mermaid_tail_field(point)
                 else:
                     weights={'body':1.}
+            elif deform=='mermaid_tail':
+                weights=_mermaid_tail_field(point)
+            elif deform=='caudal_fluke':
+                calf_b=_sstep(-.745,-.690,point.y)*.32
+                right=_sstep(-.038,.038,point.x)
+                fl=(1.0-calf_b)*(1.0-right); fr=(1.0-calf_b)*right
+                cl=calf_b*(1.0-right); cr=calf_b*right
+                weights={'fin_l':fl,'fin_r':fr,'calf_l':cl,'calf_r':cr}
+            elif deform=='long_hair':
+                top_edge=.282 if point.z<0.0 else .292
+                bot_edge=.195 if point.z<0.0 else .140
+                body_w=_sstep(top_edge,bot_edge,point.y)
+                sh_w=_sstep(.088,.150,abs(point.x))*_sstep(.12,.23,point.y)*.24*body_w
+                arm_k='arm_r' if point.x>=0 else 'arm_l'
+                weights={'head':1.0-body_w,'body':body_w-sh_w,arm_k:sh_w}
             elif deform=='suit_arm' or (mat_role=='seam' and driver in {'arm_l','arm_r'}):
                 arm_k='arm_l' if driver=='arm_l' else 'arm_r'
                 fore_k='forearm_l' if driver=='arm_l' else 'forearm_r'
@@ -344,16 +469,12 @@ def skin_character(api):
                 fore_b=_sstep(-.005,-.085,point.y)*(1-sh_b)
                 weights={'body':sh_b,arm_k:1-sh_b-fore_b,fore_k:fore_b}
             elif deform=='hip_sling':
-                hip=_sstep(-.085,-.220,point.y)
-                right=1. if point.x>=0 else 0.
-                weights={'body':1-hip,'leg_l':hip*(1-right),'leg_r':hip*right}
+                weights=_mermaid_tail_field(point)
             elif deform=='hose_bridge':
-                hd=_sstep(.065,-.005,point.z)
+                hd=_sstep(.235,.295,point.y)*.55
                 weights={'body':1-hd,'head':hd}
             elif deform=='boot_cuff':
-                calf_k='calf_l' if driver=='fin_l' else 'calf_r'
-                cb=_sstep(-.695,-.648,point.y)*.45
-                weights={driver:1-cb,calf_k:cb}
+                weights=_mermaid_tail_field(point)
             total_w=sum(w for w in weights.values() if w>1e-5)
             for key,weight in weights.items():
                 if weight>1e-5:groups[key].add([v.index],weight/total_w,'REPLACE')
@@ -401,46 +522,51 @@ def preview(api, out_dir=None):
     scene.world=bpy.data.worlds.new('Reference neutral studio')
     scene.world.use_nodes=True
     bg=next(n for n in scene.world.node_tree.nodes if n.type=='BACKGROUND')
-    # Warm sunlit studio fill so materials read clearly like concepts/diver.png
-    bg.inputs[0].default_value=(.58,.54,.49,1); bg.inputs[1].default_value=.75
+    # Luminous ocean-gallery studio backdrop so porcelain skin, jewel scales & gossamer veil shine!
+    bg.inputs[0].default_value=(.20,.30,.38,1); bg.inputs[1].default_value=.72
     # Note: in Blender coords (x, -z, y), +Y is FRONT (-Z_godot) and -Y is BACK (+Z_godot)!
-    for name,at,power,size in [('Key front',(-1.4,2.8,2.1),210,2.2),('Warm fill',(1.8,2.2,.8),110,1.8),
-                               ('Back light',(.3,-2.8,1.9),165,2.0),('Side kick',(-2.6,-.4,1.2),95,1.5)]:
-        data=bpy.data.lights.new(name,'AREA');data.energy=power;data.size=size
+    for name,at,power,size,col in [
+        ('Key front',(-1.3,2.8,2.0),235,2.2,(1.0,.96,.93)),
+        ('Warm fill',(1.9,2.3,.9),125,2.0,(.98,.94,.96)),
+        ('Aqua rim',(.4,-2.8,1.8),195,2.1,(.78,.97,1.0)),
+        ('Side kick',(-2.5,-.5,1.1),105,1.6,(.92,.96,1.0)),
+    ]:
+        data=bpy.data.lights.new(name,'AREA');data.energy=power;data.size=size;data.color=col
         lamp=bpy.data.objects.new(name,data);scene.collection.objects.link(lamp);lamp.location=at
-        lamp.rotation_euler=(Vector((0,0,-.10))-lamp.location).to_track_quat('-Z','Y').to_euler()
+        lamp.rotation_euler=(Vector((0,0,-.18))-lamp.location).to_track_quat('-Z','Y').to_euler()
     cam=bpy.data.objects.new('Comparison camera',bpy.data.cameras.new('Comparison camera'))
     scene.collection.objects.link(cam);scene.camera=cam;cam.data.type='ORTHO'
-    scene.render.engine='CYCLES';scene.cycles.samples=28;scene.cycles.use_denoising=True
+    scene.render.engine='CYCLES';scene.cycles.samples=36;scene.cycles.use_denoising=True
     scene.render.resolution_x=1056;scene.render.resolution_y=1536;scene.render.resolution_percentage=100
     scene.render.image_settings.file_format='PNG'
     bpy.context.view_layer.update()
     points=[obj.matrix_world@Vector(corner) for obj in api.objects for corner in obj.bound_box]
     lo=Vector(tuple(min(p[i] for p in points) for i in range(3)))
     hi=Vector(tuple(max(p[i] for p in points) for i in range(3))); center=(lo+hi)/2
-    cam.data.ortho_scale=(hi.z-lo.z)*1.11
+    cam.data.ortho_scale=max(hi.z-lo.z,(hi.x-lo.x)*(1536/1056))*1.09
     folder=out_dir/'review-v3';folder.mkdir(parents=True,exist_ok=True)
-    # Side camera at (-4,0,0) faces left, matching diver.png middle turnaround!
     for name,eye in [('front',(0,4,0)),('side',(-4,0,0)),('back',(0,-4,0)),('three-quarter',(-2.2,3.8,.25))]:
         cam.location=center+Vector(eye)
         cam.rotation_euler=(center-cam.location).to_track_quat('-Z','Y').to_euler()
         scene.render.filepath=str(folder/(name+'.png'))
         bpy.ops.render.render(write_still=True)
-    # Render horizontal swimming hero view matching diver.png bottom illustration!
+    # Render sinuous horizontal mermaid swimming hero view!
     arm=getattr(api,'armature',None) or bpy.data.objects.get('ReferenceCharacterRig')
     if arm is not None:
         pb=arm.pose.bones
         for b in pb:b.rotation_mode='XYZ'
-        pb['body'].rotation_euler=(math.radians(-78),0,math.radians(-10))
-        pb['head'].rotation_euler=(math.radians(48),math.radians(-10),0)
-        pb['arm_r'].rotation_euler=(math.radians(38),0,math.radians(16))
-        pb['forearm_r'].rotation_euler=(math.radians(14),0,0)
-        pb['arm_l'].rotation_euler=(math.radians(-16),0,math.radians(-14))
-        pb['leg_l'].rotation_euler=(math.radians(10),0,0)
-        pb['leg_r'].rotation_euler=(math.radians(-8),0,0)
-        pb['calf_l'].rotation_euler=(math.radians(-10),0,0)
-        pb['fin_l'].rotation_euler=(math.radians(8),0,0)
-        pb['fin_r'].rotation_euler=(math.radians(-6),0,0)
+        pb['body'].rotation_euler=(math.radians(-72),math.radians(6),math.radians(-14))
+        pb['head'].rotation_euler=(math.radians(46),math.radians(-8),math.radians(4))
+        pb['arm_r'].rotation_euler=(math.radians(52),math.radians(-8),math.radians(14))
+        pb['forearm_r'].rotation_euler=(math.radians(18),0,0)
+        pb['arm_l'].rotation_euler=(math.radians(-18),math.radians(6),math.radians(-16))
+        pb['forearm_l'].rotation_euler=(math.radians(14),0,0)
+        pb['leg_l'].rotation_euler=(math.radians(20),0,0)
+        pb['leg_r'].rotation_euler=(math.radians(20),0,0)
+        pb['calf_l'].rotation_euler=(math.radians(-28),0,0)
+        pb['calf_r'].rotation_euler=(math.radians(-28),0,0)
+        pb['fin_l'].rotation_euler=(math.radians(24),0,math.radians(-4))
+        pb['fin_r'].rotation_euler=(math.radians(24),0,math.radians(4))
         bpy.context.view_layer.update()
         scene.render.resolution_x=1536;scene.render.resolution_y=960
         deps=bpy.context.evaluated_depsgraph_get()
