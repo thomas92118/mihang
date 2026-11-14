@@ -25,6 +25,7 @@ const STAGE_DIRS = [
 	path.join("assets", "collision"),
 	path.join("assets", "fonts"),
 	path.join("assets", "models"),
+	path.join("assets", "web"),
 ];
 
 function findGodotBinary() {
@@ -274,8 +275,24 @@ function postProcessWebBuild() {
 (function () {
 	const CHUNK_MANIFEST = ${JSON.stringify(manifest)};
 	const origFetch = window.fetch.bind(window);
+	const TOTAL_GZ_BYTES = Object.values(CHUNK_MANIFEST).reduce(function (acc, item) {
+		return acc + (item.gzSize || 0);
+	}, 0);
+	let loadedGzBytes = 0;
 
-	function createChunkedGzStream(parts, init) {
+	function emitChunkProgress(assetKey) {
+		try {
+			window.dispatchEvent(new CustomEvent('abyssal-load-progress', {
+				detail: {
+					asset: assetKey,
+					loadedBytes: loadedGzBytes,
+					totalBytes: TOTAL_GZ_BYTES,
+				},
+			}));
+		} catch (_err) {}
+	}
+
+	function createChunkedGzStream(assetKey, parts, init) {
 		let nextFetch = 0;
 		let nextEmit = 0;
 		const CONCURRENCY = 6;
@@ -289,7 +306,10 @@ function postProcessWebBuild() {
 					if (!res.ok) {
 						throw new Error('Failed loading chunk ' + partUrl + ' (' + res.status + ')');
 					}
-					return new Uint8Array(await res.arrayBuffer());
+					const bytes = new Uint8Array(await res.arrayBuffer());
+					loadedGzBytes += bytes.byteLength;
+					emitChunkProgress(assetKey);
+					return bytes;
 				});
 				inflight.set(idx, p);
 			}
@@ -318,7 +338,7 @@ function postProcessWebBuild() {
 			if (url === key || url.endsWith('/' + key)) {
 				const prefix = url.slice(0, url.length - key.length);
 				const parts = CHUNK_MANIFEST[key].parts.map(p => prefix + p);
-				const gzStream = createChunkedGzStream(parts, init);
+				const gzStream = createChunkedGzStream(key, parts, init);
 				const stream = gzStream.pipeThrough(new DecompressionStream('gzip'));
 				const contentType = key.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream';
 				return new Response(stream, {

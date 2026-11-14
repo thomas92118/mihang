@@ -2,8 +2,12 @@ config_version=5
 
 [application]
 config/name="深蓝回声 · Abyssal Echo"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/loading.tscn"
 config/features=PackedStringArray("4.4", "GL Compatibility")
+boot_splash/bg_color=Color(0.016, 0.078, 0.125, 1)
+boot_splash/show_image=false
+boot_splash/fullsize=false
+boot_splash/use_filter=true
 config/icon="res://icon.svg"
 
 [display]
@@ -21,4 +25,4 @@ renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/default_filters/use_nearest_mipmap_filter=false
 anti_aliasing/quality/msaa_3d=1
-environment/defaults/default_clear_color=Color(0.015, 0.12, 0.18, 1)
+environment/defaults/default_clear_color=Color(0.016, 0.078, 0.125, 1)

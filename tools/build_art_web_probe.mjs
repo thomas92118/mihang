@@ -37,7 +37,7 @@ for (const name of ["project.godot", "export_presets.cfg", "icon.svg", "icon.svg
   const file = path.join(source, name);
   if (fs.existsSync(file)) fs.copyFileSync(file, path.join(stage, name));
 }
-for (const name of ["scripts", "scenes", "shaders", "assets/audio", "assets/collision", "assets/fonts", "assets/models"]) {
+for (const name of ["scripts", "scenes", "shaders", "assets/audio", "assets/collision", "assets/fonts", "assets/models", "assets/web"]) {
   const folder = path.join(source, name);
   if (!fs.existsSync(folder)) continue;
   const target = path.join(stage, name);
