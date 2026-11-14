@@ -387,9 +387,9 @@ func _setup_title_showcase(initial_char: String) -> void:
 	title_showcase_diver.set_character(initial_char)
 	var key_light := OmniLight3D.new()
 	key_light.name = "TitleShowcaseKeyLight"
-	key_light.position = Vector3(0.85, 0.95, -1.35)
+	key_light.position = Vector3(0.14, 0.34, -1.65)
 	key_light.light_color = Color(0.96, 0.98, 1.0)
-	key_light.light_energy = 0.85
+	key_light.light_energy = 0.52
 	key_light.omni_range = 4.2
 	title_camera.add_child(key_light)
 	var rim_light := OmniLight3D.new()

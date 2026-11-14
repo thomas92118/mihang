@@ -1,6 +1,7 @@
 extends RefCounted
 ## Playable character roster, procedural mermaid PBR textures & bespoke 3D ornaments.
 
+const ReferenceDiver = preload("res://scripts/presentation/reference_diver.gd")
 const DEFAULT_CHARACTER := "coral_mermaid"
 const SAVE_PATH := "user://character_profile.cfg"
 
@@ -74,8 +75,8 @@ const MERMAID_STYLES := {
 	"moonlight_mermaid": {
 		"skin_base": Vector3(0.985, 0.945, 0.975),
 		"skin_blush": Vector3(0.89, 0.64, 0.84),
-		"skin_shadow_makeup": Vector3(0.68, 0.56, 0.88),
-		"skin_shadow_mat": Color(0.76, 0.64, 0.78),
+		"skin_shadow_makeup": Vector3(0.90, 0.82, 0.96),
+		"skin_shadow_mat": Color(0.88, 0.79, 0.90),
 		"body_warmth": Vector3(0.92, 0.76, 0.92),
 		"body_shimmer": Vector3(0.78, 0.82, 1.0),
 		"lip_deep": Vector3(0.68, 0.24, 0.52),
@@ -124,8 +125,8 @@ const MERMAID_STYLES := {
 	"abyss_mermaid": {
 		"skin_base": Vector3(0.92, 0.95, 0.98),
 		"skin_blush": Vector3(0.66, 0.72, 0.88),
-		"skin_shadow_makeup": Vector3(0.18, 0.56, 0.74),
-		"skin_shadow_mat": Color(0.56, 0.64, 0.76),
+		"skin_shadow_makeup": Vector3(0.74, 0.88, 0.96),
+		"skin_shadow_mat": Color(0.76, 0.84, 0.92),
 		"body_warmth": Vector3(0.74, 0.84, 0.94),
 		"body_shimmer": Vector3(0.32, 0.94, 0.92),
 		"lip_deep": Vector3(0.54, 0.14, 0.34),
@@ -174,8 +175,8 @@ const MERMAID_STYLES := {
 	"golden_siren": {
 		"skin_base": Vector3(0.99, 0.89, 0.82),
 		"skin_blush": Vector3(0.98, 0.58, 0.52),
-		"skin_shadow_makeup": Vector3(0.88, 0.58, 0.42),
-		"skin_shadow_mat": Color(0.82, 0.54, 0.46),
+		"skin_shadow_makeup": Vector3(0.96, 0.76, 0.64),
+		"skin_shadow_mat": Color(0.90, 0.72, 0.65),
 		"body_warmth": Vector3(0.98, 0.68, 0.56),
 		"body_shimmer": Vector3(1.0, 0.90, 0.64),
 		"lip_deep": Vector3(0.88, 0.28, 0.26),
@@ -224,8 +225,8 @@ const MERMAID_STYLES := {
 	"sakura_mermaid": {
 		"skin_base": Vector3(0.995, 0.94, 0.96),
 		"skin_blush": Vector3(0.98, 0.62, 0.74),
-		"skin_shadow_makeup": Vector3(0.94, 0.62, 0.78),
-		"skin_shadow_mat": Color(0.84, 0.58, 0.68),
+		"skin_shadow_makeup": Vector3(0.98, 0.78, 0.88),
+		"skin_shadow_mat": Color(0.91, 0.75, 0.83),
 		"body_warmth": Vector3(0.98, 0.74, 0.84),
 		"body_shimmer": Vector3(0.84, 0.96, 0.98),
 		"lip_deep": Vector3(0.88, 0.32, 0.52),
@@ -329,6 +330,7 @@ static func apply_mermaid_style(
 	var head_node: Node3D = drivers.get("head", null)
 	if is_instance_valid(head_node):
 		_attach_head_ornament(head_node, cid)
+	ReferenceDiver.configure_mermaid_materials(model_root)
 	var bubble_col: Color = style.get("bubble_color", Color(0.86, 0.98, 1.0, 0.32))
 	for emitter: CPUParticles3D in [breath_bubbles, thruster_bubbles]:
 		if is_instance_valid(emitter) and emitter.mesh is PrimitiveMesh:
@@ -378,6 +380,7 @@ static func _apply_role_material(mat: StandardMaterial3D, role: String, style: D
 			mat.albedo_color = Color.WHITE
 			mat.albedo_texture = tex_set["body_skin"]
 		"skin_shadow":
+			mat.set_meta("styled_crease_color", style["skin_shadow_mat"])
 			mat.albedo_color = style["skin_shadow_mat"]
 		"lip":
 			mat.albedo_color = Color.WHITE
@@ -389,6 +392,7 @@ static func _apply_role_material(mat: StandardMaterial3D, role: String, style: D
 			mat.albedo_color = Color.WHITE
 			mat.albedo_texture = tex_set["iris"]
 			var iris_em: float = float(style.get("iris_emission", 0.0))
+			mat.set_meta("variant_iris_emission", iris_em)
 			if iris_em > 0.01:
 				mat.emission_enabled = true
 				mat.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
@@ -655,7 +659,7 @@ static func _get_textures(cid: String, style: Dictionary) -> Dictionary:
 			var bridge := exp(-pow((uu - 0.5) / 0.015, 2.0) - pow((vv - 0.46) / 0.075, 2.0))
 			var wb := 0.30 * cheek + 0.18 * nose + 0.12 * chin
 			var fcol := c_skin * (1.0 - wb) + sk_blush * wb
-			fcol = fcol * (1.0 - 0.24 * eyesh) + sk_shadow * (0.24 * eyesh)
+			fcol = fcol * (1.0 - 0.12 * eyesh) + sk_shadow * (0.12 * eyesh)
 			fcol = fcol * (1.0 - 0.16 * bridge) + Vector3.ONE * (0.16 * bridge)
 			_write_rgb(sk_bytes, idx, fcol)
 			# Body skin
@@ -681,6 +685,7 @@ static func _ornament_mat(albedo: Color, metallic: float, roughness: float, emis
 	mat.metallic = metallic
 	mat.roughness = roughness
 	mat.rim_enabled = false
+	mat.disable_receive_shadows = true
 	if alpha < 0.99:
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	if emission_energy > 0.001:
@@ -725,9 +730,9 @@ static func _attach_head_ornament(head_node: Node3D, cid: String) -> void:
 				orb.material_override = star_mat
 				root.add_child(orb)
 			var moon_light := OmniLight3D.new()
-			moon_light.position = Vector3(0.0, 0.18, -0.10)
+			moon_light.position = Vector3(0.0, 0.06, -0.34)
 			moon_light.light_color = Color(0.76, 0.72, 1.0)
-			moon_light.light_energy = 0.22
+			moon_light.light_energy = 0.14
 			moon_light.omni_range = 1.9
 			root.add_child(moon_light)
 
@@ -766,9 +771,9 @@ static func _attach_head_ornament(head_node: Node3D, cid: String) -> void:
 			center_lure.material_override = lure_mat
 			root.add_child(center_lure)
 			var bio_light := OmniLight3D.new()
-			bio_light.position = Vector3(0.0, 0.24, -0.22)
+			bio_light.position = Vector3(0.0, 0.08, -0.34)
 			bio_light.light_color = Color(0.16, 0.96, 0.92)
-			bio_light.light_energy = 0.18
+			bio_light.light_energy = 0.14
 			bio_light.omni_range = 2.4
 			root.add_child(bio_light)
 
@@ -811,3 +816,6 @@ static func _attach_head_ornament(head_node: Node3D, cid: String) -> void:
 				p.position = Vector3(side * 0.022, 0.168, -0.062)
 				p.material_override = pearl_mat
 				root.add_child(p)
+
+	for mesh_child: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
+		mesh_child.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

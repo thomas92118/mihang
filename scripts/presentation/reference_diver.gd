@@ -84,6 +84,163 @@ static func _infer_material_role(mat: Material, part_name: String) -> String:
 		return "gold"
 	return ""
 
+static func _is_face_skin_part(part_name: String) -> bool:
+	return part_name.to_lower().contains("faceskin")
+
+static func _should_disable_part_shadow(driver: String, role: String) -> bool:
+	if role in ["eye_white", "iris", "pupil", "lash", "skin_shadow", "lip"]:
+		return true
+	return driver == "head" and role in ["gold", "gold_light", "pearl", "glass", "fin_pearl"]
+
+static func configure_mermaid_materials(model_root: Node3D) -> void:
+	if not is_instance_valid(model_root):
+		return
+	var seen: Dictionary = {}
+	var lit_entries: Array[Dictionary] = []
+	for part: MeshInstance3D in model_root.find_children("*", "MeshInstance3D", true, false):
+		if not bool(part.get_meta("reference_part", false)) or part.mesh == null:
+			continue
+		var driver := String(part.get_meta("reference_driver", ""))
+		for surface in part.mesh.get_surface_count():
+			var mat := part.get_surface_override_material(surface) as StandardMaterial3D
+			if mat == null:
+				continue
+			var role := String(mat.get_meta("reference_role", ""))
+			if _should_disable_part_shadow(driver, role):
+				part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var id := mat.get_instance_id()
+			if seen.has(id):
+				continue
+			seen[id] = true
+			if role in ["skin", "body_skin", "skin_shadow", "eye_white", "iris", "pupil", "lip", "lash", "shell_pearl", "hair", "hair_highlight", "pearl"]:
+				mat.disable_receive_shadows = true
+			var is_face := bool(mat.get_meta("is_face_skin", false))
+			match role:
+				"skin":
+					mat.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
+					mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+					mat.roughness = 0.95 if is_face else 0.88
+					mat.metallic = 0.0
+					mat.backlight_enabled = true
+					mat.backlight = Color(0.56, 0.52, 0.54) if is_face else Color(0.54, 0.50, 0.52)
+					var w_skin := 0.15 if is_face else 0.22
+					var e_skin := 0.69 if is_face else 0.62
+					mat.albedo_color = Color(w_skin, w_skin, w_skin, 1.0)
+					mat.emission_enabled = true
+					mat.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+					mat.emission_texture = mat.albedo_texture
+					mat.emission = Color.WHITE
+					mat.emission_energy_multiplier = e_skin
+					lit_entries.append({"mat": mat, "base_color": Color.WHITE, "albedo_weight": w_skin, "emission_energy": e_skin, "textured": true})
+				"body_skin":
+					mat.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
+					mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+					mat.roughness = 0.88
+					mat.metallic = 0.0
+					mat.backlight_enabled = true
+					mat.backlight = Color(0.54, 0.50, 0.52)
+					var w_body := 0.22
+					var e_body := 0.62
+					mat.albedo_color = Color(w_body, w_body, w_body, 1.0)
+					mat.emission_enabled = true
+					mat.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+					mat.emission_texture = mat.albedo_texture
+					mat.emission = Color.WHITE
+					mat.emission_energy_multiplier = e_body
+					lit_entries.append({"mat": mat, "base_color": Color.WHITE, "albedo_weight": w_body, "emission_energy": e_body, "textured": true})
+				"skin_shadow":
+					var raw_creases: Color = mat.get_meta("authored_base_color", mat.albedo_color)
+					if not mat.has_meta("authored_base_color"):
+						mat.set_meta("authored_base_color", raw_creases)
+					var styled_creases: Color = mat.get_meta("styled_crease_color", raw_creases.lerp(Color(0.96, 0.84, 0.82), 0.42))
+					mat.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
+					mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+					mat.roughness = 0.92
+					mat.metallic = 0.0
+					mat.backlight_enabled = true
+					mat.backlight = Color(0.56, 0.52, 0.54)
+					var w_crease := 0.16
+					var e_crease := 0.66
+					mat.albedo_color = Color(styled_creases.r * w_crease, styled_creases.g * w_crease, styled_creases.b * w_crease, 1.0)
+					mat.emission_enabled = true
+					mat.emission_operator = BaseMaterial3D.EMISSION_OP_ADD
+					mat.emission_texture = null
+					mat.emission = styled_creases
+					mat.emission_energy_multiplier = e_crease
+					lit_entries.append({"mat": mat, "base_color": styled_creases, "albedo_weight": w_crease, "emission_energy": e_crease, "textured": false})
+				"eye_white":
+					var raw_sclera: Color = mat.get_meta("authored_base_color", mat.albedo_color)
+					if not mat.has_meta("authored_base_color"):
+						mat.set_meta("authored_base_color", raw_sclera)
+					mat.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
+					mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+					mat.roughness = 0.90
+					mat.metallic = 0.0
+					mat.backlight_enabled = true
+					mat.backlight = Color(0.60, 0.60, 0.62)
+					var w_eye := 0.14
+					var e_eye := 0.74
+					mat.albedo_color = Color(raw_sclera.r * w_eye, raw_sclera.g * w_eye, raw_sclera.b * w_eye, 1.0)
+					mat.emission_enabled = true
+					mat.emission_operator = BaseMaterial3D.EMISSION_OP_ADD
+					mat.emission_texture = null
+					mat.emission = raw_sclera
+					mat.emission_energy_multiplier = e_eye
+					lit_entries.append({"mat": mat, "base_color": raw_sclera, "albedo_weight": w_eye, "emission_energy": e_eye, "textured": false})
+				"lip":
+					mat.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
+					mat.roughness = 0.22
+					mat.metallic = 0.0
+					mat.backlight_enabled = true
+					mat.backlight = Color(0.54, 0.46, 0.50)
+					var w_lip := 0.20
+					var e_lip := 0.64
+					mat.albedo_color = Color(w_lip, w_lip, w_lip, 1.0)
+					mat.emission_enabled = true
+					mat.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+					mat.emission_texture = mat.albedo_texture
+					mat.emission = Color.WHITE
+					mat.emission_energy_multiplier = e_lip
+					lit_entries.append({"mat": mat, "base_color": Color.WHITE, "albedo_weight": w_lip, "emission_energy": e_lip, "textured": true})
+				"iris":
+					var boost_iris := float(mat.get_meta("variant_iris_emission", 0.0))
+					mat.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
+					mat.backlight_enabled = true
+					mat.backlight = Color(0.55, 0.55, 0.58)
+					var w_iris := 0.24
+					var e_iris := clampf(0.58 + boost_iris * 0.45, 0.58, 0.82)
+					mat.albedo_color = Color(w_iris, w_iris, w_iris, 1.0)
+					mat.emission_enabled = true
+					mat.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+					mat.emission_texture = mat.albedo_texture
+					mat.emission = Color.WHITE
+					mat.emission_energy_multiplier = e_iris
+					lit_entries.append({"mat": mat, "base_color": Color.WHITE, "albedo_weight": w_iris, "emission_energy": e_iris, "textured": true, "min_deep_scale": 0.62})
+	model_root.set_meta("mermaid_lit_entries", lit_entries)
+	model_root.set_meta("mermaid_lit_depth", -999.0)
+	update_mermaid_depth_lighting(model_root, 8.0, true)
+
+static func update_mermaid_depth_lighting(model_root: Node3D, depth: float, force: bool = false) -> void:
+	if not is_instance_valid(model_root) or not model_root.has_meta("mermaid_lit_entries"):
+		return
+	var clamped_depth := maxf(depth, 0.0)
+	var last_depth := float(model_root.get_meta("mermaid_lit_depth", -999.0))
+	if not force and absf(clamped_depth - last_depth) < 0.35:
+		return
+	model_root.set_meta("mermaid_lit_depth", clamped_depth)
+	var deep_t := smoothstep(18.0, 260.0, clamped_depth)
+	var tint := Color.WHITE.lerp(Color(0.84, 0.93, 1.0), deep_t * 0.52)
+	var entries: Array = model_root.get_meta("mermaid_lit_entries")
+	for entry: Dictionary in entries:
+		var mat: StandardMaterial3D = entry.get("mat", null)
+		if not is_instance_valid(mat):
+			continue
+		var min_scale := float(entry.get("min_deep_scale", 0.35))
+		var scale := lerpf(1.0, min_scale, deep_t)
+		var base_col: Color = entry["base_color"]
+		mat.emission = Color(base_col.r * tint.r, base_col.g * tint.g, base_col.b * tint.b, 1.0)
+		mat.emission_energy_multiplier = float(entry["emission_energy"]) * scale
+
 static func populate(drivers: Dictionary) -> Dictionary:
 	if not available():
 		return {"parts": 0, "triangles": 0}
@@ -104,19 +261,25 @@ static func populate(drivers: Dictionary) -> Dictionary:
 			var original: Material = record.materials[surface]
 			if original != null:
 				var id := original.get_instance_id()
-				if not material_copies.has(id):
+				var is_face := _is_face_skin_part(String(record.name))
+				var copy_key := "%d:face" % id if is_face else str(id)
+				if not material_copies.has(copy_key):
 					# Keep albedo, glass transparency, roughness, metal and texture
 					# bindings exactly as authored. ModelFinish never sees this rig.
 					var copy := original.duplicate(false) as Material
 					copy.set_meta("reference_material", true)
 					copy.set_meta("reference_role", _infer_material_role(original, String(record.name)))
-					material_copies[id] = copy
-				part.set_surface_override_material(surface, material_copies[id])
+					copy.set_meta("is_face_skin", is_face)
+					material_copies[copy_key] = copy
+				part.set_surface_override_material(surface, material_copies[copy_key])
 			var arrays := part.mesh.surface_get_arrays(surface)
 			var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
 			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 			triangles += (indices.size() if not indices.is_empty() else vertices.size()) / 3
 		parent.add_child(part)
+	var root_node := (drivers.body as Node3D).get_parent() as Node3D
+	if is_instance_valid(root_node):
+		configure_mermaid_materials(root_node)
 	return {"parts": _parts.size(), "triangles": triangles, "skinned": false, "skeleton_count": 0}
 
 static func _populate_skin(drivers: Dictionary) -> Dictionary:
@@ -141,12 +304,15 @@ static func _populate_skin(drivers: Dictionary) -> Dictionary:
 			var source := part.get_active_material(surface)
 			if source != null:
 				var id := source.get_instance_id()
-				if not copies.has(id):
+				var is_face := _is_face_skin_part(String(part.name))
+				var copy_key := "%d:face" % id if is_face else str(id)
+				if not copies.has(copy_key):
 					var material := source.duplicate(false) as Material
 					material.set_meta("reference_material", true)
 					material.set_meta("reference_role", _infer_material_role(source, String(part.name)))
-					copies[id] = material
-				part.set_surface_override_material(surface, copies[id])
+					material.set_meta("is_face_skin", is_face)
+					copies[copy_key] = material
+				part.set_surface_override_material(surface, copies[copy_key])
 			var arrays := part.mesh.surface_get_arrays(surface)
 			var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
 			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
@@ -171,6 +337,7 @@ static func _populate_skin(drivers: Dictionary) -> Dictionary:
 	model_root.set_meta("reference_skin_state", {"skeleton": skeleton, "driver_rest": rests,
 		"order": order, "skeleton_in_model": _relative_to_model(skeleton, model_root)})
 	model_root.set_meta("reference_skinned", true)
+	configure_mermaid_materials(model_root)
 	sync_skin(model_root, drivers)
 	return {"parts": parts, "triangles": triangles, "skinned": true, "skeleton_count": skeletons.size()}
 

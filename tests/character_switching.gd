@@ -24,6 +24,15 @@ func _find_role_material(model_root: Node3D, role: String) -> StandardMaterial3D
 				return mat
 	return null
 
+func _find_part_material(model_root: Node3D, part_token: String) -> StandardMaterial3D:
+	var needle := part_token.to_lower()
+	for part: MeshInstance3D in model_root.find_children("*", "MeshInstance3D", true, false):
+		if not bool(part.get_meta("reference_part", false)) or part.mesh == null:
+			continue
+		if String(part.name).to_lower().contains(needle):
+			return part.get_active_material(0) as StandardMaterial3D
+	return null
+
 func _run() -> void:
 	assert(ReferenceDiver.available(), "reference_diver.glb must be imported")
 	for required_id: String in ["coral_mermaid", "moonlight_mermaid", "abyss_mermaid", "golden_siren", "sakura_mermaid", "expedition_diver"]:
@@ -51,13 +60,30 @@ func _run() -> void:
 			var scales_mat := _find_role_material(diver.diver_model, "scales")
 			var hair_mat := _find_role_material(diver.diver_model, "hair")
 			var iris_mat := _find_role_material(diver.diver_model, "iris")
+			var face_mat := _find_part_material(diver.diver_model, "faceskin")
+			var hand_mat := _find_part_material(diver.diver_model, "handthumb")
+			var body_skin_mat := _find_role_material(diver.diver_model, "body_skin")
+			var eye_white_mat := _find_role_material(diver.diver_model, "eye_white")
+			var lip_mat := _find_role_material(diver.diver_model, "lip")
 			assert(scales_mat != null and hair_mat != null and iris_mat != null, "Missing tagged mermaid materials on " + cid)
+			assert(face_mat != null and hand_mat != null and face_mat.get_instance_id() != hand_mat.get_instance_id(), "Face skin must use an isolated material instance on " + cid)
+			assert(face_mat.disable_receive_shadows and face_mat.backlight_enabled and face_mat.emission_enabled, "Mermaid face must disable shadow reception and enable soft porcelain fill on " + cid)
+			assert(face_mat.diffuse_mode == BaseMaterial3D.DIFFUSE_LAMBERT_WRAP and face_mat.specular_mode == BaseMaterial3D.SPECULAR_DISABLED, "Mermaid face must use wrap diffuse without harsh specular hotspots on " + cid)
+			assert(body_skin_mat != null and body_skin_mat.disable_receive_shadows and eye_white_mat != null and eye_white_mat.disable_receive_shadows and lip_mat != null and lip_mat.disable_receive_shadows, "Mermaid facial/neck surfaces must not receive coarse shadow-map bands on " + cid)
+			ReferenceDiver.update_mermaid_depth_lighting(diver.diver_model, 8.0, true)
+			var shallow_face_em := face_mat.emission_energy_multiplier
+			ReferenceDiver.update_mermaid_depth_lighting(diver.diver_model, 320.0, true)
+			var deep_face_em := face_mat.emission_energy_multiplier
+			assert(shallow_face_em > deep_face_em + 0.2, "Mermaid face lighting must adapt smoothly between shallow sunlit water and deep abyss on " + cid)
+			ReferenceDiver.update_mermaid_depth_lighting(diver.diver_model, 8.0, true)
 			if cid != "coral_mermaid":
 				var tex_id := scales_mat.albedo_texture.get_instance_id()
 				assert(not seen_scale_tex_ids.has(tex_id), "Mermaid variant must have distinct procedural scale texture: " + cid)
 				seen_scale_tex_ids[tex_id] = cid
 				var ornament := diver.head_pivot.get_node_or_null("CharacterOrnament")
 				assert(ornament != null and ornament.get_child_count() > 0, "Mermaid variant missing 3D head ornament: " + cid)
+				for orn_mesh: MeshInstance3D in ornament.find_children("*", "MeshInstance3D", true, false):
+					assert(orn_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "Head ornament must not cast shadows onto mermaid face: " + cid)
 			if cid == "abyss_mermaid":
 				assert(scales_mat.emission_enabled and scales_mat.emission_energy_multiplier > 0.4, "Abyss mermaid must have bioluminescent scales")
 			if cid == "moonlight_mermaid":

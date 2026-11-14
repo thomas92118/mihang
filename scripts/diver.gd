@@ -2225,6 +2225,7 @@ func _build_reference_diver_model() -> void:
 	left_fin_pivot.add_child(backpack_thruster_bubbles)
 	if current_character != CharacterRoster.DEFAULT_CHARACTER:
 		CharacterRoster.apply_mermaid_style(diver_model, _reference_drivers, breath_bubbles, backpack_thruster_bubbles, current_character)
+	ReferenceDiver.update_mermaid_depth_lighting(diver_model, maxf(0.0, -global_position.y) if is_inside_tree() else 8.0, true)
 	diver_model.set_meta("character_id", current_character)
 
 func _build_limb_arm(side: float, mat_suit: Material, mat_armor: Material, mat_accent: Material, mat_cyan: Material) -> Node3D:
@@ -2780,6 +2781,7 @@ func _animate_diver_model(delta: float) -> void:
 	if is_instance_valid(backpack_thruster_bubbles):
 		backpack_thruster_bubbles.emitting = (sprinting or dash_cooldown > 3.8) and not in_submarine_mode
 	if reference_model_active:
+		ReferenceDiver.update_mermaid_depth_lighting(diver_model, maxf(0.0, -global_position.y) if is_inside_tree() else 8.0)
 		_animate_reference_posture(delta, cam_pitch, in_attack, local_vel, horiz_spd)
 		ReferenceDiver.sync_skin(diver_model, _reference_drivers)
 
