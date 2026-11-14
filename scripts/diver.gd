@@ -14,9 +14,18 @@ const SCOPE_FOV := 11.56
 const CHARGE_THRESHOLD := 3.0
 const CHARGE_DURATION := 3.0
 const THIRD_PERSON_DEFAULT_DIST := 3.05
-const THIRD_PERSON_MIN_DIST := 1.6
+const THIRD_PERSON_MIN_DIST := 1.25
 const THIRD_PERSON_MAX_DIST := 6.5
 const THIRD_PERSON_AIM_DIST := 1.45
+const VIEW_ANGLE_PRESETS := [
+	{"id": "rear", "name": "背后跟随视角", "yaw": 0.0, "pitch": -0.16},
+	{"id": "front_right", "name": "右前侧观察视角", "yaw": 2.41, "pitch": -0.10},
+	{"id": "front", "name": "正面观赏视角", "yaw": PI, "pitch": -0.06},
+	{"id": "left", "name": "左侧巡航视角", "yaw": -PI * 0.5, "pitch": -0.08},
+	{"id": "right", "name": "右侧巡航视角", "yaw": PI * 0.5, "pitch": -0.08},
+	{"id": "top", "name": "高处俯视视角", "yaw": 0.56, "pitch": -0.84},
+	{"id": "upward", "name": "仰视剪影视角", "yaw": 2.70, "pitch": 0.45}
+]
 
 var camera: Camera3D
 var lamp: SpotLight3D
@@ -74,6 +83,15 @@ var swim_clock: float = 0.0
 var swim_motion_blend: float = 0.0
 var swim_kick_rate: float = 2.2
 var turn_bank: float = 0.0
+var orbit_yaw: float = 0.0
+var orbit_dragging: bool = false
+var swim_pitch: float = -0.16
+var _swim_model_yaw: float = 0.0
+var character_yaw_offset: float = 0.0
+var character_pitch_offset: float = 0.0
+var character_roll_offset: float = 0.0
+var view_angle_preset_index: int = 0
+var _look_yaw_impulse: float = 0.0
 var reference_model_active := false
 var _reference_drivers: Dictionary = {}
 var current_character: String = CharacterRoster.DEFAULT_CHARACTER
@@ -801,8 +819,11 @@ func toggle_aim() -> bool:
 	if scoped:
 		scoped = false
 		aiming = true
+		align_character_to_view()
 		return true
 	aiming = not aiming
+	if aiming:
+		align_character_to_view()
 	return aiming
 
 func toggle_scope() -> bool:
@@ -810,11 +831,14 @@ func toggle_scope() -> bool:
 		return false
 	scoped = not scoped
 	aiming = scoped
+	if scoped:
+		align_character_to_view()
 	return scoped
 
 func begin_gun_charge() -> bool:
 	if current_weapon != "sonic" or attack_cooldown > 0.0 or gun_trigger_held:
 		return false
+	align_character_to_view()
 	gun_trigger_held = true
 	charge_time = 0.0
 	return true
@@ -850,11 +874,21 @@ func _update_vehicle_collision_state() -> void:
 		camera_punch = Vector3.ZERO
 		_camera_punch_offset = Vector3.ZERO
 		_camera_shake_offset = Vector3.ZERO
+		orbit_dragging = false
+		character_yaw_offset = 0.0
+		character_pitch_offset = 0.0
+		character_roll_offset = 0.0
+		_swim_model_yaw = 0.0
+		if in_submarine_mode:
+			orbit_yaw = 0.0
+			view_angle_preset_index = 0
+		_apply_diver_model_angles()
 		hitstop_timer = 0.0
 		hitstop_jitter = Vector3.ZERO
 		if is_instance_valid(camera):
 			var base_rot := _base_camera_rotation()
-			camera.rotation = Vector3(clampf(base_rot.x, -1.45, 1.45), 0.0, 0.0)
+			var keep_yaw := 0.0 if in_submarine_mode else orbit_yaw
+			camera.rotation = Vector3(clampf(base_rot.x, -1.45, 1.45), keep_yaw, 0.0)
 			_applied_camera_transient = Vector3.ZERO
 			_last_camera_rot_with_transient = camera.rotation
 			_has_camera_rot_snapshot = true
@@ -871,20 +905,153 @@ func _base_camera_rotation() -> Vector3:
 		return camera.rotation - _applied_camera_transient
 	return camera.rotation
 
+func has_custom_character_angles() -> bool:
+	return absf(character_yaw_offset) > 0.0005 or absf(character_pitch_offset) > 0.0005 or absf(character_roll_offset) > 0.0005
+
+func _is_orbit_camera_active() -> bool:
+	return orbit_dragging or absf(orbit_yaw) > 0.0005
+
+func _apply_diver_model_angles() -> void:
+	if not is_instance_valid(diver_model):
+		return
+	var target_yaw := wrapf(_swim_model_yaw + character_yaw_offset, -PI, PI)
+	diver_model.rotation = Vector3(character_pitch_offset, target_yaw, character_roll_offset)
+	_sync_equipment_rig_rotation()
+
+func _sync_equipment_rig_rotation() -> void:
+	if not is_instance_valid(equipment_rig) or not is_instance_valid(camera):
+		return
+	if in_submarine_mode or scoped:
+		equipment_rig.rotation = camera.rotation
+		return
+	var model_rot := diver_model.rotation if is_instance_valid(diver_model) else Vector3.ZERO
+	if not _is_orbit_camera_active() and model_rot.is_zero_approx() and absf(character_pitch_offset) <= 0.0005:
+		equipment_rig.rotation = camera.rotation
+		return
+	var base_pitch: float = swim_pitch if _is_orbit_camera_active() else _base_camera_rotation().x
+	equipment_rig.rotation = Vector3(
+		clampf(base_pitch + model_rot.x, -PI, PI) + _applied_camera_transient.x,
+		model_rot.y + _applied_camera_transient.y,
+		model_rot.z + _applied_camera_transient.z
+	)
+
+func rotate_character_yaw(delta_yaw: float) -> void:
+	character_yaw_offset = wrapf(character_yaw_offset + delta_yaw, -PI, PI)
+	_apply_diver_model_angles()
+
+func adjust_character_pitch(delta_pitch: float) -> void:
+	character_pitch_offset = wrapf(character_pitch_offset + delta_pitch, -PI, PI)
+	_apply_diver_model_angles()
+
+func rotate_character_roll(delta_roll: float) -> void:
+	character_roll_offset = wrapf(character_roll_offset + delta_roll, -PI, PI)
+	_apply_diver_model_angles()
+
+func set_character_angles(yaw_rad: float, pitch_rad: float = 0.0, roll_rad: float = 0.0) -> void:
+	character_yaw_offset = wrapf(yaw_rad, -PI, PI)
+	character_pitch_offset = wrapf(pitch_rad, -PI, PI)
+	character_roll_offset = wrapf(roll_rad, -PI, PI)
+	_apply_diver_model_angles()
+
+func align_character_to_view() -> void:
+	orbit_dragging = false
+	character_yaw_offset = 0.0
+	character_pitch_offset = 0.0
+	character_roll_offset = 0.0
+	_swim_model_yaw = 0.0
+	view_angle_preset_index = 0
+	if absf(orbit_yaw) > 0.0005:
+		var base_rot := _base_camera_rotation()
+		swim_pitch = clampf(base_rot.x, -1.45, 1.45)
+		rotate_y(orbit_yaw)
+		orbit_yaw = 0.0
+		if is_instance_valid(camera):
+			var transient := _camera_punch_offset + _camera_shake_offset
+			var target_rot := Vector3(
+				clampf(swim_pitch + transient.x, -1.45, 1.45),
+				transient.y,
+				base_rot.z + transient.z
+			)
+			camera.rotation = target_rot
+			_applied_camera_transient = target_rot - Vector3(swim_pitch, 0.0, base_rot.z)
+			_last_camera_rot_with_transient = camera.rotation
+			_has_camera_rot_snapshot = true
+	if is_instance_valid(diver_model):
+		diver_model.rotation = Vector3.ZERO
+	_sync_equipment_rig_rotation()
+	_update_third_person_camera(0.0)
+
+func reset_character_angles(preserve_view_heading: bool = false) -> void:
+	if preserve_view_heading:
+		align_character_to_view()
+		return
+	orbit_dragging = false
+	orbit_yaw = 0.0
+	character_yaw_offset = 0.0
+	character_pitch_offset = 0.0
+	character_roll_offset = 0.0
+	_swim_model_yaw = 0.0
+	view_angle_preset_index = 0
+	if is_instance_valid(diver_model):
+		diver_model.rotation = Vector3.ZERO
+	reset_camera_alignment(swim_pitch)
+	_update_third_person_camera(0.0)
+
+func cycle_view_angle_preset(step: int = 1) -> Dictionary:
+	var count := VIEW_ANGLE_PRESETS.size()
+	view_angle_preset_index = posmod(view_angle_preset_index + step, count)
+	var preset: Dictionary = VIEW_ANGLE_PRESETS[view_angle_preset_index]
+	orbit_dragging = false
+	if view_angle_preset_index == 0:
+		character_yaw_offset = 0.0
+		character_pitch_offset = 0.0
+		character_roll_offset = 0.0
+		_swim_model_yaw = 0.0
+		if is_instance_valid(diver_model):
+			diver_model.rotation = Vector3.ZERO
+	orbit_yaw = wrapf(float(preset["yaw"]), -PI, PI)
+	if is_instance_valid(camera):
+		var target_pitch := clampf(float(preset["pitch"]), -1.45, 1.45)
+		if view_angle_preset_index == 0:
+			swim_pitch = target_pitch
+		var base_rot := Vector3(target_pitch, orbit_yaw, 0.0)
+		var transient := _camera_punch_offset + _camera_shake_offset
+		var target_rot := Vector3(
+			clampf(base_rot.x + transient.x, -1.45, 1.45),
+			base_rot.y + transient.y,
+			base_rot.z + transient.z
+		)
+		camera.rotation = target_rot
+		_applied_camera_transient = target_rot - base_rot
+		_last_camera_rot_with_transient = camera.rotation
+		_has_camera_rot_snapshot = true
+	_sync_equipment_rig_rotation()
+	_update_third_person_camera(0.0)
+	return preset
+
 func reset_camera_alignment(pitch: float = NAN) -> void:
 	camera_punch = Vector3.ZERO
 	_camera_punch_offset = Vector3.ZERO
 	_camera_shake_offset = Vector3.ZERO
 	camera_trauma = 0.0
+	orbit_yaw = 0.0
+	orbit_dragging = false
+	character_yaw_offset = 0.0
+	character_pitch_offset = 0.0
+	character_roll_offset = 0.0
+	_swim_model_yaw = 0.0
+	view_angle_preset_index = 0
+	if is_instance_valid(diver_model):
+		diver_model.rotation = Vector3.ZERO
 	if is_instance_valid(camera):
 		var base_rot := _base_camera_rotation()
 		var target_pitch: float = clampf(base_rot.x if is_nan(pitch) else pitch, -1.45, 1.45)
+		swim_pitch = target_pitch
 		camera.rotation = Vector3(target_pitch, 0.0, 0.0)
 		_applied_camera_transient = Vector3.ZERO
 		_last_camera_rot_with_transient = camera.rotation
 		_has_camera_rot_snapshot = true
-		if is_instance_valid(equipment_rig):
-			equipment_rig.rotation = camera.rotation
+		_sync_equipment_rig_rotation()
 
 func set_submarine_mode(in_sub: bool, sub_type: String = "scout", sub_rid: RID = RID()) -> void:
 	var was_in_sub := in_submarine_mode
@@ -953,6 +1120,8 @@ func attack() -> Dictionary:
 	_ensure_third_person_rig()
 	if attack_cooldown > 0.0:
 		return {}
+	if active and (_is_orbit_camera_active() or has_custom_character_angles() or absf(_swim_model_yaw) > 0.02):
+		align_character_to_view()
 	equip_anim_time = 0.0
 	# 连击推进与超时重置
 	if combo_timer > 0.0:
@@ -1137,10 +1306,13 @@ func _look_settings(key: String, default_value: Variant) -> Variant:
 
 func _apply_look_angles(angles: Vector2) -> void:
 	rotate_y(-angles.x)
+	_look_yaw_impulse = clampf(_look_yaw_impulse + angles.x * 8.0, -1.2, 1.2)
 	var base_rot := _base_camera_rotation()
 	base_rot.x = clampf(base_rot.x - angles.y, -1.45, 1.45)
+	if not _is_orbit_camera_active():
+		swim_pitch = base_rot.x
 	if active:
-		base_rot.y = 0.0
+		base_rot.y = orbit_yaw
 	var transient := _camera_punch_offset + _camera_shake_offset
 	var target_rot := Vector3(
 		clampf(base_rot.x + transient.x, -1.45, 1.45),
@@ -1151,11 +1323,41 @@ func _apply_look_angles(angles: Vector2) -> void:
 	_applied_camera_transient = target_rot - base_rot
 	_last_camera_rot_with_transient = camera.rotation
 	_has_camera_rot_snapshot = true
-	if is_instance_valid(equipment_rig):
-		equipment_rig.rotation = camera.rotation
-	camera.position = camera.basis.z * _applied_camera_distance
+	_sync_equipment_rig_rotation()
+	camera.position = _camera_focus_offset() + camera.basis.z * _applied_camera_distance
 	mouse_lag_target.x = clampf(mouse_lag_target.x - angles.x * 0.27, -0.04, 0.04)
 	mouse_lag_target.y = clampf(mouse_lag_target.y + angles.y * 0.27, -0.035, 0.035)
+
+func _apply_orbit_angles(angles: Vector2) -> void:
+	if not is_instance_valid(camera):
+		return
+	orbit_yaw = wrapf(orbit_yaw - angles.x, -PI, PI)
+	var base_rot := _base_camera_rotation()
+	base_rot.x = clampf(base_rot.x - angles.y, -1.45, 1.45)
+	base_rot.y = orbit_yaw
+	var transient := _camera_punch_offset + _camera_shake_offset
+	var target_rot := Vector3(
+		clampf(base_rot.x + transient.x, -1.45, 1.45),
+		base_rot.y + transient.y,
+		base_rot.z + transient.z
+	)
+	camera.rotation = target_rot
+	_applied_camera_transient = target_rot - base_rot
+	_last_camera_rot_with_transient = camera.rotation
+	_has_camera_rot_snapshot = true
+	_sync_equipment_rig_rotation()
+	_update_third_person_camera(0.0)
+
+func apply_orbit_delta(relative: Vector2, from_touch: bool = false) -> void:
+	if not active or in_submarine_mode or scoped:
+		return
+	var sensitivity := 0.0032
+	if from_touch:
+		sensitivity *= float(_look_settings("touch_sensitivity", 1.0))
+	var direction := relative
+	if bool(_look_settings("invert_y", false)):
+		direction.y = -direction.y
+	_apply_orbit_angles(direction * sensitivity)
 
 func apply_look_delta(relative: Vector2, from_touch: bool = false) -> void:
 	if not active:
@@ -1184,21 +1386,42 @@ func adjust_camera_distance(amount: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
 		return
-	if active and event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		apply_look_delta(event.relative)
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+		orbit_dragging = active and event.pressed and not in_submarine_mode and not scoped
+		if active:
+			return
+	if active and event is InputEventMouseMotion:
+		var orbit_held := (orbit_dragging or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_key_pressed(KEY_ALT)) and not in_submarine_mode and not scoped
+		if orbit_held:
+			apply_orbit_delta(event.relative)
+		elif Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			apply_look_delta(event.relative)
 	elif active and event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			adjust_camera_distance(-0.35)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			adjust_camera_distance(0.35)
+		elif event.button_index == MOUSE_BUTTON_MIDDLE:
+			reset_character_angles(false)
 
 func _physics_process(delta: float) -> void:
 	if not active:
+		orbit_dragging = false
 		velocity = Vector3.ZERO
 		_update_third_person_camera(delta)
 		return
 	if is_instance_valid(input_controller):
 		apply_look_rate(input_controller.get_look_vector(), delta)
+	if not in_submarine_mode and not scoped:
+		var rot_yaw_axis := _control_axis("char_rotate_right", "char_rotate_left")
+		if rot_yaw_axis != 0.0:
+			rotate_character_yaw(rot_yaw_axis * 2.6 * delta)
+		var tilt_pitch_axis := _control_axis("char_tilt_down", "char_tilt_up")
+		if tilt_pitch_axis != 0.0:
+			adjust_character_pitch(tilt_pitch_axis * 2.2 * delta)
+		var roll_axis := _control_axis("char_roll_left", "char_roll_right")
+		if roll_axis != 0.0:
+			rotate_character_roll(roll_axis * 2.5 * delta)
 	if in_submarine_mode or in_mount_mode:
 		sprinting = not aiming and _control_strength("sprint") > 0.5
 		var veh_fov: float = SCOPE_FOV if scoped else (AIM_FOV if aiming else (84.0 if sprinting else 78.0))
@@ -1211,7 +1434,8 @@ func _physics_process(delta: float) -> void:
 		var turn_rate := 2.4
 		rotate_y(turn_val * turn_rate * delta)
 		mouse_lag_target.x = clampf(mouse_lag_target.x - turn_val * 0.02, -0.04, 0.04)
-	turn_bank = lerpf(turn_bank, clampf(-turn_val * 0.32, -0.35, 0.35), 1.0 - exp(-delta * 8.0))
+	_look_yaw_impulse = lerpf(_look_yaw_impulse, 0.0, 1.0 - exp(-delta * 10.0))
+	turn_bank = lerpf(turn_bank, clampf(-turn_val * 0.34 - _look_yaw_impulse * 0.28, -0.45, 0.45), 1.0 - exp(-delta * 8.0))
 
 	# W 前进, S 后退
 	var fwd_val := _control_strength("forward") - _control_strength("backward") * 0.65
@@ -1221,6 +1445,10 @@ func _physics_process(delta: float) -> void:
 
 	var forward_dir := -camera.global_basis.z
 	var right_dir := camera.global_basis.x
+	if absf(orbit_yaw) > 0.0005:
+		var move_basis := global_basis * Basis(Vector3.RIGHT, swim_pitch)
+		forward_dir = -move_basis.z
+		right_dir = global_basis.x
 	var direction := forward_dir * fwd_val + right_dir * (-turn_val * 0.28)
 	direction.y += vert_val
 
@@ -1342,7 +1570,7 @@ func _process(delta: float) -> void:
 				_camera_shake_offset = Vector3.ZERO
 
 			if active:
-				var align_yaw: float = diver_model.rotation.y if is_instance_valid(diver_model) else 0.0
+				var align_yaw: float = orbit_yaw
 				if delta > 0.0:
 					base_rot.y = lerp_angle(base_rot.y, align_yaw, 1.0 - exp(-delta * 14.0))
 				if absf(angle_difference(base_rot.y, align_yaw)) < 0.0005:
@@ -1565,11 +1793,16 @@ func _process(delta: float) -> void:
 	if is_instance_valid(charge_glow) and charge_glow.is_inside_tree():
 		charge_glow.global_position = get_muzzle_position()
 
+func _camera_focus_offset() -> Vector3:
+	if in_submarine_mode or in_mount_mode or scoped or absf(orbit_yaw) <= 0.0005:
+		return Vector3.ZERO
+	var orbit_weight := clampf(absf(orbit_yaw) / 0.65, 0.0, 1.0)
+	return Vector3(0.0, -0.34, 0.24) * orbit_weight
+
 func _update_third_person_camera(delta: float) -> void:
 	if not is_instance_valid(camera):
 		return
-	if is_instance_valid(equipment_rig):
-		equipment_rig.rotation = camera.rotation
+	_sync_equipment_rig_rotation()
 	var desired_dist: float = third_person_distance
 	if scoped:
 		desired_dist = 0.0
@@ -1588,8 +1821,9 @@ func _update_third_person_camera(delta: float) -> void:
 		current_camera_distance = desired_dist
 
 	var actual_dist: float = current_camera_distance
+	var focus_local := _camera_focus_offset()
 	if actual_dist > 0.1 and is_inside_tree() and get_world_3d() != null and get_world_3d().direct_space_state != null:
-		var origin := global_position
+		var origin := to_global(focus_local)
 		var back_dir := camera.global_basis.z.normalized()
 		var desired_cam_pos := origin + back_dir * actual_dist
 		var frame_now := Engine.get_process_frames()
@@ -1637,7 +1871,7 @@ func _update_third_person_camera(delta: float) -> void:
 			_cam_ray_last_scoped = scoped
 
 	_applied_camera_distance = actual_dist
-	camera.position = camera.basis.z * actual_dist
+	camera.position = focus_local + camera.basis.z * actual_dist
 	if is_instance_valid(diver_model):
 		diver_model.visible = third_person_mode and not scoped and not in_submarine_mode
 
@@ -2148,8 +2382,9 @@ func _build_limb_leg(side: float, mat_suit: Material, mat_armor: Material, mat_a
 func _animate_diver_model(delta: float) -> void:
 	if not is_instance_valid(diver_model) or not is_instance_valid(body_pivot):
 		return
-	var horiz_spd := Vector2(velocity.x, velocity.z).length()
-	var total_spd := velocity.length()
+	var local_vel: Vector3 = (global_basis.inverse() * velocity) if is_inside_tree() else velocity
+	var horiz_spd := Vector2(local_vel.x, local_vel.z).length()
+	var total_spd := local_vel.length()
 	var is_moving := total_spd > 0.25
 	var motion_target := smoothstep(0.12, 6.5, total_spd)
 	swim_motion_blend = lerpf(swim_motion_blend, motion_target, 1.0 - exp(-delta * 4.5))
@@ -2174,6 +2409,15 @@ func _animate_diver_model(delta: float) -> void:
 	var in_attack := attack_anim_time > 0.0
 	var in_combat_posture := in_attack or (combo_timer > 0.0 and (current_weapon == "knife" or current_weapon == "axe"))
 	combat_stance_blend = move_toward(combat_stance_blend, 1.0 if in_combat_posture else 0.0, delta * (14.0 if in_attack else 5.0))
+	if in_attack or in_combat_posture or aiming or scoped or gun_trigger_held or in_mount_mode or in_submarine_mode:
+		_swim_model_yaw = lerp_angle(_swim_model_yaw, 0.0, 1.0 if (in_attack or aiming or scoped) else (1.0 - exp(-delta * 12.0)))
+		if absf(_swim_model_yaw) < 0.0005:
+			_swim_model_yaw = 0.0
+	elif active and horiz_spd > 0.22:
+		var desired_swim_yaw := atan2(-local_vel.x, -local_vel.z)
+		_swim_model_yaw = lerp_angle(_swim_model_yaw, desired_swim_yaw, 1.0 - exp(-delta * 8.5))
+	if active or has_custom_character_angles():
+		_apply_diver_model_angles()
 
 	if in_attack:
 		var p := clampf(1.0 - (attack_anim_time / maxf(attack_anim_duration, 0.001)), 0.0, 1.0)
@@ -2402,7 +2646,7 @@ func _animate_diver_model(delta: float) -> void:
 	body_combat_lunge = body_combat_lunge.lerp(target_lunge, track_alpha)
 	melee_grip_pitch = lerpf(melee_grip_pitch, target_grip_pitch, track_alpha)
 
-	var cam_pitch: float = camera.rotation.x if is_instance_valid(camera) else 0.0
+	var cam_pitch: float = swim_pitch if _is_orbit_camera_active() else (camera.rotation.x if is_instance_valid(camera) else 0.0)
 	if in_mount_mode:
 		# Riding posture on mount back
 		body_pivot.rotation.x = lerpf(body_pivot.rotation.x, -0.25 + cam_pitch * 0.4 + body_combat_pitch, 1.0 - exp(-delta * 10.0))
@@ -2415,7 +2659,8 @@ func _animate_diver_model(delta: float) -> void:
 		var target_body_pitch := base_torso_lean - swim_lean + cam_pitch * lerpf(0.65, 0.78, combat_stance_blend) + body_combat_pitch
 		# Cruise follows the water-relative motion with a long, calm silhouette.
 		# Combat keeps its authored torso curves so weapon/hand alignment is exact.
-		var vertical_lean := atan2(velocity.y, maxf(horiz_spd, 1.2)) * 0.38
+		var glide_angle := atan2(local_vel.y, maxf(horiz_spd, 0.35))
+		var vertical_lean := glide_angle * 0.68 * swim_motion_blend
 		var cruise_pitch := -0.22 - swim_motion_blend * 0.85 + cam_pitch * 0.42 + vertical_lean
 		var pose_combat := 1.0 if in_attack else combat_stance_blend
 		target_body_pitch = lerpf(cruise_pitch, target_body_pitch, pose_combat)
@@ -2535,10 +2780,10 @@ func _animate_diver_model(delta: float) -> void:
 	if is_instance_valid(backpack_thruster_bubbles):
 		backpack_thruster_bubbles.emitting = (sprinting or dash_cooldown > 3.8) and not in_submarine_mode
 	if reference_model_active:
-		_animate_reference_posture(delta, cam_pitch, in_attack)
+		_animate_reference_posture(delta, cam_pitch, in_attack, local_vel, horiz_spd)
 		ReferenceDiver.sync_skin(diver_model, _reference_drivers)
 
-func _animate_reference_posture(delta: float, cam_pitch: float, in_attack: bool) -> void:
+func _animate_reference_posture(delta: float, cam_pitch: float, in_attack: bool, local_vel: Vector3 = Vector3.ZERO, horiz_spd: float = 0.0) -> void:
 	var wave_amp := lerpf(0.09, 0.29, swim_motion_blend)
 	if sprinting or booster_active:
 		wave_amp = 0.37
@@ -2577,9 +2822,10 @@ func _animate_reference_posture(delta: float, cam_pitch: float, in_attack: bool)
 	var aiming_gun := is_gun and (aiming or gun_trigger_held)
 	if not in_attack and combat_stance_blend < 0.05 and not in_mount_mode:
 		var torso_wave := sin(swim_clock) * wave_amp * 0.16
-		var vertical_lean := atan2(velocity.y, maxf(Vector2(velocity.x, velocity.z).length(), 1.2)) * 0.26
+		var glide_angle := atan2(local_vel.y, maxf(horiz_spd, 0.35))
+		var vertical_lean := glide_angle * 0.78 * swim_motion_blend
 		var pitch := lerpf(-0.04, -1.24, swim_motion_blend) + cam_pitch * 0.40 + vertical_lean + torso_wave
-		body_pivot.rotation.x = pitch
+		body_pivot.rotation.x = lerpf(body_pivot.rotation.x, pitch, 1.0 - exp(-delta * 10.0)) if delta > 0.0 else pitch
 		head_pivot.rotation.x = clampf(cam_pitch * 0.45 + 0.06 + swim_motion_blend * 0.62 - torso_wave * 0.65, -0.55, 0.78)
 	if booster_active:
 		var boost_pitch := 76.0 + rad_to_deg(cam_pitch - body_pivot.rotation.x)

@@ -89,6 +89,60 @@ func _run() -> void:
 	assert(not diver.diver_model.visible, "Scoped visibility leaked across character switch")
 	diver.scoped = false
 
+	# 1b. 360-degree character rotation, multi-angle presets, orbit camera, and swim orientation
+	diver.active = true
+	diver.aiming = false
+	diver.reset_character_angles(false)
+	diver.rotate_character_yaw(PI * 0.5)
+	assert(is_equal_approx(diver.diver_model.rotation.y, PI * 0.5) and diver.has_custom_character_angles(), "90-degree character yaw failed")
+	diver.rotate_character_yaw(TAU)
+	assert(is_equal_approx(diver.diver_model.rotation.y, PI * 0.5), "360-degree character yaw wrap failed")
+	diver.adjust_character_pitch(-0.35)
+	diver.rotate_character_roll(0.28)
+	assert(is_equal_approx(diver.diver_model.rotation.x, -0.35) and is_equal_approx(diver.diver_model.rotation.z, 0.28), "Character pitch/roll rotation failed")
+	diver.set_weapon("sonic")
+	diver._animate_diver_model(1.0 / 60.0)
+	diver._sync_reference_gun_to_hand(gun, "sonic", Vector3.ZERO, Vector3.ZERO)
+	assert(gun.to_global(Vector3(0, -0.10, 0.16)).distance_to(diver.right_hand_socket.global_position) < 0.003, "Gun detached while character rotated")
+
+	diver.reset_character_angles(false)
+	assert(not diver.has_custom_character_angles() and diver.diver_model.rotation.is_zero_approx(), "reset_character_angles did not clear model angles")
+	for step_i in range(Diver.VIEW_ANGLE_PRESETS.size()):
+		var preset := diver.cycle_view_angle_preset(1)
+		var expected_idx := (step_i + 1) % Diver.VIEW_ANGLE_PRESETS.size()
+		assert(diver.view_angle_preset_index == expected_idx, "Preset index mismatch")
+		assert(is_equal_approx(diver.orbit_yaw, wrapf(float(preset["yaw"]), -PI, PI)), "Preset orbit_yaw mismatch")
+	assert(diver.view_angle_preset_index == 0 and is_zero_approx(diver.orbit_yaw), "Full preset cycle must return to rear view")
+
+	var pre_diver_yaw := diver.rotation.y
+	diver.apply_orbit_delta(Vector2(300.0, -90.0))
+	assert(is_equal_approx(diver.rotation.y, pre_diver_yaw) and absf(diver.orbit_yaw) > 0.5, "Orbit drag must rotate camera around diver without turning diver heading")
+	var world_cam_dir_before := -diver.camera.global_basis.z
+	diver.align_character_to_view()
+	var world_cam_dir_after := -diver.camera.global_basis.z
+	assert(is_zero_approx(diver.orbit_yaw) and not is_equal_approx(diver.rotation.y, pre_diver_yaw), "align_character_to_view must fold orbit_yaw into diver heading")
+	assert(world_cam_dir_before.angle_to(world_cam_dir_after) < 0.02, "align_character_to_view caused camera direction jump")
+
+	# Dynamic 3D swim yaw (backward S = 180 deg) and vertical ascent/dive pitch
+	diver.rotation = Vector3.ZERO
+	diver.reset_character_angles(false)
+	diver.velocity = Vector3(0.0, 0.0, 4.5)
+	for _f in 45:
+		diver._animate_diver_model(1.0 / 30.0)
+	assert(absf(angle_difference(diver.diver_model.rotation.y, PI)) < 0.15, "Backward swim must smoothly rotate character toward 180 deg")
+	diver.velocity = Vector3(0.0, 5.0, -0.8)
+	for _f in 30:
+		diver._animate_diver_model(1.0 / 30.0)
+	var ascend_body_pitch := diver.body_pivot.rotation.x
+	diver.velocity = Vector3(0.0, -5.0, -0.8)
+	for _f in 30:
+		diver._animate_diver_model(1.0 / 30.0)
+	var descend_body_pitch := diver.body_pivot.rotation.x
+	assert(ascend_body_pitch > descend_body_pitch + 0.45, "Ascent and dive must produce distinct 3D pitch angles")
+	diver.velocity = Vector3.ZERO
+	diver.active = false
+	diver.reset_character_angles(false)
+
 	# Material isolation between two concurrent mermaids with different styles
 	var second := Diver.new()
 	root.add_child(second)
@@ -120,10 +174,57 @@ func _run() -> void:
 	assert(CharacterRoster.load_saved_character() == "moonlight_mermaid")
 	assert(game.hud.main_char_title.text.contains("月光银发人鱼"))
 
+	# Rotate Title Showcase 3D character via HUD buttons, drag, and reset
+	var basis_before: Basis = game.title_showcase_diver.global_transform.basis
+	var rot_right_btn: Button = game.hud.root.find_child("CharRotateRight", true, false) as Button
+	var rot_reset_btn: Button = game.hud.root.find_child("CharRotateReset", true, false) as Button
+	assert(is_instance_valid(rot_right_btn) and is_instance_valid(rot_reset_btn), "Title showcase rotate buttons missing")
+	rot_right_btn.pressed.emit()
+	assert(not game.title_showcase_diver.global_transform.basis.is_equal_approx(basis_before), "CharRotateRight did not rotate title showcase diver")
+	game.hud.showcase_dragged.emit(Vector2(140.0, -45.0))
+	assert(absf(game.title_showcase_yaw) > 0.8 and absf(game.title_showcase_pitch) > 0.1, "Title showcase drag did not update yaw/pitch")
+	rot_reset_btn.pressed.emit()
+	assert(is_zero_approx(game.title_showcase_yaw) and is_zero_approx(game.title_showcase_pitch), "CharRotateReset did not reset showcase angles")
+
 	# Enter play mode and press P (character_switch) -> should advance to abyss_mermaid
 	game.hud.start_requested.emit("explore")
 	await process_frame
 	assert(game.screen == "play" and not game.title_showcase_diver.visible)
+
+	# Verify K (character_angle), continuous arrow-key rotation, touch two-finger orbit, and reset in play mode
+	var angle_ev := InputEventAction.new()
+	angle_ev.action = "character_angle"
+	angle_ev.pressed = true
+	game._handle_action_event(angle_ev)
+	assert(game.diver.view_angle_preset_index == 1 and absf(game.diver.orbit_yaw) > 1.0, "Hotkey character_angle (K) did not cycle camera angle")
+	game.input_controller.set_action("test_rot", "char_rotate_right", true)
+	game.input_controller.set_action("test_rot", "char_tilt_up", true)
+	game.diver._physics_process(0.25)
+	game.input_controller.set_action("test_rot", "char_rotate_right", false)
+	game.input_controller.set_action("test_rot", "char_tilt_up", false)
+	assert(game.diver.character_yaw_offset < -0.3 and game.diver.character_pitch_offset > 0.2, "Continuous rotation actions did not rotate diver in _physics_process")
+	var reset_ev := InputEventAction.new()
+	reset_ev.action = "char_angle_reset"
+	reset_ev.pressed = true
+	game._handle_action_event(reset_ev)
+	assert(game.diver.view_angle_preset_index == 0 and is_zero_approx(game.diver.orbit_yaw) and not game.diver.has_custom_character_angles(), "char_angle_reset did not restore standard angles")
+
+	# Verify two-finger touch orbit drag on TouchControls
+	game.touch_controls.visible = true
+	game.touch_controls.set_gameplay_enabled(true)
+	var look_rect: Rect2 = game.touch_controls.get_look_rect()
+	var p1 := look_rect.position + Vector2(40, 40)
+	var p2 := look_rect.position + Vector2(110, 40)
+	var t1 := InputEventScreenTouch.new(); t1.index = 0; t1.position = p1; t1.pressed = true
+	var t2 := InputEventScreenTouch.new(); t2.index = 1; t2.position = p2; t2.pressed = true
+	assert(game.touch_controls.handle_touch_event(t1, true) and game.touch_controls.handle_touch_event(t2, true))
+	var yaw_before_touch := game.diver.rotation.y
+	var d2 := InputEventScreenDrag.new(); d2.index = 1; d2.position = p2 + Vector2(90, -20)
+	game.touch_controls.handle_touch_event(d2, false)
+	assert(is_equal_approx(game.diver.rotation.y, yaw_before_touch) and absf(game.diver.orbit_yaw) > 0.1, "Two-finger touch drag did not orbit around character")
+	game.touch_controls.cancel_all()
+	game.diver.reset_character_angles(false)
+
 	var ev := InputEventAction.new()
 	ev.action = "character_switch"
 	ev.pressed = true

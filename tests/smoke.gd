@@ -448,6 +448,7 @@ func _initialize() -> void:
 
 	# Verify V (salvage_drone) and B (sushi_menu) key bindings and VFX
 	assert(InputMap.has_action("salvage_drone") and InputMap.has_action("sushi_menu"))
+	assert(InputMap.has_action("character_angle") and InputMap.has_action("char_angle_reset") and InputMap.has_action("char_rotate_left") and InputMap.has_action("char_rotate_right"))
 	CombatVFX.spawn_star_rating(root, Vector3(0, -8, 0), 3, "巡弋暗礁鲨")
 	CombatVFX.spawn_salvage_balloon(root, Vector3(0, -8, 0))
 	CombatVFX.spawn_clam_bubbles(root, Vector3(0, -8, 0))

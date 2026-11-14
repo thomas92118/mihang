@@ -23,14 +23,19 @@ const ACTIONS: Array[String] = [
 	"mount_toggle", "toggle_shield", "recall_pets", "salvage_drone", "sushi_menu",
 	"mount_board", "world_map", "sonar_ping", "mount_slot_1", "mount_slot_2",
 	"mount_slot_3", "mount_slot_4", "mount_slot_5", "mount_slot_6",
-	"quick_menu", "character_switch", "camera_closer", "camera_farther", "ui_cancel",
+	"quick_menu", "character_switch", "character_angle", "char_angle_reset",
+	"char_rotate_left", "char_rotate_right", "char_tilt_up", "char_tilt_down",
+	"char_roll_left", "char_roll_right", "camera_closer", "camera_farther", "ui_cancel",
 ]
 const MENU_ACTIONS: Array[String] = [
 	"pause_game", "world_map", "craft_menu", "sushi_menu", "mount_board",
-	"sonar_ping", "quick_menu", "character_switch", "ui_cancel",
+	"sonar_ping", "quick_menu", "character_switch", "character_angle", "char_angle_reset",
+	"char_rotate_left", "char_rotate_right", "char_tilt_up", "char_tilt_down", "ui_cancel",
 ]
 const CONTINUOUS_ACTIONS: Array[String] = [
 	"forward", "backward", "left", "right", "ascend", "descend", "sprint",
+	"char_rotate_left", "char_rotate_right", "char_tilt_up", "char_tilt_down",
+	"char_roll_left", "char_roll_right",
 ]
 const KEY_HINTS := {
 	"forward": "W", "backward": "S", "left": "A", "right": "D",
@@ -41,7 +46,11 @@ const KEY_HINTS := {
 	"toggle_shield": "C", "recall_pets": "Z", "salvage_drone": "V", "sushi_menu": "B",
 	"mount_board": "O", "world_map": "M", "sonar_ping": "N", "mount_slot_1": "5",
 	"mount_slot_2": "6", "mount_slot_3": "7", "mount_slot_4": "8", "mount_slot_5": "9",
-	"mount_slot_6": "0", "quick_menu": "J", "character_switch": "P", "camera_closer": "滚轮上",
+	"mount_slot_6": "0", "quick_menu": "J", "character_switch": "P",
+	"character_angle": "K", "char_angle_reset": "Home",
+	"char_rotate_left": "方向键左", "char_rotate_right": "方向键右",
+	"char_tilt_up": "方向键上", "char_tilt_down": "方向键下",
+	"char_roll_left": ",", "char_roll_right": ".", "camera_closer": "滚轮上",
 	"camera_farther": "滚轮下", "ui_cancel": "Esc",
 }
 const ACTION_LABELS := {
@@ -53,6 +62,10 @@ const ACTION_LABELS := {
 	"mount_toggle": "骑乘 / 离鞍", "recall_pets": "召回", "salvage_drone": "无人机",
 	"sonar_ping": "声呐", "booster": "助推器", "lamp": "灯", "quick_menu": "快捷操作",
 	"character_switch": "切换角色",
+	"character_angle": "切换视角", "char_angle_reset": "角度回正",
+	"char_rotate_left": "角色左旋", "char_rotate_right": "角色右旋",
+	"char_tilt_up": "角色上仰", "char_tilt_down": "角色下俯",
+	"char_roll_left": "左倾横滚", "char_roll_right": "右倾横滚",
 	"weapon_1": "战术刀", "weapon_2": "战斧", "weapon_3": "蓝光枪", "weapon_4": "指示枪",
 	"mount_slot_1": "伙伴 1", "mount_slot_2": "伙伴 2", "mount_slot_3": "伙伴 3",
 	"mount_slot_4": "伙伴 4", "mount_slot_5": "伙伴 5", "mount_slot_6": "伙伴 6",
@@ -64,7 +77,7 @@ const PAD_HINTS := {
 	"aim": "LT / L2", "interact": "A / ×", "dash": "B / ○", "ui_cancel": "B / ○",
 	"toggle_shield": "X / □", "quick_menu": "Y / △", "world_map": "View / Touchpad",
 	"pause_game": "Menu / Options", "sonar_ping": "方向键上", "recall_pets": "方向键下",
-	"camera_closer": "方向键左", "camera_farther": "方向键右",
+	"camera_closer": "方向键左", "camera_farther": "方向键右", "character_angle": "R3",
 }
 
 var active_device: String = "keyboard"
@@ -95,6 +108,7 @@ func setup_defaults() -> void:
 	_add_joy_button("ascend", JOY_BUTTON_RIGHT_SHOULDER)
 	_add_joy_button("descend", JOY_BUTTON_LEFT_SHOULDER)
 	_add_joy_button("sprint", JOY_BUTTON_LEFT_STICK)
+	_add_joy_button("character_angle", JOY_BUTTON_RIGHT_STICK)
 	_add_joy_button("interact", JOY_BUTTON_A)
 	_add_joy_button("dash", JOY_BUTTON_B)
 	_add_joy_button("toggle_shield", JOY_BUTTON_X)

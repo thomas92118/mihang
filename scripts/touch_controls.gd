@@ -7,6 +7,7 @@ const Art = preload("res://scripts/art_direction.gd")
 signal action_changed(action: String, pressed: bool, cancelled: bool)
 signal movement_changed(value: Vector2)
 signal look_dragged(relative: Vector2)
+signal orbit_dragged(relative: Vector2)
 signal quick_menu_requested
 signal touch_used
 
@@ -31,6 +32,7 @@ var _joystick_radius := 80.0
 var _movement := Vector2.ZERO
 var _move_touch := -1
 var _look_touch := -1
+var _orbit_touch := -1
 var _unit := 1.0
 var _emulated_pointer_owned := false
 
@@ -79,6 +81,7 @@ func cancel_all() -> void:
 	_action_holders.clear()
 	_move_touch = -1
 	_look_touch = -1
+	_orbit_touch = -1
 	_movement = Vector2.ZERO
 	for action: String in released_actions:
 		action_changed.emit(action, false, true)
@@ -204,6 +207,13 @@ func _begin_touch(index: int, at: Vector2) -> bool:
 			_emulated_pointer_owned = true
 		touch_used.emit()
 		return true
+	if _orbit_touch == -1 and _look_rect.has_point(at):
+		_orbit_touch = index
+		_touches[index] = {"kind": "orbit", "last": at}
+		if index == 0:
+			_emulated_pointer_owned = true
+		touch_used.emit()
+		return true
 	return false
 
 func _drag_touch(index: int, at: Vector2) -> void:
@@ -215,7 +225,10 @@ func _drag_touch(index: int, at: Vector2) -> void:
 		"move":
 			_update_movement(at)
 		"look":
-			look_dragged.emit(delta.limit_length(240.0 * _unit))
+			if _orbit_touch == -1:
+				look_dragged.emit(delta.limit_length(240.0 * _unit))
+		"orbit":
+			orbit_dragged.emit(delta.limit_length(240.0 * _unit))
 		"button":
 			# A shooting finger can also aim; two thumbs can move and charge.
 			if str(contact.get("action", "")) == "attack":
@@ -233,6 +246,8 @@ func _release_touch(index: int, cancelled: bool) -> void:
 			movement_changed.emit(Vector2.ZERO)
 		"look":
 			_look_touch = -1
+		"orbit":
+			_orbit_touch = -1
 		"button":
 			var action := str(contact.get("action", ""))
 			if _action_holders.has(action):

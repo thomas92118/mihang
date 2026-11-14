@@ -26,6 +26,9 @@ signal action_requested(action: String)
 signal input_settings_requested(values: Dictionary)
 signal character_selected(character_id: String)
 signal character_cycled(step: int)
+signal showcase_rotated(step: float)
+signal showcase_reset_requested
+signal showcase_dragged(relative: Vector2)
 signal close_requested
 
 const INK := Art.PAPER
@@ -163,7 +166,7 @@ const QUICK_ACTIONS := [
 	["camera_closer", "拉近第三人称视角"], ["camera_farther", "拉远第三人称视角"],
 	["mount_slot_1", "选择伙伴 1"], ["mount_slot_2", "选择伙伴 2"], ["mount_slot_3", "选择伙伴 3"],
 	["mount_slot_4", "选择伙伴 4"], ["mount_slot_5", "选择伙伴 5"], ["mount_slot_6", "选择伙伴 6"],
-	["character_switch", "切换角色外观"]
+	["character_switch", "切换角色外观"], ["character_angle", "切换角色视角"], ["char_angle_reset", "角色角度回正"]
 ]
 
 func _ready() -> void:
@@ -195,7 +198,7 @@ func _ready() -> void:
 	_build_controls()
 	_prepare_menu_scrolling()
 	_cache_instrument_layout()
-	_hint_regex.compile("(?<![A-Za-z0-9])(WASD|W/S|A/D|A D|空格/Ctrl|空格 Ctrl|T/Y|1—4|Shift|Ctrl|Tab|Esc|空格|按 2|按 3|W(?=\\s*前进)|[RTYCEMNOGZVHQFBP])(?![A-Za-z0-9₂:]|\\s*轴|\\s*北|\\s*东)")
+	_hint_regex.compile("(?<![A-Za-z0-9])(WASD|W/S|A/D|A D|空格/Ctrl|空格 Ctrl|T/Y|1—4|Shift|Ctrl|Tab|Esc|空格|按 2|按 3|W(?=\\s*前进)|[RTYCEMNOGZVHQFBPK])(?![A-Za-z0-9₂:]|\\s*轴|\\s*北|\\s*东)")
 	root.resized.connect(_apply_layout)
 	toast_label = _label(root, "", Rect2(-390, 130, 780, 44), 15, CYAN, Vector2(0.5, 0))
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -394,12 +397,22 @@ func _build_instruments() -> void:
 	tame_mount_label = _label(tame_panel, "O 生物应援板", Rect2(15, 34, 216, 20), 10, MUTED)
 	tame_panel.hide()
 	shield_label = _label(instruments, "C / 能量盾收起", Rect2(28, -178, 246, 20), 10, MUTED, Vector2(0, 1))
-	var hints := _label(instruments, "E 交互   Tab 制造   M 海图   N 声呐   P 角色   O 生物   Esc 暂停", Rect2(-370, -27, 740, 18), 10, MUTED, Vector2(0.5, 1))
+	var hints := _label(instruments, "E 交互   Tab 制造   M 海图   N 声呐   K 视角   P 角色   O 生物   Esc 暂停", Rect2(-420, -27, 840, 18), 10, MUTED, Vector2(0.5, 1))
 	hints.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_bottom_hints = hints
 
 func _build_main() -> void:
 	var menu := _menu("main", false)
+	menu.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
+			return
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
+			showcase_reset_requested.emit()
+		elif event is InputEventMouseMotion and (event.button_mask & (MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_RIGHT)) != 0:
+			showcase_dragged.emit(event.relative)
+		elif event is InputEventScreenDrag:
+			showcase_dragged.emit(event.relative)
+	)
 	var shade := ColorRect.new()
 	_place(shade, menu, Rect2())
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -420,7 +433,7 @@ func _build_main() -> void:
 	_button(menu, "自由探险  /  EXPLORE", Rect2(78, 536, 390, 52), func() -> void: start_requested.emit("explore"), true)
 	_button(menu, "生存航程  /  SURVIVE", Rect2(78, 598, 390, 46), func() -> void: start_requested.emit("survival"))
 	_button(menu, "操作设置 / 触摸屏与手柄", Rect2(78, 654, 390, 42), func() -> void: action_requested.emit("controls"))
-	var character_card := _panel(menu, Rect2(-356, 86, 336, 468), Vector2(1, 0))
+	var character_card := _panel(menu, Rect2(-356, 86, 336, 518), Vector2(1, 0))
 	character_card.name = "CharacterSelectPanel"
 	_line(character_card, Rect2(20, 26, 26, 2), AMBER_GOLD)
 	_label(character_card, "潜航形态  /  P 切换", Rect2(56, 15, 260, 22), 14, CYAN)
@@ -440,6 +453,16 @@ func _build_main() -> void:
 		c_btn.name = "CharSelect_" + cid
 		c_btn.set_meta("_no_hint", true)
 		main_char_buttons[cid] = c_btn
+	_line(character_card, Rect2(20, 452, 296, 1), Color(CYAN, 0.16))
+	var rot_left_btn := _button(character_card, "◀ 左旋", Rect2(20, 462, 94, 38), func() -> void: showcase_rotated.emit(-PI * 0.25))
+	rot_left_btn.name = "CharRotateLeft"
+	rot_left_btn.set_meta("_no_hint", true)
+	var rot_reset_btn := _button(character_card, "回正", Rect2(121, 462, 94, 38), func() -> void: showcase_reset_requested.emit())
+	rot_reset_btn.name = "CharRotateReset"
+	rot_reset_btn.set_meta("_no_hint", true)
+	var rot_right_btn := _button(character_card, "右旋 ▶", Rect2(222, 462, 94, 38), func() -> void: showcase_rotated.emit(PI * 0.25))
+	rot_right_btn.name = "CharRotateRight"
+	rot_right_btn.set_meta("_no_hint", true)
 	_label(menu, "九片海域  ·  一段属于你的潜航记录", Rect2(78, -52, 540, 28), 14, MUTED, Vector2(0, 1))
 	_label(menu, "THE LIVING OCEAN
 00 — 600 m", Rect2(-300, -94, 240, 58), 14, Art.PAPER, Vector2(1, 1)).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -633,19 +656,19 @@ func _build_win() -> void:
 
 func _build_quick() -> void:
 	var menu := _menu("quick")
-	var card := _panel(menu, Rect2(-430, -350, 860, 700), Vector2(0.5, 0.5))
-	_label(card, "潜航操作 / 快捷面板", Rect2(28, 20, 804, 24), 12, CYAN)
-	_label(card, "选择装备与能力", Rect2(27, 52, 804, 38), 28, INK)
-	_label(card, "方向键选择 · 确认执行 · 返回继续潜航", Rect2(28, 96, 804, 22), 12, MUTED)
+	var card := _panel(menu, Rect2(-430, -366, 860, 732), Vector2(0.5, 0.5))
+	_label(card, "潜航操作 / 快捷面板", Rect2(28, 18, 804, 24), 12, CYAN)
+	_label(card, "选择装备与能力", Rect2(27, 48, 804, 38), 28, INK)
+	_label(card, "方向键选择 · 确认执行 · 返回继续潜航", Rect2(28, 90, 804, 22), 12, MUTED)
 	for i in range(QUICK_ACTIONS.size()):
 		var entry: Array = QUICK_ACTIONS[i]
 		var action := str(entry[0])
 		var title := str(entry[1])
-		var button := _button(card, title, Rect2(28 + (i % 3) * 270, 132 + int(i / 3) * 52, 254, 44), func() -> void: action_requested.emit(action))
+		var button := _button(card, title, Rect2(28 + (i % 3) * 270, 122 + int(i / 3) * 50, 254, 42), func() -> void: action_requested.emit(action))
 		button.name = "Quick_" + action
 		quick_buttons[action] = button
-	_button(card, "操作设置", Rect2(28, 636, 254, 44), func() -> void: action_requested.emit("controls"))
-	_button(card, "返回潜航", Rect2(568, 636, 254, 44), func() -> void: close_requested.emit(), true)
+	_button(card, "操作设置", Rect2(28, 668, 254, 44), func() -> void: action_requested.emit("controls"))
+	_button(card, "返回潜航", Rect2(568, 668, 254, 44), func() -> void: close_requested.emit(), true)
 
 func _build_controls() -> void:
 	var menu := _menu("controls")
@@ -1186,6 +1209,8 @@ func set_screen(screen: String) -> void:
 	var focused := root.get_viewport().gui_get_focus_owner()
 	if is_instance_valid(focused) and menus.has(active_screen) and menus[active_screen].is_ancestor_of(focused):
 		_focus_memory[active_screen] = focused
+	if screen == "play" and is_instance_valid(focused):
+		focused.release_focus()
 	active_screen = screen
 	instruments.visible = screen == "play"
 	for key: String in menus:
@@ -1257,7 +1282,7 @@ func _on_input_settings_changed() -> void:
 func get_input_hint(action: String) -> String:
 	if is_instance_valid(input_controller):
 		return str(input_controller.hint(action))
-	return str({"forward": "W", "backward": "S", "left": "A", "right": "D", "ascend": "空格", "descend": "Ctrl", "attack": "R", "aim": "T", "scope": "Y", "interact": "E", "craft_menu": "Tab", "pause_game": "Esc", "world_map": "M", "sonar_ping": "N", "mount_board": "O", "toggle_shield": "C", "dash": "Q", "booster": "H", "lamp": "F", "sprint": "Shift", "recall_pets": "Z", "mount_toggle": "G", "salvage_drone": "V", "sushi_menu": "B", "character_switch": "P", "weapon_2": "2", "weapon_3": "3", "quick_menu": "快捷操作"}.get(action, action))
+	return str({"forward": "W", "backward": "S", "left": "A", "right": "D", "ascend": "空格", "descend": "Ctrl", "attack": "R", "aim": "T", "scope": "Y", "interact": "E", "craft_menu": "Tab", "pause_game": "Esc", "world_map": "M", "sonar_ping": "N", "mount_board": "O", "toggle_shield": "C", "dash": "Q", "booster": "H", "lamp": "F", "sprint": "Shift", "recall_pets": "Z", "mount_toggle": "G", "salvage_drone": "V", "sushi_menu": "B", "character_switch": "P", "character_angle": "K", "char_angle_reset": "Home", "weapon_2": "2", "weapon_3": "3", "quick_menu": "快捷操作"}.get(action, action))
 
 func _join_hints(first_action: String, second_action: String, separator := "/") -> String:
 	var first := get_input_hint(first_action)
@@ -1290,7 +1315,7 @@ func format_input_text(text: String) -> String:
 			"Y": get_input_hint("scope"), "C": get_input_hint("toggle_shield"), "E": get_input_hint("interact"),
 			"M": get_input_hint("world_map"), "N": get_input_hint("sonar_ping"), "O": get_input_hint("mount_board"),
 			"G": get_input_hint("mount_toggle"), "Z": get_input_hint("recall_pets"), "V": get_input_hint("salvage_drone"),
-			"H": get_input_hint("booster"), "Q": get_input_hint("dash"), "F": get_input_hint("lamp"), "B": get_input_hint("sushi_menu"), "P": get_input_hint("character_switch")
+			"H": get_input_hint("booster"), "Q": get_input_hint("dash"), "F": get_input_hint("lamp"), "B": get_input_hint("sushi_menu"), "P": get_input_hint("character_switch"), "K": get_input_hint("character_angle")
 		}
 	var result := ""
 	var cursor := 0
@@ -1438,7 +1463,7 @@ func _refresh_navigation() -> void:
 			controls[0].grab_focus()
 
 func _prepare_menu_scrolling() -> void:
-	menu_min_sizes = {"main": Vector2(860, 740), "pause": Vector2(532, 516), "craft": Vector2(932, 732), "sushi": Vector2(1032, 748), "mount_board": Vector2(972, 732), "map": Vector2(1092, 760), "win": Vector2(712, 512), "quick": Vector2(892, 732), "controls": Vector2(732, 672)}
+	menu_min_sizes = {"main": Vector2(860, 740), "pause": Vector2(532, 516), "craft": Vector2(932, 732), "sushi": Vector2(1032, 748), "mount_board": Vector2(972, 732), "map": Vector2(1092, 760), "win": Vector2(712, 512), "quick": Vector2(892, 748), "controls": Vector2(732, 672)}
 	for key: String in menus:
 		var menu: Control = menus[key]
 		var children := menu.get_children()

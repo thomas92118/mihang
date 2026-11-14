@@ -355,7 +355,7 @@ func _verify_hud_dual_resolution() -> void:
 	})
 
 	var resolutions := [Vector2i(1280, 800), Vector2i(1920, 1080)]
-	var screens := ["main", "hud", "play", "pause", "craft", "sushi", "mount_board", "map", "win"]
+	var screens := ["main", "hud", "play", "pause", "craft", "sushi", "mount_board", "map", "win", "quick"]
 
 	for res: Vector2i in resolutions:
 		vp.size = res

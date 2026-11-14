@@ -58,6 +58,9 @@ var state = Survival.new()
 var title_camera: Camera3D
 var title_showcase_diver: CharacterBody3D = null
 var _title_clock := 0.0
+var title_showcase_yaw: float = 0.0
+var title_showcase_pitch: float = 0.0
+var _title_dragging: bool = false
 var screen: String = "main"
 var target: Node3D
 var low_oxygen_warned: bool = false
@@ -130,6 +133,11 @@ func _ready() -> void:
 	hud.set_selected_character(initial_char)
 	hud.character_selected.connect(func(cid: String) -> void: _select_character(cid, true))
 	hud.character_cycled.connect(_cycle_character)
+	hud.showcase_rotated.connect(func(step: float) -> void: rotate_title_showcase(step))
+	hud.showcase_reset_requested.connect(reset_title_showcase_angles)
+	hud.showcase_dragged.connect(func(relative: Vector2) -> void:
+		rotate_title_showcase(relative.x * 0.0085, clampf(relative.y * 0.0055, -0.4, 0.4))
+	)
 	hud.action_requested.connect(_on_hud_action_requested)
 	hud.input_settings_requested.connect(func(values: Dictionary): input_controller.apply_settings(values))
 	hud.close_requested.connect(_close_input_screen)
@@ -196,7 +204,15 @@ func _setup_input() -> void:
 		"mount_slot_4": KEY_8,
 		"mount_slot_5": KEY_9,
 		"mount_slot_6": KEY_0,
-		"character_switch": KEY_P
+		"character_switch": KEY_P,
+		"character_angle": KEY_K,
+		"char_angle_reset": KEY_HOME,
+		"char_rotate_left": KEY_LEFT,
+		"char_rotate_right": KEY_RIGHT,
+		"char_tilt_up": KEY_UP,
+		"char_tilt_down": KEY_DOWN,
+		"char_roll_left": KEY_COMMA,
+		"char_roll_right": KEY_PERIOD
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -205,6 +221,16 @@ func _setup_input() -> void:
 		key.physical_keycode = keys[action]
 		if not InputMap.action_has_event(action, key):
 			InputMap.action_add_event(action, key)
+	var extra_keys := {
+		"char_angle_reset": KEY_BACKSLASH,
+		"char_rotate_left": KEY_BRACKETLEFT,
+		"char_rotate_right": KEY_BRACKETRIGHT
+	}
+	for extra_action in extra_keys:
+		var extra_key := InputEventKey.new()
+		extra_key.physical_keycode = extra_keys[extra_action]
+		if not InputMap.action_has_event(extra_action, extra_key):
+			InputMap.action_add_event(extra_action, extra_key)
 
 	var mouse_attack := InputEventMouseButton.new()
 	mouse_attack.button_index = MOUSE_BUTTON_LEFT
@@ -228,6 +254,10 @@ func _setup_touch_controls() -> void:
 	touch_controls.look_dragged.connect(func(relative: Vector2):
 		if screen == "play":
 			diver.apply_look_delta(relative, true)
+	)
+	touch_controls.orbit_dragged.connect(func(relative: Vector2):
+		if screen == "play":
+			diver.apply_orbit_delta(relative, true)
 	)
 	touch_controls.quick_menu_requested.connect(func(): _on_hud_action_requested("quick_menu"))
 	touch_controls.touch_used.connect(func(): input_controller.notify_device("touch"))
@@ -374,6 +404,18 @@ func _cycle_character(step: int = 1) -> void:
 	var next_char := CharacterRoster.next_id(diver.current_character if is_instance_valid(diver) else state.selected_character, step)
 	_select_character(next_char, true)
 
+func rotate_title_showcase(delta_yaw: float, delta_pitch: float = 0.0) -> void:
+	title_showcase_yaw = wrapf(title_showcase_yaw + delta_yaw, -PI, PI)
+	title_showcase_pitch = clampf(title_showcase_pitch + delta_pitch, -0.75, 0.75)
+	if screen == "main":
+		_update_title_camera(0.0)
+
+func reset_title_showcase_angles() -> void:
+	title_showcase_yaw = 0.0
+	title_showcase_pitch = 0.0
+	if screen == "main":
+		_update_title_camera(0.0)
+
 func _select_character(character_id: String, announce: bool = true) -> void:
 	var cid := CharacterRoster.normalize_id(character_id)
 	state.selected_character = cid
@@ -399,6 +441,8 @@ func _select_character(character_id: String, announce: bool = true) -> void:
 
 func _set_screen(value: String) -> void:
 	screen = value
+	if screen != "main":
+		_title_dragging = false
 	if is_instance_valid(ocean):
 		ocean.set_world_labels_visible(screen != "main")
 	if is_instance_valid(title_showcase_diver):
@@ -498,6 +542,24 @@ func _unhandled_input(event: InputEvent) -> void:
 	# GUI and the multitouch layer get the event before gameplay does.
 	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
 		return
+	if screen == "main":
+		if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
+			_title_dragging = event.pressed
+			if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+				get_viewport().set_input_as_handled()
+				return
+		elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_MIDDLE:
+			reset_title_showcase_angles()
+			get_viewport().set_input_as_handled()
+			return
+		elif event is InputEventMouseMotion and (_title_dragging or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
+			rotate_title_showcase(event.relative.x * 0.0085, event.relative.y * 0.0055)
+			get_viewport().set_input_as_handled()
+			return
+		elif event is InputEventScreenDrag:
+			rotate_title_showcase(event.relative.x * 0.0085, event.relative.y * 0.0055)
+			get_viewport().set_input_as_handled()
+			return
 	if is_instance_valid(input_controller):
 		if screen == "play" and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			var touch_forced: bool = str(input_controller.settings.get("touch_mode", "auto")) == "on"
@@ -623,6 +685,23 @@ func _handle_action_event(event: InputEvent) -> void:
 		_recall_pets()
 	elif event.is_action_pressed("character_switch") and screen in ["play", "main", "pause"]:
 		_cycle_character(1)
+	elif event.is_action_pressed("character_angle"):
+		if screen == "play":
+			if is_instance_valid(active_submarine):
+				hud.toast("驾驶潜水艇期间固定舱外潜航视角")
+			elif diver.scoped:
+				hud.toast("请先退出远距瞄准镜后再切换角色视角")
+			else:
+				var preset: Dictionary = diver.cycle_view_angle_preset(1)
+				hud.toast("【角色视角】%s · 按住右键或方向键自由旋转角度 (K 切换 / 中键回正)" % str(preset.get("name", "自由视角")))
+		elif screen == "main":
+			rotate_title_showcase(PI * 0.25)
+	elif event.is_action_pressed("char_angle_reset"):
+		if screen == "play" and is_instance_valid(diver) and not is_instance_valid(active_submarine):
+			diver.reset_character_angles(false)
+			hud.toast("【角色视角】已恢复背后跟随与标准姿态")
+		elif screen == "main":
+			reset_title_showcase_angles()
 
 func _switch_weapon(weapon_id: String) -> void:
 	var names := {"knife": "潜水战术刀", "axe": "破拆战斧", "sonic": "蓝光静滞枪", "marker_gun": "光标指示枪"}
@@ -2467,6 +2546,12 @@ func _interact_escape_console() -> void:
 
 func _update_title_camera(delta: float) -> void:
 	_title_clock += delta
+	if delta > 0.0 and is_instance_valid(input_controller):
+		var yaw_in: float = float(input_controller.get_axis("char_rotate_left", "char_rotate_right"))
+		var pitch_in: float = float(input_controller.get_axis("char_tilt_up", "char_tilt_down"))
+		if yaw_in != 0.0 or pitch_in != 0.0:
+			title_showcase_yaw = wrapf(title_showcase_yaw + yaw_in * 2.4 * delta, -PI, PI)
+			title_showcase_pitch = clampf(title_showcase_pitch + pitch_in * 1.6 * delta, -0.75, 0.75)
 	# A distant three-quarter view gives the arch and fish stream room to breathe;
 	# the nearby escape pod no longer dominates the title's upper-right corner.
 	var at := Vector3(-19.5 + sin(_title_clock * 0.045) * 1.1, -6.2 + sin(_title_clock * 0.09) * 0.16, 9.5)
@@ -2477,6 +2562,6 @@ func _update_title_camera(delta: float) -> void:
 		var bob := sin(_title_clock * 1.35) * 0.035
 		var cam_xf := title_camera.global_transform
 		var local_pos := Vector3(0.20, 0.63 + bob, -2.54)
-		var local_basis := Basis(Vector3.UP, deg_to_rad(156.0 + sin(_title_clock * 0.65) * 5.0))
+		var local_basis := Basis(Vector3.UP, deg_to_rad(156.0 + sin(_title_clock * 0.65) * 5.0) + title_showcase_yaw) * Basis(Vector3.RIGHT, title_showcase_pitch)
 		title_showcase_diver.global_transform = Transform3D(cam_xf.basis * local_basis, cam_xf * local_pos)
 		title_showcase_diver.apply_showcase_pose(delta)
