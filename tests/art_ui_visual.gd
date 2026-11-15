@@ -3,7 +3,7 @@ extends SceneTree
 const Game = preload("res://scripts/game.gd")
 const Capture = preload("res://tests/art_capture_support.gd")
 const STATES := ["main", "play", "quiet", "discovery", "low-oxygen", "boss", "alert-stack", "timeout",
-	"submarine", "mount", "craft", "map", "sushi", "mount_board", "pause", "win", "quick", "controls"]
+	"onboarding", "submarine", "mount", "craft", "map", "sushi", "mount_board", "pause", "win", "quick", "controls", "guide"]
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -40,7 +40,21 @@ func _run() -> void:
 		DirAccess.make_dir_recursive_absolute(directory)
 		for state: String in STATES:
 			var data := base.duplicate(true)
-			var screen := "play" if state in ["quiet", "discovery", "low-oxygen", "boss", "alert-stack", "timeout", "submarine", "mount"] else state
+			var screen := "play" if state in ["quiet", "discovery", "low-oxygen", "boss", "alert-stack", "timeout", "onboarding", "submarine", "mount"] else state
+			if state == "onboarding":
+				data["onboarding"] = {
+					"active": true,
+					"completed_banner": false,
+					"step_index": 1,
+					"step_total": 6,
+					"step_id": "swim",
+					"title": "立体潜航与视野",
+					"instruction": "推动 WASD 向前巡游，移动视角观察四周，并用 空格 上浮、Ctrl 下潜。",
+					"progress_ratio": 0.25,
+					"sub_hint": "巡游 2/8m · 升降 0.4/1.5m · L 指南",
+					"onboarding_completed": false,
+					"onboarding_skipped": false,
+				}
 			if state in ["low-oxygen", "alert-stack"]:
 				data["oxygen"] = 8.0
 				data["health"] = 15.0
@@ -61,6 +75,10 @@ func _run() -> void:
 				hud.update_hud(data)
 			else:
 				hud._detail_time = 4.0
+			if state == "onboarding":
+				assert(hud.onboarding_panel.is_visible_in_tree(), "Onboarding state must display OnboardingInstrument")
+				var life_node: Control = hud.instruments.get_node("LifeSupportInstrument")
+				assert(not hud.onboarding_panel.get_global_rect().intersects(life_node.get_global_rect()))
 			if state in ["discovery", "alert-stack", "timeout"]:
 				hud.toast("发现新的科考地标 · 已记录海图与航向")
 				hud._process(4.0 if state == "timeout" else 0.2)

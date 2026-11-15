@@ -4,6 +4,8 @@ const WorldMap = preload("res://scripts/world_map.gd")
 const Art = preload("res://scripts/art_direction.gd")
 const OceanUiTheme = preload("res://scripts/presentation/ocean_ui_theme.gd")
 const CharacterRoster = preload("res://scripts/presentation/character_roster.gd")
+const GameplayGuide = preload("res://scripts/gameplay_guide.gd")
+const GuidePanel = preload("res://scripts/presentation/guide_panel.gd")
 
 signal start_requested(mode: String)
 signal resume_requested
@@ -30,6 +32,8 @@ signal showcase_rotated(step: float)
 signal showcase_reset_requested
 signal showcase_dragged(relative: Vector2)
 signal close_requested
+signal onboarding_restart_requested
+signal onboarding_skip_requested
 
 const INK := Art.PAPER
 const MUTED := Art.MUTED
@@ -156,6 +160,13 @@ var main_char_subtitle: Label
 var main_char_buttons: Dictionary = {}
 var pause_char_btn: Button
 var _displayed_character_id := ""
+var guide_view: Dictionary = {}
+var onboarding_panel: Panel
+var onboarding_badge: Label
+var onboarding_title: Label
+var onboarding_bar: ProgressBar
+var onboarding_desc: Label
+var onboarding_sub: Label
 
 const QUICK_ACTIONS := [
 	["weapon_1", "潜水战术刀"], ["weapon_2", "破拆战斧"], ["weapon_3", "蓝光静滞枪"], ["weapon_4", "光标指示枪"],
@@ -166,7 +177,8 @@ const QUICK_ACTIONS := [
 	["camera_closer", "拉近第三人称视角"], ["camera_farther", "拉远第三人称视角"],
 	["mount_slot_1", "选择伙伴 1"], ["mount_slot_2", "选择伙伴 2"], ["mount_slot_3", "选择伙伴 3"],
 	["mount_slot_4", "选择伙伴 4"], ["mount_slot_5", "选择伙伴 5"], ["mount_slot_6", "选择伙伴 6"],
-	["character_switch", "切换角色外观"], ["character_angle", "切换角色视角"], ["char_angle_reset", "角色角度回正"]
+	["character_switch", "切换角色外观"], ["character_angle", "切换角色视角"], ["char_angle_reset", "角色角度回正"],
+	["gameplay_guide", "潜航指南"]
 ]
 
 func _ready() -> void:
@@ -196,9 +208,10 @@ func _ready() -> void:
 	_build_win()
 	_build_quick()
 	_build_controls()
+	_build_guide()
 	_prepare_menu_scrolling()
 	_cache_instrument_layout()
-	_hint_regex.compile("(?<![A-Za-z0-9])(WASD|W/S|A/D|A D|空格/Ctrl|空格 Ctrl|T/Y|1—4|Shift|Ctrl|Tab|Esc|空格|按 2|按 3|W(?=\\s*前进)|[RTYCEMNOGZVHQFBPK])(?![A-Za-z0-9₂:]|\\s*轴|\\s*北|\\s*东)")
+	_hint_regex.compile("(?<![A-Za-z0-9])(WASD|W/S|A/D|A D|空格/Ctrl|空格 Ctrl|L / F1|L/F1|T/Y|1—4|Shift|Ctrl|Tab|Esc|F1|空格|按 2|按 3|W(?=\\s*前进)|[RTYCEMNOGZVHQFBPKL])(?![A-Za-z0-9₂:.]|\\s*轴|\\s*北|\\s*东)")
 	root.resized.connect(_apply_layout)
 	toast_label = _label(root, "", Rect2(-390, 130, 780, 44), 15, CYAN, Vector2(0.5, 0))
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -269,6 +282,25 @@ func _build_instruments() -> void:
 	mission_title = _label(instruments, "探索未知海域", Rect2(28, 60, 300, 24), 14, INK)
 	mission_detail = _label(instruments, "M 勘测海图  /  N 声呐", Rect2(28, 90, 300, 38), 11, MUTED)
 	mission_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	onboarding_panel = _panel(instruments, Rect2(28, 56, 268, 148))
+	onboarding_panel.name = "OnboardingInstrument"
+	onboarding_panel.add_theme_stylebox_override("panel", _style(Color(Art.INK, 0.72), Color(CYAN, 0.28), 3))
+	onboarding_badge = _label(onboarding_panel, "初航引导 · 1/6", Rect2(12, 8, 244, 18), 14, AMBER_GOLD)
+	onboarding_badge.set_meta("_no_hint", true)
+	onboarding_title = _label(onboarding_panel, "立体潜航与视野", Rect2(12, 28, 244, 22), 15, INK)
+	onboarding_title.set_meta("_no_hint", true)
+	onboarding_bar = ProgressBar.new()
+	_place(onboarding_bar, onboarding_panel, Rect2(12, 53, 244, 3))
+	onboarding_bar.show_percentage = false
+	onboarding_bar.max_value = 1.0
+	onboarding_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	onboarding_bar.add_theme_stylebox_override("background", _style(Color(CYAN, 0.15), Color.TRANSPARENT, 1))
+	onboarding_bar.add_theme_stylebox_override("fill", _style(AMBER_GOLD, Color.TRANSPARENT, 1))
+	onboarding_desc = _label(onboarding_panel, "", Rect2(12, 60, 244, 60), 14, CYAN)
+	onboarding_desc.clip_text = false
+	onboarding_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	onboarding_sub = _label(onboarding_panel, "", Rect2(12, 122, 244, 20), 14, MUTED)
+	onboarding_panel.hide()
 	compass_strip = WorldMap.CompassStrip.new()
 	_place(compass_strip, instruments, Rect2(-160, 18, 320, 34), Vector2(0.5, 0))
 	compass_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -397,7 +429,7 @@ func _build_instruments() -> void:
 	tame_mount_label = _label(tame_panel, "O 生物应援板", Rect2(15, 34, 216, 20), 10, MUTED)
 	tame_panel.hide()
 	shield_label = _label(instruments, "C / 能量盾收起", Rect2(28, -178, 246, 20), 10, MUTED, Vector2(0, 1))
-	var hints := _label(instruments, "E 交互   Tab 制造   M 海图   N 声呐   K 视角   P 角色   O 生物   Esc 暂停", Rect2(-420, -27, 840, 18), 10, MUTED, Vector2(0.5, 1))
+	var hints := _label(instruments, "E 交互   Tab 制造   M 海图   N 声呐   L 指南   K 视角   P 角色   Esc 暂停", Rect2(-420, -27, 840, 18), 10, MUTED, Vector2(0.5, 1))
 	hints.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_bottom_hints = hints
 
@@ -432,7 +464,10 @@ func _build_main() -> void:
 在沉睡的古城，听见大海的回声。", Rect2(78, 450, 470, 68), 16, MUTED)
 	_button(menu, "自由探险  /  EXPLORE", Rect2(78, 536, 390, 52), func() -> void: start_requested.emit("explore"), true)
 	_button(menu, "生存航程  /  SURVIVE", Rect2(78, 598, 390, 46), func() -> void: start_requested.emit("survival"))
-	_button(menu, "操作设置 / 触摸屏与手柄", Rect2(78, 654, 390, 42), func() -> void: action_requested.emit("controls"))
+	var main_guide_btn := _button(menu, "玩法说明 / 潜航指南", Rect2(78, 654, 190, 42), func() -> void: action_requested.emit("gameplay_guide"))
+	main_guide_btn.name = "MainGuideButton"
+	var main_controls_btn := _button(menu, "操作与触控设置", Rect2(278, 654, 190, 42), func() -> void: action_requested.emit("controls"))
+	main_controls_btn.name = "MainControlsButton"
 	var character_card := _panel(menu, Rect2(-356, 86, 336, 518), Vector2(1, 0))
 	character_card.name = "CharacterSelectPanel"
 	_line(character_card, Rect2(20, 26, 26, 2), AMBER_GOLD)
@@ -469,7 +504,7 @@ func _build_main() -> void:
 
 func _build_pause() -> void:
 	var menu := _menu("pause")
-	var card := _panel(menu, Rect2(-250, -242, 500, 484), Vector2(0.5, 0.5))
+	var card := _panel(menu, Rect2(-250, -268, 500, 536), Vector2(0.5, 0.5))
 	_line(card, Rect2(32, 31, 28, 2), AMBER_GOLD)
 	_label(card, "潜航日志 / 暂停", Rect2(75, 20, 380, 24), 11, MUTED)
 	_label(card, "在此稍作停留", Rect2(31, 78, 438, 54), 31, INK)
@@ -477,15 +512,17 @@ func _build_pause() -> void:
 	_button(card, "继续潜航", Rect2(32, 205, 436, 46), func() -> void: resume_requested.emit(), true)
 	var map_button := _button(card, "M / 勘测海图", Rect2(32, 261, 436, 42), func() -> void: open_map_requested.emit())
 	map_button.name = "OpenSeaChartButton"
-	var p_prev := _button(card, "◀", Rect2(32, 313, 52, 42), func() -> void: character_cycled.emit(-1))
+	var guide_button := _button(card, "L / 潜航指南与引导", Rect2(32, 313, 436, 42), func() -> void: action_requested.emit("gameplay_guide"))
+	guide_button.name = "OpenGuideButton"
+	var p_prev := _button(card, "◀", Rect2(32, 365, 52, 42), func() -> void: character_cycled.emit(-1))
 	p_prev.set_meta("_no_hint", true)
-	pause_char_btn = _button(card, "P / 角色：珊瑚晨曦人鱼", Rect2(92, 313, 316, 42), func() -> void: character_cycled.emit(1))
+	pause_char_btn = _button(card, "P / 角色：珊瑚晨曦人鱼", Rect2(92, 365, 316, 42), func() -> void: character_cycled.emit(1))
 	pause_char_btn.name = "PauseCharacterButton"
-	var p_next := _button(card, "▶", Rect2(416, 313, 52, 42), func() -> void: character_cycled.emit(1))
+	var p_next := _button(card, "▶", Rect2(416, 365, 52, 42), func() -> void: character_cycled.emit(1))
 	p_next.set_meta("_no_hint", true)
-	_button(card, "操作设置", Rect2(32, 367, 208, 42), func() -> void: action_requested.emit("controls"))
-	_button(card, "重新开始", Rect2(252, 367, 216, 42), func() -> void: restart_requested.emit())
-	_label(card, "Esc 返回海底", Rect2(32, 434, 436, 20), 10, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_button(card, "操作设置", Rect2(32, 419, 208, 42), func() -> void: action_requested.emit("controls"))
+	_button(card, "重新开始", Rect2(252, 419, 216, 42), func() -> void: restart_requested.emit())
+	_label(card, "Esc 返回海底", Rect2(32, 486, 436, 20), 10, MUTED).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 func _build_craft() -> void:
 	var menu := _menu("craft")
@@ -701,7 +738,19 @@ func _build_controls() -> void:
 	)
 	settings_controls["touch_mode"] = mode
 	_label(card, "手柄：左杆推进 / 转向，右杆观察，肩键升降。\n触屏：左摇杆移动，右侧滑动观察，攻击可长按蓄力。", Rect2(28, 532, 644, 46), 12, MUTED)
-	_button(card, "返回", Rect2(28, 588, 644, 40), func() -> void: close_requested.emit(), true)
+	var controls_guide_btn := _button(card, "查看潜航指南", Rect2(28, 588, 220, 40), func() -> void: action_requested.emit("gameplay_guide"))
+	controls_guide_btn.name = "ControlsGuideButton"
+	_button(card, "返回", Rect2(260, 588, 412, 40), func() -> void: close_requested.emit(), true)
+
+func _build_guide() -> void:
+	var menu := _menu("guide")
+	guide_view = GuidePanel.build(menu, GameplayGuide.get_chapters(), {
+		"format_text": func(txt: String) -> String: return format_input_text(txt),
+		"on_restart_onboarding": func() -> void: onboarding_restart_requested.emit(),
+		"on_skip_onboarding": func() -> void: onboarding_skip_requested.emit(),
+		"on_open_controls": func() -> void: action_requested.emit("controls"),
+		"on_close": func() -> void: close_requested.emit(),
+	})
 
 func _setting_slider(parent: Control, key: String, title: String, y: float, minimum: float, maximum: float, increment: float) -> void:
 	_label(parent, title, Rect2(28, y + 8, 274, 26), 14, INK)
@@ -1128,19 +1177,45 @@ func update_hud(data: Dictionary) -> void:
 	equipment_value.visible = details and not in_sub and not scoped
 	_cargo.visible = details or overweight
 	shield_label.visible = is_shield or details
+	var onboarding: Dictionary = data.get("onboarding", {})
+	sync_onboarding_state(onboarding)
+	var ob_active := bool(onboarding.get("active", false))
+	var show_onboarding := ob_active and not scoped and not fighting and not in_sub
 	var story_route := bool(data.get("mother_tree_active", false)) and not bool(data.get("escape_crafted", false))
-	var show_mission := has_wp or fighting or details or story_route
+	var show_mission := (has_wp or fighting or details or story_route) and not show_onboarding
 	mission_title.visible = show_mission
 	mission_detail.visible = show_mission
 	explore_summary_label.visible = details
-	_journal_heading.modulate.a = 0.92 if show_mission else 0.28
+	_journal_heading.modulate.a = 0.92 if (show_mission or show_onboarding) else 0.28
 	if is_instance_valid(_journal_bar):
-		_journal_bar.modulate.a = 0.92 if show_mission else 0.26
+		_journal_bar.modulate.a = 0.92 if (show_mission or show_onboarding) else 0.26
 	weapon_hint.visible = details and not scoped and not in_sub and not booster_on
 	reticle.visible = not scoped and (aiming or charging or not target.is_empty() or in_sub or cur_w in ["sonic", "marker", "marker_gun"])
 	tame_panel.visible = beast_cnt > 0 and not scoped and (details or mount_idx >= 0 or fighting)
+	if is_instance_valid(onboarding_panel):
+		onboarding_panel.visible = show_onboarding
+		if show_onboarding:
+			var completed_banner := bool(onboarding.get("completed_banner", false))
+			var step_idx := int(onboarding.get("step_index", 1))
+			var step_tot := maxi(1, int(onboarding.get("step_total", 6)))
+			onboarding_badge.text = "初航引导 · 已完成" if completed_banner else ("初航引导 · %d/%d" % [step_idx, step_tot])
+			_set_font_color(onboarding_badge, CYAN if completed_banner else AMBER_GOLD)
+			onboarding_title.text = str(onboarding.get("title", "初航实操引导"))
+			onboarding_bar.value = clampf(float(onboarding.get("progress_ratio", 0.0)), 0.0, 1.0)
+			var raw_desc := str(onboarding.get("instruction", ""))
+			onboarding_desc.set_meta("_hint_source", raw_desc)
+			onboarding_desc.text = format_input_text(raw_desc)
+			onboarding_desc.set_meta("_hint_rendered", onboarding_desc.text)
+			onboarding_desc.set_meta("_hint_generation", _hint_generation)
+			var raw_sub := str(onboarding.get("sub_hint", ""))
+			onboarding_sub.set_meta("_hint_source", raw_sub)
+			onboarding_sub.text = format_input_text(raw_sub)
+			onboarding_sub.set_meta("_hint_rendered", onboarding_sub.text)
+			onboarding_sub.set_meta("_hint_generation", _hint_generation)
+			onboarding_panel.modulate.a = 0.52 if low_oxygen else 0.96
+			_layout_onboarding()
 	var life_alert := low_oxygen or float(data.get("health", 100.0)) < 30.0
-	var quiet_explore := not show_mission and not life_alert and not in_sub and not booster_on and not scoped
+	var quiet_explore := not show_mission and not show_onboarding and not life_alert and not in_sub and not booster_on and not scoped
 	var life_panel: Panel = instruments.get_node("LifeSupportInstrument")
 	if life_alert != _life_alert:
 		_life_alert = life_alert
@@ -1205,6 +1280,10 @@ func set_selected_character(character_id: String) -> void:
 		pause_char_btn.set_meta("_hint_rendered", pause_char_btn.text)
 		pause_char_btn.set_meta("_hint_generation", _hint_generation)
 
+func sync_onboarding_state(onboarding: Dictionary) -> void:
+	if guide_view.has("sync_onboarding_status"):
+		(guide_view["sync_onboarding_status"] as Callable).call(onboarding)
+
 func set_screen(screen: String) -> void:
 	var focused := root.get_viewport().gui_get_focus_owner()
 	if is_instance_valid(focused) and menus.has(active_screen) and menus[active_screen].is_ancestor_of(focused):
@@ -1249,6 +1328,10 @@ func _layout_toast() -> void:
 			top = maxf(top, boss_rect.end.y + 12.0)
 	# Allow long discoveries to wrap without crossing the depth or boss readouts.
 	var height := 66.0 if toast_label.text.length() > int(width / 17.0) else 44.0
+	if is_instance_valid(onboarding_panel) and (onboarding_panel.is_visible_in_tree() or (instruments.visible and onboarding_panel.visible)):
+		var ob_rect := onboarding_panel.get_global_rect()
+		if left < ob_rect.end.x and left + width > ob_rect.position.x and top < ob_rect.end.y and top + height > ob_rect.position.y:
+			top = maxf(top, ob_rect.end.y + 10.0)
 	_set_control_rect(toast_label, Rect2(left, top, width, height))
 
 func configure_input(controller: Node) -> void:
@@ -1282,7 +1365,7 @@ func _on_input_settings_changed() -> void:
 func get_input_hint(action: String) -> String:
 	if is_instance_valid(input_controller):
 		return str(input_controller.hint(action))
-	return str({"forward": "W", "backward": "S", "left": "A", "right": "D", "ascend": "空格", "descend": "Ctrl", "attack": "R", "aim": "T", "scope": "Y", "interact": "E", "craft_menu": "Tab", "pause_game": "Esc", "world_map": "M", "sonar_ping": "N", "mount_board": "O", "toggle_shield": "C", "dash": "Q", "booster": "H", "lamp": "F", "sprint": "Shift", "recall_pets": "Z", "mount_toggle": "G", "salvage_drone": "V", "sushi_menu": "B", "character_switch": "P", "character_angle": "K", "char_angle_reset": "Home", "weapon_2": "2", "weapon_3": "3", "quick_menu": "快捷操作"}.get(action, action))
+	return str({"forward": "W", "backward": "S", "left": "A", "right": "D", "ascend": "空格", "descend": "Ctrl", "attack": "R", "aim": "T", "scope": "Y", "interact": "E", "craft_menu": "Tab", "pause_game": "Esc", "world_map": "M", "sonar_ping": "N", "mount_board": "O", "toggle_shield": "C", "dash": "Q", "booster": "H", "lamp": "F", "sprint": "Shift", "recall_pets": "Z", "mount_toggle": "G", "salvage_drone": "V", "sushi_menu": "B", "character_switch": "P", "character_angle": "K", "char_angle_reset": "Home", "weapon_2": "2", "weapon_3": "3", "quick_menu": "快捷操作", "gameplay_guide": "L"}.get(action, action))
 
 func _join_hints(first_action: String, second_action: String, separator := "/") -> String:
 	var first := get_input_hint(first_action)
@@ -1306,16 +1389,18 @@ func format_input_text(text: String) -> String:
 			"A D": _join_hints("left", "right", " "),
 			"空格/Ctrl": _join_hints("ascend", "descend"),
 			"空格 Ctrl": _join_hints("ascend", "descend", " / "),
+			"L / F1": get_input_hint("gameplay_guide"),
+			"L/F1": get_input_hint("gameplay_guide"),
 			"T/Y": _join_hints("aim", "scope"),
 			"1—4": get_input_hint("quick_menu"), "Shift": get_input_hint("sprint"),
 			"Ctrl": get_input_hint("descend"), "空格": get_input_hint("ascend"),
 			"按 2": "使用 " + get_input_hint("weapon_2"),
 			"按 3": "使用 " + get_input_hint("weapon_3"), "Tab": get_input_hint("craft_menu"),
-			"Esc": get_input_hint("pause_game"), "R": get_input_hint("attack"), "T": get_input_hint("aim"),
+			"Esc": get_input_hint("pause_game"), "F1": get_input_hint("gameplay_guide"), "R": get_input_hint("attack"), "T": get_input_hint("aim"),
 			"Y": get_input_hint("scope"), "C": get_input_hint("toggle_shield"), "E": get_input_hint("interact"),
 			"M": get_input_hint("world_map"), "N": get_input_hint("sonar_ping"), "O": get_input_hint("mount_board"),
 			"G": get_input_hint("mount_toggle"), "Z": get_input_hint("recall_pets"), "V": get_input_hint("salvage_drone"),
-			"H": get_input_hint("booster"), "Q": get_input_hint("dash"), "F": get_input_hint("lamp"), "B": get_input_hint("sushi_menu"), "P": get_input_hint("character_switch"), "K": get_input_hint("character_angle")
+			"H": get_input_hint("booster"), "Q": get_input_hint("dash"), "F": get_input_hint("lamp"), "B": get_input_hint("sushi_menu"), "P": get_input_hint("character_switch"), "K": get_input_hint("character_angle"), "L": get_input_hint("gameplay_guide")
 		}
 	var result := ""
 	var cursor := 0
@@ -1463,7 +1548,7 @@ func _refresh_navigation() -> void:
 			controls[0].grab_focus()
 
 func _prepare_menu_scrolling() -> void:
-	menu_min_sizes = {"main": Vector2(860, 740), "pause": Vector2(532, 516), "craft": Vector2(932, 732), "sushi": Vector2(1032, 748), "mount_board": Vector2(972, 732), "map": Vector2(1092, 760), "win": Vector2(712, 512), "quick": Vector2(892, 748), "controls": Vector2(732, 672)}
+	menu_min_sizes = {"main": Vector2(860, 740), "pause": Vector2(532, 568), "craft": Vector2(932, 732), "sushi": Vector2(1032, 748), "mount_board": Vector2(972, 732), "map": Vector2(1092, 760), "win": Vector2(712, 512), "quick": Vector2(892, 748), "controls": Vector2(732, 672), "guide": Vector2(992, 732)}
 	for key: String in menus:
 		var menu: Control = menus[key]
 		var children := menu.get_children()
@@ -1566,9 +1651,43 @@ func _apply_layout() -> void:
 			_set_control_rect(boss_warning, Rect2(16, 42, 242, 20))
 			boss_name.clip_text = true
 			boss_warning.clip_text = true
+	_layout_onboarding()
 	_apply_touch_visibility()
 	_layout_toast()
 	_refresh_navigation.call_deferred()
+
+func _layout_onboarding() -> void:
+	if not is_instance_valid(onboarding_panel) or not is_instance_valid(root):
+		return
+	var safe := get_layout_safe_rect()
+	if _touch_layout:
+		if safe.size.y < 650.0:
+			_set_control_rect(onboarding_panel, Rect2(-248, 125, 232, 72), Vector2(1, 0))
+			_set_control_rect(onboarding_badge, Rect2(8, 4, 216, 16))
+			_set_control_rect(onboarding_title, Rect2(8, 20, 216, 18))
+			_set_control_rect(onboarding_bar, Rect2(8, 40, 216, 2))
+			_set_control_rect(onboarding_desc, Rect2(8, 44, 216, 24))
+			onboarding_desc.clip_text = true
+			onboarding_sub.visible = false
+		else:
+			var y_pos := 354.0 if (is_instance_valid(tame_panel) and tame_panel.visible) else 278.0
+			_set_control_rect(onboarding_panel, Rect2(20, y_pos, 260, 148))
+			_set_control_rect(onboarding_badge, Rect2(12, 8, 236, 18))
+			_set_control_rect(onboarding_title, Rect2(12, 28, 236, 22))
+			_set_control_rect(onboarding_bar, Rect2(12, 53, 236, 3))
+			_set_control_rect(onboarding_desc, Rect2(12, 60, 236, 60))
+			_set_control_rect(onboarding_sub, Rect2(12, 122, 236, 20))
+			onboarding_desc.clip_text = false
+			onboarding_sub.visible = true
+	else:
+		_set_control_rect(onboarding_panel, Rect2(28, 56, 268, 148))
+		_set_control_rect(onboarding_badge, Rect2(12, 8, 244, 18))
+		_set_control_rect(onboarding_title, Rect2(12, 28, 244, 22))
+		_set_control_rect(onboarding_bar, Rect2(12, 53, 244, 3))
+		_set_control_rect(onboarding_desc, Rect2(12, 60, 244, 60))
+		_set_control_rect(onboarding_sub, Rect2(12, 122, 244, 20))
+		onboarding_desc.clip_text = false
+		onboarding_sub.visible = true
 
 func _apply_touch_visibility() -> void:
 	var compact := _touch_layout and root.size.y < 650.0

@@ -3,6 +3,7 @@ extends SceneTree
 const Game = preload("res://scripts/game.gd")
 const Ocean = preload("res://scripts/ocean.gd")
 const EnergyOrb = preload("res://scripts/energy_orb.gd")
+const SubmarineTorpedo = preload("res://scripts/submarine_torpedo.gd")
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -244,8 +245,63 @@ func _run() -> void:
 		assert(not hit.is_empty(), "The real laser must be able to damage the Boss")
 	assert(float(boss.get_meta("health")) <= 0.0 and game.ocean.conquered_bosses.has("water_dragon"))
 
-	# Test taming near-death boss with sonic gun
+	# Multi-part hitboxes, melee volume reach, non-instant-kill bosses/wolves, and 4-boss status ticks.
+	var kraken: Node3D = game.ocean.kraken_boss
+	var ffish: Node3D = game.ocean.flying_fish_boss
 	var turtle: Node3D = game.ocean.turtle_boss
+	var wolf_test: Node3D = game.ocean.sea_wolves[0]
+	kraken.position = Vector3(260, -24, 40)
+	kraken.rotation = Vector3.ZERO
+	turtle.position = Vector3(310, -24, 40)
+	turtle.rotation = Vector3.ZERO
+	ffish.position = Vector3(360, -24, 40)
+	ffish.rotation = Vector3.ZERO
+	wolf_test.position = Vector3(410, -24, 40)
+	wolf_test.rotation = Vector3.ZERO
+	await physics_frame
+
+	assert(game.ocean.trace_laser(kraken.position + Vector3(0, 3.2, 18), Vector3(0, 0, -1), 30.0)["creature"] == kraken, "Laser must hit Kraken upper mantle dome")
+	assert(game.ocean.trace_laser(kraken.position + Vector3(0, -5.5, 18), Vector3(0, 0, -1), 30.0)["creature"] == kraken, "Laser must hit Kraken hanging tentacles")
+	assert(game.ocean.trace_laser(turtle.position + Vector3(0, 0.6, 18), Vector3(0, 0, -1), 30.0)["creature"] == turtle, "Laser must hit Colossus Turtle head")
+	assert(game.ocean.trace_laser(turtle.position + Vector3(6.5, 0.15, 18), Vector3(0, 0, -1), 30.0)["creature"] == turtle, "Laser must hit Colossus Turtle front flipper")
+	assert(game.ocean.trace_laser(ffish.position + Vector3(5.5, 0.25, 18), Vector3(0, 0, -1), 30.0)["creature"] == ffish, "Laser must hit Storm Flying Fish gliding wing")
+	assert(game.ocean.trace_laser(wolf_test.position + Vector3(12, 0.1, 2.6), Vector3(-1, 0, 0), 20.0)["creature"] == wolf_test, "Laser must hit Sea Wolf snout")
+
+	var kraken_hp_before: float = float(kraken.get_meta("health"))
+	var kraken_pos_before: Vector3 = kraken.position
+	var tentacle_slash: Dictionary = game.ocean.strike_predator(kraken.position + Vector3(6.2, -5.5, 0), Vector3(-1, 0, 0), 3.6, 40.0, 4.0, false, 1)
+	assert(int(tentacle_slash.get("hit_count", 0)) == 1 and not bool(tentacle_slash.get("killed", true)), "Knife on Kraken tentacle must hit without instant-killing")
+	assert(is_equal_approx(float(kraken.get_meta("health")), kraken_hp_before - 40.0), "Melee must subtract exact damage on Kraken")
+	assert(kraken.position.is_equal_approx(kraken_pos_before), "Giant bosses must resist knockback impulses")
+
+	var wolf_hp_before: float = float(wolf_test.get_meta("health"))
+	var wolf_slash: Dictionary = game.ocean.strike_predator(wolf_test.position + Vector3(0, 0.1, 4.8), Vector3(0, 0, -1), 3.6, 45.0, 0.0, false, 1)
+	assert(int(wolf_slash.get("hit_count", 0)) == 1 and not bool(wolf_slash.get("killed", true)), "Melee must not instant-kill 650 HP Sea Wolf")
+	assert(is_equal_approx(float(wolf_test.get_meta("health")), wolf_hp_before - 45.0))
+
+	assert(game.ocean.freeze_creatures(kraken.position + Vector3(0, -7.0, 0), 4.0, 1.0) >= 1, "Stasis orb near lower tentacles must freeze Kraken")
+	assert(float(kraken.get_meta("freeze_timer")) > 0.0 and kraken.has_node("StasisAura"))
+	var kraken_anim0: float = kraken.animation_clock
+	var ffish_anim0: float = ffish.animation_clock
+	var turtle_anim0: float = turtle.animation_clock
+	game.ocean._process(0.4)
+	assert(kraken.animation_clock == kraken_anim0, "Frozen Kraken must pause procedural animation")
+	assert(ffish.animation_clock > ffish_anim0 and turtle.animation_clock > turtle_anim0, "Non-dragon bosses must animate in ocean._process")
+	game.ocean._process(0.7)
+	game.ocean._process(0.1)
+	assert(float(kraken.get_meta("freeze_timer")) == 0.0 and kraken.animation_clock > kraken_anim0, "Kraken must unfreeze and resume animation after stasis")
+
+	var torp := SubmarineTorpedo.new()
+	torp.damage = 200.0
+	torp.explosion_radius = 6.5
+	torp.ocean_ref = game.ocean
+	game.add_child(torp)
+	torp.set_physics_process(false)
+	var kraken_hp_pre_torp: float = float(kraken.get_meta("health"))
+	torp._detonate(kraken.global_position + Vector3(4.5, -7.2, 0), Vector3.UP, kraken.get_node("CreatureHitbox"))
+	assert(is_equal_approx(float(kraken.get_meta("health")), kraken_hp_pre_torp - 200.0), "Torpedo impacting Kraken tentacle hitbox must deal full direct damage")
+
+	# Test taming near-death boss with sonic gun
 	turtle.set_meta("health", 500.0)
 	game.ocean.freeze_creatures(turtle.position, 12.0, 5.0)
 	game.diver.position = turtle.position + Vector3(0, 0, 5)
@@ -253,6 +309,28 @@ func _run() -> void:
 	game._tame_creature(turtle)
 	assert(game.tamed_beasts.size() == 1 and bool(turtle.get_meta("tamed")))
 	assert(game.active_mount_idx == 0)
+
+	# Mounted downward shot & stasis orb must pass through active mount without self-blocking or freezing mount.
+	game.diver.global_position = turtle.global_position + turtle.global_basis * Vector3(0, 1.8, 0.2)
+	game.diver.rotation = Vector3.ZERO
+	game.diver.camera.rotation = Vector3(-0.22, 0, 0)
+	game.diver.equip_anim_time = 0.0
+	game.diver.camera_punch = Vector3.ZERO
+	game.diver._process(0.01)
+	var mount_aim_dir: Vector3 = -game.diver.camera.global_basis.z
+	ffish.position = game.diver.get_aim_origin() + mount_aim_dir * 16.0
+	await physics_frame
+	var ffish_hp_mounted: float = float(ffish.get_meta("health"))
+	var mounted_hit: Dictionary = game._fire_laser(laser)
+	assert(not mounted_hit.is_empty() and float(ffish.get_meta("health")) < ffish_hp_mounted, "Mounted downward laser must pass through active mount and hit target")
+	var mounted_orb: Node3D = game._launch_energy_orb({"field_radius": 12.0, "freeze_duration": 3.0})
+	mounted_orb.set_physics_process(false)
+	mounted_orb._physics_process(0.1)
+	assert(not mounted_orb.exploded, "Mounted stasis orb must not self-detonate on active mount hitbox")
+	mounted_orb.queue_free()
+	game.ocean.freeze_creatures(turtle.global_position, 12.0, 4.0)
+	assert(float(turtle.get_meta("freeze_timer")) == 0.0, "Stasis field must not freeze player's tamed mount")
+	game.diver.camera.rotation = Vector3.ZERO
 
 	# Test conquering all 4 bosses triggers Mother Tree
 	game.ocean.damage_creature(game.ocean.flying_fish_boss, 5000.0)

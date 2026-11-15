@@ -216,17 +216,29 @@ func _detonate(at: Vector3, normal: Vector3, collider: Node = null) -> void:
 
 		# Damage creatures within area
 		if is_instance_valid(ocean_ref) and ocean_ref.has_method("damage_creature"):
+			var direct_creature: Node3D = null
+			if is_instance_valid(collider):
+				if collider.has_meta("creature"):
+					direct_creature = collider.get_meta("creature")
+				elif collider is Node3D and bool(collider.get_meta("is_creature", false)):
+					direct_creature = collider as Node3D
 			var creatures: Array[Node3D] = ocean_ref.get_creatures() if ocean_ref.has_method("get_creatures") else []
+			var has_hit_dist_fn: bool = ocean_ref.has_method("get_creature_hit_distance")
 			for creature in creatures:
 				if not is_instance_valid(creature) or bool(creature.get_meta("dead", false)):
 					continue
-				var dist: float = creature.global_position.distance_to(at)
+				var dist: float = 0.0 if creature == direct_creature else (
+					float(ocean_ref.get_creature_hit_distance(creature, at))
+					if has_hit_dist_fn
+					else creature.global_position.distance_to(at)
+				)
 				if dist <= explosion_radius:
-					var falloff: float = 1.0 - (dist / explosion_radius) * 0.45
+					var falloff: float = 1.0 - (dist / maxf(explosion_radius, 0.001)) * 0.45
 					var final_dmg: float = damage * falloff
 					var push_dir: Vector3 = (creature.global_position - at).normalized()
 					if push_dir.length_squared() < 0.001:
 						push_dir = direction
+					creature.set_meta("last_hit_weapon", "torpedo")
 					ocean_ref.damage_creature(creature, final_dmg, push_dir * (25.0 if has_shockwave else 14.0))
 
 	impacted.emit(at, normal)

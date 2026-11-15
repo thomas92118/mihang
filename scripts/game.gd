@@ -13,6 +13,7 @@ const SubmarineTorpedoCls = preload("res://scripts/submarine_torpedo.gd")
 const GameInput = preload("res://scripts/input_controller.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 const CharacterRoster = preload("res://scripts/presentation/character_roster.gd")
+const GameplayGuide = preload("res://scripts/gameplay_guide.gd")
 
 const LANDMARK_SPECS := {
 	"shallows": {"name": "逃生舱浅礁", "pos": Vector3(0, -9, 8), "radius": 28.0, "desc": "阳光明媚的浅海珊瑚林"},
@@ -80,9 +81,13 @@ var input_controller: Node
 var touch_controls: Control
 var touch_layer: CanvasLayer
 var controls_return_screen := "pause"
+var gameplay_guide = GameplayGuide.new()
+var guide_return_screen := "main"
+var _prev_diver_pos := Vector3.ZERO
+var _has_prev_diver_pos := false
+var _was_overweight := false
 var _target_ray_query := PhysicsRayQueryParameters3D.new()
 var _target_ray_exclude: Array[RID] = []
-var _target_ray_excluded_rid: RID = RID()
 const ATTACK_BUFFER_WINDOW: float = 0.18
 
 static func _build_landmarks() -> Dictionary:
@@ -98,6 +103,9 @@ static func _build_landmarks() -> Dictionary:
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	var cmd_args := OS.get_cmdline_user_args()
+	if "--smoke-world" in cmd_args or "--capture" in cmd_args:
+		gameplay_guide.persist_enabled = false
 	_configure_input_window()
 	get_window().size_changed.connect(_configure_input_window)
 	_setup_input()
@@ -141,6 +149,10 @@ func _ready() -> void:
 	hud.action_requested.connect(_on_hud_action_requested)
 	hud.input_settings_requested.connect(func(values: Dictionary): input_controller.apply_settings(values))
 	hud.close_requested.connect(_close_input_screen)
+	if hud.has_signal("onboarding_restart_requested"):
+		hud.connect("onboarding_restart_requested", _on_onboarding_restart_requested)
+	if hud.has_signal("onboarding_skip_requested"):
+		hud.connect("onboarding_skip_requested", _on_onboarding_skip_requested)
 	hud.start_requested.connect(_start)
 	hud.resume_requested.connect(func(): _set_screen("play"))
 	hud.restart_requested.connect(_restart)
@@ -204,6 +216,7 @@ func _setup_input() -> void:
 		"mount_slot_4": KEY_8,
 		"mount_slot_5": KEY_9,
 		"mount_slot_6": KEY_0,
+		"gameplay_guide": KEY_L,
 		"character_switch": KEY_P,
 		"character_angle": KEY_K,
 		"char_angle_reset": KEY_HOME,
@@ -231,6 +244,11 @@ func _setup_input() -> void:
 		extra_key.physical_keycode = extra_keys[extra_action]
 		if not InputMap.action_has_event(extra_action, extra_key):
 			InputMap.action_add_event(extra_action, extra_key)
+	for guide_keycode: int in [KEY_F1, KEY_SLASH]:
+		var guide_key := InputEventKey.new()
+		guide_key.physical_keycode = guide_keycode
+		if not InputMap.action_has_event("gameplay_guide", guide_key):
+			InputMap.action_add_event("gameplay_guide", guide_key)
 
 	var mouse_attack := InputEventMouseButton.new()
 	mouse_attack.button_index = MOUSE_BUTTON_LEFT
@@ -296,12 +314,71 @@ func _sync_input_presentation() -> void:
 func _close_input_screen() -> void:
 	if screen == "controls":
 		_set_screen(controls_return_screen)
+	elif screen == "guide":
+		_set_screen(guide_return_screen)
 	elif screen != "main" and screen != "win":
 		_set_screen("play")
 
+func _open_guide_screen() -> void:
+	if screen == "guide":
+		_close_input_screen()
+		return
+	if screen == "controls":
+		if controls_return_screen != "guide":
+			guide_return_screen = controls_return_screen
+	else:
+		guide_return_screen = screen if screen in ["main", "pause", "quick", "craft", "sushi", "mount_board", "map", "play"] else "play"
+	_set_screen("guide")
+	_apply_guide_result(gameplay_guide.notify_event("guide_opened"))
+
+func _on_onboarding_restart_requested() -> void:
+	gameplay_guide.restart_onboarding(state.mode)
+	if is_instance_valid(diver):
+		_prev_diver_pos = diver.global_position
+		_has_prev_diver_pos = true
+	if screen == "main" or (screen == "guide" and guide_return_screen == "main") or (screen == "controls" and controls_return_screen == "main"):
+		return
+	_set_screen("play")
+	if is_instance_valid(hud):
+		hud.toast("✦ 已重新开启初航实操引导 · 请跟随左上角步骤体验")
+
+func _on_onboarding_skip_requested() -> void:
+	gameplay_guide.skip_onboarding()
+	if screen == "main" or (screen == "guide" and guide_return_screen == "main") or (screen == "controls" and controls_return_screen == "main"):
+		return
+	if screen != "guide":
+		_set_screen("play")
+	elif guide_return_screen != "main":
+		_set_screen("play")
+	if is_instance_valid(hud) and screen == "play":
+		hud.toast("已跳过初航引导 · 随时可按 L 打开潜航指南")
+
+func _apply_guide_result(res: Dictionary) -> void:
+	if res.is_empty():
+		return
+	if bool(res.get("completed_now", false)):
+		if is_inside_tree():
+			UnderwaterAudio.play_sound(get_tree(), "collect", -4.0, 1.12)
+		if is_instance_valid(hud):
+			hud.toast("✦ 初航实操引导已完成！随时按 L 打开潜航指南查阅进阶玩法")
+	elif bool(res.get("step_advanced", false)):
+		if is_inside_tree():
+			UnderwaterAudio.play_sound(get_tree(), "weapon_equip", -7.0, 1.24)
+	var tip_txt := str(res.get("tip_text", ""))
+	if not tip_txt.is_empty() and not bool(res.get("completed_now", false)) and is_instance_valid(hud):
+		hud.toast(tip_txt)
+
+func _notify_food_progress() -> void:
+	var total_food := int(state.inventory.get("fish_small", 0)) + int(state.inventory.get("fish_meat", 0))
+	if total_food >= 2:
+		_apply_guide_result(gameplay_guide.notify_event("ingredients_gained", {"total_food": total_food}))
+
 func _on_hud_action_requested(action: String) -> void:
+	if action == "gameplay_guide":
+		_open_guide_screen()
+		return
 	if action == "controls":
-		controls_return_screen = screen if screen in ["main", "pause", "quick", "play"] else "play"
+		controls_return_screen = screen if screen in ["main", "pause", "quick", "guide", "play"] else "play"
 		_set_screen("controls")
 		return
 	if action == "quick_menu":
@@ -354,14 +431,22 @@ func _reset_position() -> void:
 	diver.reset_camera_alignment(-0.16)
 	diver.velocity = Vector3.ZERO
 	diver._update_third_person_camera(0.0)
+	_prev_diver_pos = diver.global_position
+	_has_prev_diver_pos = false
 
 func _start(chosen_mode: String = "survival") -> void:
 	state.set_mode(chosen_mode)
 	diver.exploration_mode = chosen_mode == "explore"
 	diver.set_weapon("knife")
 	state.reveal_world_area(diver.position, 140.0)
+	gameplay_guide.start_voyage(chosen_mode)
 	_set_screen("play")
-	if chosen_mode == "explore":
+	_prev_diver_pos = diver.global_position
+	_has_prev_diver_pos = true
+	_was_overweight = state.is_overweight()
+	if gameplay_guide.is_onboarding_visible():
+		hud.toast("欢迎来到开放深蓝海域 · 请跟随左上角初航引导熟悉潜航（按 L 打开潜航指南）")
+	elif chosen_mode == "explore":
 		hud.toast("开放海域漫游已开启 · 按 M 打开全域海图与洋流跃迁 · 按 N 释放声呐勘测脉冲 · 3 装备蓝光枪")
 	else:
 		hud.toast("欢迎来到开放深蓝海域 · 按 M 海图导航/跃迁 · N 声呐寻宝 · E 采集或激活科考前哨站 · Tab 制造台")
@@ -440,6 +525,7 @@ func _select_character(character_id: String, announce: bool = true) -> void:
 			hud.toast("【角色切换】%s · %s (按 P 随时切换)" % [str(profile.get("name", cid)), str(profile.get("subtitle", ""))])
 
 func _set_screen(value: String) -> void:
+	var prev_screen := screen
 	screen = value
 	if screen != "main":
 		_title_dragging = false
@@ -463,6 +549,7 @@ func _set_screen(value: String) -> void:
 		touch_controls.cancel_all()
 	diver.active = screen == "play"
 	if screen != "play":
+		_has_prev_diver_pos = false
 		diver.cancel_gun_charge()
 		diver.aiming = false
 		diver.scoped = false
@@ -472,9 +559,20 @@ func _set_screen(value: String) -> void:
 			home_arrow.visible = false
 		if is_instance_valid(waypoint_arrow):
 			waypoint_arrow.visible = false
-	get_tree().paused = screen in ["pause", "craft", "sushi", "mount_board", "map", "win", "quick", "controls"]
+	elif is_instance_valid(diver):
+		_prev_diver_pos = diver.global_position
+		_has_prev_diver_pos = true
+	get_tree().paused = screen in ["pause", "craft", "sushi", "mount_board", "map", "win", "quick", "controls", "guide"]
 	hud.set_screen(screen)
 	_sync_input_presentation()
+	if screen == "map":
+		gameplay_guide.notify_event("map_opened")
+	elif prev_screen == "map" and screen == "play":
+		_apply_guide_result(gameplay_guide.notify_event("map_closed"))
+	elif screen == "craft":
+		_apply_guide_result(gameplay_guide.notify_event("craft_opened"))
+	elif screen == "sushi":
+		_apply_guide_result(gameplay_guide.notify_event("sushi_opened"))
 
 func _get_current_biome(pos: Vector3) -> String:
 	var depth: float = maxf(0, -pos.y)
@@ -580,8 +678,10 @@ func _handle_action_event(event: InputEvent) -> void:
 	if event.is_action_pressed("pause_game"):
 		if screen == "play":
 			_set_screen("pause")
-		elif screen in ["pause", "craft", "sushi", "mount_board", "map", "quick", "controls"]:
+		elif screen in ["pause", "craft", "sushi", "mount_board", "map", "quick", "controls", "guide"]:
 			_close_input_screen()
+	elif event.is_action_pressed("gameplay_guide") and screen != "win":
+		_open_guide_screen()
 	elif event.is_action_pressed("world_map") and screen in ["play", "craft", "sushi", "mount_board", "map"]:
 		_set_screen("play" if screen == "map" else "map")
 	elif event.is_action_pressed("sonar_ping") and screen in ["play", "map"]:
@@ -596,6 +696,7 @@ func _handle_action_event(event: InputEvent) -> void:
 		_trigger_drone_salvage()
 	elif event.is_action_pressed("lamp") and screen == "play":
 		diver.toggle_lamp()
+		_apply_guide_result(gameplay_guide.notify_event("lamp_toggled"))
 	elif event.is_action_pressed("interact") and screen == "play":
 		_interact()
 	elif event.is_action_pressed("booster") and screen == "play":
@@ -678,6 +779,7 @@ func _handle_action_event(event: InputEvent) -> void:
 		if active:
 			UnderwaterAudio.play_sound(get_tree(), "shield_deploy", -3.0, 1.0)
 			hud.toast("【单手能量盾已展开】单手防御中 · 抵挡前方伤害 · 与所有武器同步使用 (按 C 消除)")
+			_apply_guide_result(gameplay_guide.notify_event("shield_toggled"))
 		else:
 			UnderwaterAudio.play_sound(get_tree(), "shield_retract", -3.0, 1.0)
 			hud.toast("【单手能量盾已收起】")
@@ -713,6 +815,10 @@ func _switch_weapon(weapon_id: String) -> void:
 	attack_input_buffered = false
 	UnderwaterAudio.play_sound(get_tree(), "weapon_equip", -5.0, randf_range(0.96, 1.04))
 	hud.toast("已装备【%s】" % names.get(weapon_id, weapon_id))
+	_apply_guide_result(gameplay_guide.notify_event("weapon_equipped", {
+		"weapon": weapon_id,
+		"companion_count": _get_deployed_beast_count()
+	}))
 
 func _perform_attack() -> void:
 	diver.damage_bonus = state.weapon_attack_bonus
@@ -773,9 +879,10 @@ func _resolve_attack_hit(atk: Dictionary) -> void:
 	_present_attack_hit(atk, hit, from, dir)
 
 func _fire_laser(atk: Dictionary) -> Dictionary:
+	_apply_guide_result(gameplay_guide.notify_event("sonic_fired"))
 	var camera: Camera3D = diver.camera
 	var direction := -camera.global_basis.z
-	var excluded: Array[RID] = [diver.get_rid()]
+	var excluded: Array[RID] = _get_player_excluded_rids()
 	var aim_origin: Vector3 = diver.get_aim_origin() if diver.has_method("get_aim_origin") else camera.global_position
 	var aim_hit: Dictionary = ocean.trace_laser(aim_origin, direction, float(atk["range"]), excluded)
 	var muzzle: Vector3 = diver.get_muzzle_position()
@@ -797,11 +904,12 @@ func _fire_laser(atk: Dictionary) -> Dictionary:
 	return damage_result
 
 func _launch_energy_orb(atk: Dictionary) -> Node3D:
+	_apply_guide_result(gameplay_guide.notify_event("sonic_fired"))
 	var orb := EnergyOrb.new()
 	orb.direction = -diver.camera.global_basis.z
 	orb.field_radius = float(atk["field_radius"])
 	orb.freeze_duration = float(atk["freeze_duration"])
-	orb.excluded = [diver.get_rid()]
+	orb.excluded = _get_player_excluded_rids()
 	orb.detonated.connect(_detonate_stasis)
 	add_child(orb)
 	orb.global_position = diver.get_muzzle_position()
@@ -817,7 +925,7 @@ func _fire_submarine_weapon() -> void:
 	if str(torp_data.get("mode", "")) == "emp_beam":
 		var from: Vector3 = torp_data["from"]
 		var dir: Vector3 = -diver.camera.global_basis.z
-		var excluded: Array[RID] = [diver.get_rid(), active_submarine.get_rid()]
+		var excluded: Array[RID] = _get_player_excluded_rids()
 		var hit: Dictionary = ocean.trace_laser(from, dir, float(torp_data["range"]), excluded)
 		var at: Vector3 = hit["position"]
 		CombatVFX.spawn_laser(self, from, at, Color(0.2, 0.95, 1.0))
@@ -838,7 +946,7 @@ func _fire_submarine_weapon() -> void:
 	torp.damage = float(torp_data["damage"])
 	torp.explosion_radius = float(torp_data["radius"])
 	torp.has_shockwave = bool(torp_data.get("shockwave", false))
-	torp.excluded = [diver.get_rid(), active_submarine.get_rid()]
+	torp.excluded = _get_player_excluded_rids()
 	torp.ocean_ref = ocean
 	torp.is_guided = true
 	torp.guiding_camera = diver.camera
@@ -856,6 +964,14 @@ func _detonate_stasis(at: Vector3, radius: float, duration: float) -> void:
 	CombatVFX.spawn_stasis_burst(self, at, radius, duration)
 	UnderwaterAudio.play_sound(get_tree(), "sonic_hit", -4.0, 0.65)
 	hud.toast("静滞场展开 · %d 只生物暂停 %.1f 秒" % [frozen, duration])
+	if frozen > 0 and is_instance_valid(ocean):
+		for c: Node3D in ocean.get_creatures():
+			if not is_instance_valid(c):
+				continue
+			var hit_d: float = ocean.get_creature_hit_distance(c, at) if ocean.has_method("get_creature_hit_distance") else at.distance_to(c.global_position)
+			if hit_d <= radius + 1.5 and _can_tame_creature(c):
+				_apply_guide_result(gameplay_guide.notify_event("stasis_tameable_hit"))
+				break
 
 func _physics_process(delta: float) -> void:
 	if screen != "play":
@@ -917,6 +1033,12 @@ func _physics_process(delta: float) -> void:
 			diver.velocity = Vector3.ZERO
 
 	_tick_companion_followers(delta)
+	if is_instance_valid(diver):
+		if _has_prev_diver_pos:
+			var moved_delta := diver.global_position - _prev_diver_pos
+			_apply_guide_result(gameplay_guide.record_motion(moved_delta))
+		_prev_diver_pos = diver.global_position
+		_has_prev_diver_pos = true
 
 func _on_boss_encounter_started() -> void:
 	hud.toast("【终章 Boss 战】深渊水龙苏醒！用 T 瞄准，蓄力静滞球创造攻击机会。")
@@ -1022,9 +1144,21 @@ func _process(delta: float) -> void:
 	var near_active_outpost: bool = false
 
 	if screen == "play":
+		gameplay_guide.tick(delta)
 		if is_instance_valid(ocean):
 			nearby_outpost = ocean.find_nearby_outpost(diver.global_position, 9.5)
 			near_active_outpost = is_instance_valid(nearby_outpost) and bool(nearby_outpost.get_meta("activated", false))
+			var guide_outpost: Node3D = ocean.find_nearby_outpost(diver.global_position, 24.0)
+			if is_instance_valid(guide_outpost) and not bool(guide_outpost.get_meta("activated", false)):
+				_apply_guide_result(gameplay_guide.notify_event("outpost_approached"))
+			if not is_instance_valid(active_submarine):
+				var guide_sub: Node3D = ocean.find_nearby_submarine(diver.global_position, 18.0)
+				if is_instance_valid(guide_sub):
+					_apply_guide_result(gameplay_guide.notify_event("submarine_approached"))
+		var now_overweight := state.is_overweight()
+		if now_overweight and not _was_overweight:
+			_apply_guide_result(gameplay_guide.notify_event("overweight_entered"))
+		_was_overweight = now_overweight
 		var safe: bool = distance < 7.0 or diver.position.y > -0.6 or near_active_outpost
 		map_reveal_timer -= delta
 		if map_reveal_timer <= 0.0:
@@ -1115,7 +1249,7 @@ func _process(delta: float) -> void:
 		scope_scan_timer -= delta
 		if scope_scan_timer <= 0.0:
 			scope_scan_timer = 0.12
-			var scope_exclusions: Array[RID] = [diver.get_rid()]
+			var scope_exclusions: Array[RID] = _get_player_excluded_rids()
 			var scope_origin: Vector3 = diver.get_aim_origin() if diver.has_method("get_aim_origin") else diver.camera.global_position
 			var scan: Dictionary = ocean.trace_laser(scope_origin, -diver.camera.global_basis.z, 2000.0, scope_exclusions)
 			scope_distance = scope_origin.distance_to(scan["position"])
@@ -1281,7 +1415,8 @@ func _process(delta: float) -> void:
 		"pinged_targets": state.pinged_targets,
 		"has_waypoint": state.has_custom_waypoint,
 		"waypoint_pos": state.custom_waypoint,
-		"sonar_cooldown": state.sonar_cooldown
+		"sonar_cooldown": state.sonar_cooldown,
+		"onboarding": gameplay_guide.get_hud_payload(Input.mouse_mode == Input.MOUSE_MODE_CAPTURED, OS.has_feature("web"))
 	})
 	if screen == "play":
 		_update_home_marker(distance)
@@ -1298,15 +1433,29 @@ func _process(delta: float) -> void:
 		if screen_shade.color != next_shade:
 			screen_shade.color = next_shade
 
+func _get_player_excluded_rids() -> Array[RID]:
+	var excluded: Array[RID] = []
+	if is_instance_valid(diver):
+		excluded.append(diver.get_rid())
+	if is_instance_valid(active_submarine):
+		excluded.append(active_submarine.get_rid())
+	for b in tamed_beasts:
+		var b_node: Node3D = b.get("node")
+		if not is_instance_valid(b_node):
+			continue
+		if b_node is CollisionObject3D:
+			excluded.append((b_node as CollisionObject3D).get_rid())
+		var hb := b_node.get_node_or_null("CreatureHitbox")
+		if hb is CollisionObject3D:
+			excluded.append((hb as CollisionObject3D).get_rid())
+	return excluded
+
 func _update_target() -> void:
 	target = null
 	var camera: Camera3D = diver.camera
 	var from: Vector3 = diver.get_aim_origin() if diver.has_method("get_aim_origin") else camera.global_position
-	var diver_rid: RID = diver.get_rid()
-	if _target_ray_excluded_rid != diver_rid:
-		_target_ray_excluded_rid = diver_rid
-		_target_ray_exclude = [diver_rid]
-		_target_ray_query.exclude = _target_ray_exclude
+	_target_ray_exclude = _get_player_excluded_rids()
+	_target_ray_query.exclude = _target_ray_exclude
 	_target_ray_query.collision_mask = 3
 	_target_ray_query.from = from
 	_target_ray_query.to = from - camera.global_basis.z * 6.5
@@ -1395,6 +1544,8 @@ func _interact() -> void:
 		ocean.remove_small_fish(target)
 		target = null
 		effect.play()
+		_apply_guide_result(gameplay_guide.notify_event("fish_eaten"))
+		_notify_food_progress()
 		return
 
 	if kind == "shark_fragment" or kind == "abyss_fragment":
@@ -1417,6 +1568,7 @@ func _interact() -> void:
 		target.queue_free()
 		target = null
 		effect.play()
+		_apply_guide_result(gameplay_guide.notify_event("resource_collected"))
 
 func _loot_corpse(body: Node3D) -> void:
 	body.set_meta("looted", true)
@@ -1438,6 +1590,8 @@ func _loot_corpse(body: Node3D) -> void:
 	hud.toast("已搜刮【%s】(%s)：生肉 +%d、兽皮 +%d · 玛琳卡赏金 +%dG (按 B 进入深海寿司吧)" % [
 		c_name, star_str, meat_gain, skin_gain, int(m_info.get("reward_gold", 20))
 	])
+	_apply_guide_result(gameplay_guide.notify_event("loot_collected"))
+	_notify_food_progress()
 	var tw := create_tween()
 	tw.tween_interval(1.5)
 	tw.tween_property(body, "scale", Vector3.ZERO, 0.4)
@@ -1453,6 +1607,7 @@ func _activate_oxygen_clam(clam: Node3D) -> void:
 	CombatVFX.spawn_clam_bubbles(self, clam.global_position)
 	UnderwaterAudio.play_sound(get_tree(), "clam_bubble", -3.0, 1.0)
 	hud.toast("【发光巨砗磲氧气泉涌】吸入富氧珍珠气泡！氧气 +35 秒 · 生命 +15")
+	_apply_guide_result(gameplay_guide.notify_event("clam_activated"))
 
 func _find_salvageable_creature() -> Node3D:
 	if not is_instance_valid(ocean):
@@ -1503,6 +1658,8 @@ func _trigger_drone_salvage() -> void:
 	hud.toast("🎈【无人机 ★★★ 完美打捞】已用浮力袋回收【%s】！获顶级生肉 ×4 · 玛琳卡赏金 +%dG (余 %d 次)" % [
 		c_name, int(m_res.get("reward_gold", 45)), state.drone_charges
 	])
+	_apply_guide_result(gameplay_guide.notify_event("loot_collected"))
+	_notify_food_progress()
 
 func _on_sushi_cook(dish_id: String) -> void:
 	var res: Dictionary = state.cook_and_serve_sushi(dish_id)
@@ -1734,6 +1891,7 @@ func _interact_outpost(outpost: Node3D) -> void:
 	hud.toast("⬡【科考前哨联网】%s 已激活！周边海图已揭开 · 解锁跃迁与制造 · +%dG" % [
 		outpost_name, int(res.get("gold_reward", 150))
 	])
+	_apply_guide_result(gameplay_guide.notify_event("outpost_activated"))
 
 func _collect_explorer_relic(relic: Node3D) -> void:
 	if not is_instance_valid(relic) or bool(relic.get_meta("collected", false)):
@@ -1756,6 +1914,7 @@ func _collect_explorer_relic(relic: Node3D) -> void:
 	hud.toast("◆【远古遗珍入手】获得「%s」(%d/%d)！+120G · 全材料+1 · 攻击+10 · 泳速提升" % [
 		relic_name, int(res.get("collected_count", state.collected_relics.size())), Ocean.RELIC_SPECS.size()
 	])
+	_apply_guide_result(gameplay_guide.notify_event("relic_collected"))
 
 func _trigger_sonar_ping() -> bool:
 	if state.sonar_cooldown > 0.0:
@@ -1803,6 +1962,7 @@ func _trigger_sonar_ping() -> bool:
 		hud.toast("📡【广域声呐回波】周边海图已更新 · 最近未激活前哨：%s" % nearest_hint)
 	else:
 		hud.toast("📡【广域声呐回波】周边 220m 海图扇区已完整测绘！")
+	_apply_guide_result(gameplay_guide.notify_event("sonar_pinged"))
 	return true
 
 func _on_map_waypoint_set(world_xz: Vector2) -> void:
@@ -2122,7 +2282,8 @@ func _find_tameable_candidate() -> Node3D:
 	var cand_list: Array[Node3D] = ocean.get_creatures()
 	for c in cand_list:
 		if is_instance_valid(c) and _can_tame_creature(c):
-			if diver.global_position.distance_to(c.global_position) <= 10.0:
+			var tame_dist: float = ocean.get_creature_hit_distance(c, diver.global_position) if ocean.has_method("get_creature_hit_distance") else diver.global_position.distance_to(c.global_position)
+			if tame_dist <= 10.0:
 				return c
 	return null
 
@@ -2345,7 +2506,7 @@ func _tick_companion_followers(delta: float) -> void:
 			if is_instance_valid(companion_attack_target):
 				var m_cd: float = maxf(0.0, float(f_node.get_meta("companion_atk_cd", 0.0)) - delta)
 				f_node.set_meta("companion_atk_cd", m_cd)
-				var dist_m: float = f_node.global_position.distance_to(companion_attack_target.global_position)
+				var dist_m: float = ocean.get_creature_hit_distance(companion_attack_target, f_node.global_position) if (is_instance_valid(ocean) and ocean.has_method("get_creature_hit_distance")) else f_node.global_position.distance_to(companion_attack_target.global_position)
 				if dist_m < 5.0 and m_cd <= 0.0:
 					f_node.set_meta("companion_atk_cd", 1.2)
 					var m_mult: float = pow(2.0, maxf(0.0, float(tamed_beasts.size() - 1)))
@@ -2368,7 +2529,8 @@ func _tick_companion_followers(delta: float) -> void:
 				f_node.look_at(f_node.global_position + to_t, up_t, true)
 			var cd: float = maxf(0.0, float(f_node.get_meta("companion_atk_cd", 0.0)) - delta)
 			f_node.set_meta("companion_atk_cd", cd)
-			if dist_t < 4.8 and cd <= 0.0:
+			var surf_dist_t: float = ocean.get_creature_hit_distance(companion_attack_target, f_node.global_position) if (is_instance_valid(ocean) and ocean.has_method("get_creature_hit_distance")) else dist_t
+			if surf_dist_t < 4.8 and cd <= 0.0:
 				f_node.set_meta("companion_atk_cd", 1.2)
 				var atk_mult: float = pow(2.0, maxf(0.0, float(tamed_beasts.size() - 1)))
 				var dmg: float = float(beast_entry.get("damage", 40.0)) * atk_mult
@@ -2424,7 +2586,7 @@ func _tick_companion_followers(delta: float) -> void:
 func _command_companions_attack(from: Vector3, dir: Vector3) -> void:
 	if tamed_beasts.is_empty():
 		return
-	var excluded_rid: Array[RID] = [diver.get_rid()]
+	var excluded_rid: Array[RID] = _get_player_excluded_rids()
 	var scan: Dictionary = ocean.trace_laser(from, dir, 45.0, excluded_rid)
 	var c: Node3D = scan.get("creature", null)
 	if is_instance_valid(c) and not bool(c.get_meta("tamed", false)) and not bool(c.get_meta("dead", false)):
@@ -2480,7 +2642,7 @@ func _fire_marker_gun(atk: Dictionary) -> void:
 	var camera: Camera3D = diver.camera
 	var direction := -camera.global_basis.z
 	var muzzle: Vector3 = diver.get_muzzle_position()
-	var excluded_rid: Array[RID] = [diver.get_rid()]
+	var excluded_rid: Array[RID] = _get_player_excluded_rids()
 	var aim_origin: Vector3 = diver.get_aim_origin() if diver.has_method("get_aim_origin") else camera.global_position
 	var scan: Dictionary = ocean.trace_laser(aim_origin, direction, 2500.0, excluded_rid)
 	var hit_pos: Vector3 = scan["position"]

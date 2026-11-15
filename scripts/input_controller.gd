@@ -23,13 +23,13 @@ const ACTIONS: Array[String] = [
 	"mount_toggle", "toggle_shield", "recall_pets", "salvage_drone", "sushi_menu",
 	"mount_board", "world_map", "sonar_ping", "mount_slot_1", "mount_slot_2",
 	"mount_slot_3", "mount_slot_4", "mount_slot_5", "mount_slot_6",
-	"quick_menu", "character_switch", "character_angle", "char_angle_reset",
+	"quick_menu", "gameplay_guide", "character_switch", "character_angle", "char_angle_reset",
 	"char_rotate_left", "char_rotate_right", "char_tilt_up", "char_tilt_down",
 	"char_roll_left", "char_roll_right", "camera_closer", "camera_farther", "ui_cancel",
 ]
 const MENU_ACTIONS: Array[String] = [
 	"pause_game", "world_map", "craft_menu", "sushi_menu", "mount_board",
-	"sonar_ping", "quick_menu", "character_switch", "character_angle", "char_angle_reset",
+	"sonar_ping", "quick_menu", "gameplay_guide", "character_switch", "character_angle", "char_angle_reset",
 	"char_rotate_left", "char_rotate_right", "char_tilt_up", "char_tilt_down", "ui_cancel",
 ]
 const CONTINUOUS_ACTIONS: Array[String] = [
@@ -46,7 +46,7 @@ const KEY_HINTS := {
 	"toggle_shield": "C", "recall_pets": "Z", "salvage_drone": "V", "sushi_menu": "B",
 	"mount_board": "O", "world_map": "M", "sonar_ping": "N", "mount_slot_1": "5",
 	"mount_slot_2": "6", "mount_slot_3": "7", "mount_slot_4": "8", "mount_slot_5": "9",
-	"mount_slot_6": "0", "quick_menu": "J", "character_switch": "P",
+	"mount_slot_6": "0", "quick_menu": "J", "gameplay_guide": "L", "character_switch": "P",
 	"character_angle": "K", "char_angle_reset": "Home",
 	"char_rotate_left": "方向键左", "char_rotate_right": "方向键右",
 	"char_tilt_up": "方向键上", "char_tilt_down": "方向键下",
@@ -61,6 +61,7 @@ const ACTION_LABELS := {
 	"craft_menu": "制造", "sushi_menu": "料理 / 图鉴", "mount_board": "契约板",
 	"mount_toggle": "骑乘 / 离鞍", "recall_pets": "召回", "salvage_drone": "无人机",
 	"sonar_ping": "声呐", "booster": "助推器", "lamp": "灯", "quick_menu": "快捷操作",
+	"gameplay_guide": "潜航指南",
 	"character_switch": "切换角色",
 	"character_angle": "切换视角", "char_angle_reset": "角度回正",
 	"char_rotate_left": "角色左旋", "char_rotate_right": "角色右旋",
@@ -76,6 +77,7 @@ const PAD_HINTS := {
 	"ascend": "RB / R1", "descend": "LB / L1", "sprint": "L3", "attack": "RT / R2",
 	"aim": "LT / L2", "interact": "A / ×", "dash": "B / ○", "ui_cancel": "B / ○",
 	"toggle_shield": "X / □", "quick_menu": "Y / △", "world_map": "View / Touchpad",
+	"gameplay_guide": "Y / △ · 潜航指南",
 	"pause_game": "Menu / Options", "sonar_ping": "方向键上", "recall_pets": "方向键下",
 	"camera_closer": "方向键左", "camera_farther": "方向键右", "character_angle": "R3",
 }
@@ -138,6 +140,10 @@ func setup_defaults() -> void:
 	var quick_key := InputEventKey.new()
 	quick_key.physical_keycode = KEY_J
 	_add_binding("quick_menu", quick_key)
+	for guide_keycode: int in [KEY_L, KEY_F1, KEY_SLASH]:
+		var guide_key := InputEventKey.new()
+		guide_key.physical_keycode = guide_keycode
+		_add_binding("gameplay_guide", guide_key)
 	_update_deadzones()
 
 func _add_joy_button(action: String, button: int) -> void:

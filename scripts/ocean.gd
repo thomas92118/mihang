@@ -1778,7 +1778,8 @@ func strike_predator(from: Vector3, dir: Vector3, max_range: float, damage: floa
 
 	var candidates: Array[Dictionary] = []
 	var living: Array[Node3D] = get_creatures()
-	var max_range_sq: float = max_range * max_range
+	var aim_dir: Vector3 = dir.normalized() if dir.length_squared() > 0.0001 else Vector3.FORWARD
+	var cone_half_angle: float = acos(clampf(angle_threshold, -1.0, 1.0))
 
 	for p: Node3D in living:
 		if not is_instance_valid(p) or bool(p.get_meta("dead", false)):
@@ -1787,15 +1788,9 @@ func strike_predator(from: Vector3, dir: Vector3, max_range: float, damage: floa
 			continue
 		if p == water_dragon and not boss_active:
 			continue
-		var to_p := p.global_position - from
-		var dist_sq := to_p.length_squared()
-		if dist_sq > max_range_sq:
-			continue
-		var dist := sqrt(dist_sq)
-		var norm_to_p := to_p / maxf(dist, 0.001)
-		var angle_dot := dir.dot(norm_to_p)
-		if angle_dot >= angle_threshold:
-			candidates.append({"target": p, "dist": dist, "dir": norm_to_p})
+		var hit_eval: Dictionary = _evaluate_melee_target(p, from, aim_dir, max_range, cone_half_angle)
+		if bool(hit_eval.get("hit", false)):
+			candidates.append(hit_eval)
 
 	if candidates.is_empty():
 		return {}
@@ -1819,9 +1814,9 @@ func strike_predator(from: Vector3, dir: Vector3, max_range: float, damage: floa
 
 		var p_name: String = str(p.get_meta("name", "海洋生物"))
 		var p_kind: String = str(p.get_meta("kind", ""))
-		hit_positions.append(p.global_position)
+		hit_positions.append(item.get("hit_pos", p.global_position))
 		hit_kinds.append(p_kind)
-		var knock_dir := dir.normalized()
+		var knock_dir := aim_dir
 
 		hit_count += 1
 		hit_names.append(p_name)
@@ -1836,7 +1831,7 @@ func strike_predator(from: Vector3, dir: Vector3, max_range: float, damage: floa
 		else:
 			var inferred_weapon := "axe" if (cleave_angle > 0.0 and cleave_angle < 0.25) else "knife"
 			p.set_meta("last_hit_weapon", inferred_weapon)
-			var instant_kill := p_kind not in ["water_dragon", "sea_spider", "seal"]
+			var instant_kill := not _is_boss_creature(p) and p_kind not in ["water_dragon", "sea_spider", "seal", "sea_wolf", "flying_fish", "kraken", "colossus_turtle"]
 			var result := damage_creature(p, damage, knock_dir * knockback, instant_kill)
 			if result.is_empty():
 				continue
@@ -1905,11 +1900,166 @@ func find_nearby_submarine(pos: Vector3, max_dist: float = 7.0) -> Node3D:
 func _is_immobile(creature: Node3D) -> bool:
 	return bool(creature.get_meta("dead", false)) or float(creature.get_meta("stun_timer", 0.0)) > 0.0 or float(creature.get_meta("freeze_timer", 0.0)) > 0.0
 
+func _is_boss_creature(creature: Node3D) -> bool:
+	if not is_instance_valid(creature):
+		return false
+	var kind := str(creature.get_meta("kind", ""))
+	return kind.begins_with("boss") or creature == water_dragon or creature in boss_nodes.values()
+
+func _get_creature_body_segments(creature: Node3D) -> Array:
+	var kind: String = str(creature.get_meta("kind", "fish"))
+	match kind:
+		"water_dragon":
+			return [
+				[Vector3(0.0, 0.0, -9.2), Vector3(0.0, 0.15, 6.2), 1.65],
+				[Vector3(-5.0, -0.1, 1.6), Vector3(5.0, -0.1, 1.6), 1.25]
+			]
+		"boss_flying_fish", "flying_fish":
+			return [
+				[Vector3(0.0, 0.05, -5.2), Vector3(0.0, 0.05, 5.6), 1.65],
+				[Vector3(-6.8, 0.25, 1.1), Vector3(6.8, 0.25, 1.1), 1.35],
+				[Vector3(0.0, -2.0, -4.6), Vector3(0.0, 2.0, -4.6), 1.1]
+			]
+		"boss_kraken", "kraken":
+			return [
+				[Vector3(0.0, 1.2, 0.8), Vector3(0.0, 3.2, 2.4), 3.6],
+				[Vector3(0.0, -0.4, 0.0), Vector3(0.0, -7.8, 0.0), 4.8]
+			]
+		"boss_turtle", "colossus_turtle":
+			return [
+				[Vector3(0.0, 1.1, -4.2), Vector3(0.0, 1.1, 4.2), 3.6],
+				[Vector3(-2.6, 1.0, -3.4), Vector3(-2.6, 1.0, 3.4), 2.4],
+				[Vector3(2.6, 1.0, -3.4), Vector3(2.6, 1.0, 3.4), 2.4],
+				[Vector3(0.0, 0.55, 3.6), Vector3(0.0, 0.55, 6.8), 1.45],
+				[Vector3(-8.2, 0.15, 2.3), Vector3(8.2, 0.15, 2.3), 1.4],
+				[Vector3(-4.8, -0.1, -4.4), Vector3(4.8, -0.1, -4.4), 1.1]
+			]
+		"sea_wolf":
+			return [
+				[Vector3(0.0, 0.05, -2.6), Vector3(0.0, 0.1, 3.2), 0.95],
+				[Vector3(-1.4, -0.18, 0.78), Vector3(1.4, -0.18, 0.78), 0.65]
+			]
+		"seal":
+			return [[Vector3(0.0, 0.0, -1.8), Vector3(0.0, 0.1, 2.1), 0.75]]
+		"sea_spider":
+			return [[Vector3(0.0, 0.6, -0.8), Vector3(0.0, 0.85, 0.9), 1.1]]
+		"predator", "squid":
+			return [[Vector3(0.0, 0.0, -2.0), Vector3(0.0, 0.0, 2.0), 0.85]]
+		"abyss":
+			return [[Vector3(0.0, 0.0, -1.7), Vector3(0.0, 0.0, 1.7), 1.0]]
+		"manta_ray":
+			return [[Vector3(-1.2, 0.0, 0.0), Vector3(1.2, 0.0, 0.0), 1.0]]
+		"sea_turtle":
+			return [[Vector3(0.0, 0.0, -0.8), Vector3(0.0, 0.0, 0.9), 0.75]]
+		"jellyfish":
+			return [[Vector3(0.0, -0.8, 0.0), Vector3(0.0, 0.8, 0.0), 0.8]]
+		"crab":
+			return [[Vector3(-0.5, 0.2, 0.0), Vector3(0.5, 0.2, 0.0), 0.8]]
+		"school_fish":
+			return [[Vector3(0.0, 0.0, -0.55), Vector3(0.0, 0.0, 0.45), 0.42]]
+		_:
+			return [[Vector3(0.0, 0.0, -0.65), Vector3(0.0, 0.0, 0.65), 0.45]]
+
+func get_creature_hit_distance(creature: Node3D, at: Vector3) -> float:
+	if not is_instance_valid(creature):
+		return INF
+	var xform: Transform3D = creature.global_transform if creature.is_inside_tree() else creature.transform
+	var scl: Vector3 = xform.basis.get_scale()
+	var scale_max: float = maxf(0.01, maxf(scl.x, maxf(scl.y, scl.z)))
+	var best: float = (xform.origin - at).length()
+	for seg in _get_creature_body_segments(creature):
+		var seg_a: Vector3 = xform * (seg[0] as Vector3)
+		var seg_b: Vector3 = xform * (seg[1] as Vector3)
+		var seg_r: float = float(seg[2]) * scale_max
+		var q: Vector3 = Geometry3D.get_closest_point_to_segment(at, seg_a, seg_b)
+		var surf_d: float = maxf(0.0, at.distance_to(q) - seg_r)
+		if surf_d < best:
+			best = surf_d
+	return best
+
+func _evaluate_melee_target(creature: Node3D, from: Vector3, aim_dir: Vector3, max_range: float, cone_half_angle: float) -> Dictionary:
+	var xform: Transform3D = creature.global_transform if creature.is_inside_tree() else creature.transform
+	var scl: Vector3 = xform.basis.get_scale()
+	var scale_max: float = maxf(0.01, maxf(scl.x, maxf(scl.y, scl.z)))
+	var ray_end: Vector3 = from + aim_dir * (max_range + 8.0)
+	var matched := false
+	var best_dist: float = INF
+	var best_dir: Vector3 = aim_dir
+	var best_pos: Vector3 = xform.origin
+	for seg in _get_creature_body_segments(creature):
+		var seg_a: Vector3 = xform * (seg[0] as Vector3)
+		var seg_b: Vector3 = xform * (seg[1] as Vector3)
+		var seg_r: float = float(seg[2]) * scale_max
+		var pair: PackedVector3Array = Geometry3D.get_closest_points_between_segments(from, ray_end, seg_a, seg_b)
+		var q_near: Vector3 = Geometry3D.get_closest_point_to_segment(from, seg_a, seg_b)
+		var sample_pts: Array[Vector3] = [q_near]
+		if pair.size() >= 2:
+			sample_pts.push_front(pair[1])
+		for q in sample_pts:
+			var to_q: Vector3 = q - from
+			var center_dist: float = to_q.length()
+			var surf_dist: float = maxf(0.0, center_dist - seg_r)
+			if surf_dist > max_range:
+				continue
+			var norm_to_q: Vector3 = to_q / center_dist if center_dist > 0.001 else aim_dir
+			var angle_dot: float = aim_dir.dot(norm_to_q)
+			var in_cone := false
+			if center_dist <= seg_r + 0.35:
+				in_cone = center_dist <= 0.001 or angle_dot >= -0.25
+			else:
+				var alpha: float = asin(clampf(seg_r / center_dist, 0.0, 1.0))
+				in_cone = angle_dot >= cos(minf(PI, cone_half_angle + alpha))
+			if in_cone and surf_dist < best_dist:
+				matched = true
+				best_dist = surf_dist
+				best_dir = norm_to_q
+				best_pos = q - norm_to_q * minf(seg_r, center_dist)
+	if not matched:
+		return {"hit": false}
+	return {"hit": true, "target": creature, "dist": best_dist, "dir": best_dir, "hit_pos": best_pos}
+
+func _add_hitbox_capsule(area: Area3D, radius: float, height: float, pos := Vector3.ZERO, rot := Vector3(PI * 0.5, 0.0, 0.0)) -> void:
+	var col := CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	cap.radius = radius
+	cap.height = maxf(height, radius * 2.0)
+	col.shape = cap
+	col.position = pos
+	col.rotation = rot
+	area.add_child(col)
+
+func _add_hitbox_box(area: Area3D, box_size: Vector3, pos := Vector3.ZERO) -> void:
+	var col := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = box_size
+	col.shape = box
+	col.position = pos
+	area.add_child(col)
+
+func _add_hitbox_sphere(area: Area3D, radius: float, pos := Vector3.ZERO) -> void:
+	var col := CollisionShape3D.new()
+	var sph := SphereShape3D.new()
+	sph.radius = radius
+	col.shape = sph
+	col.position = pos
+	area.add_child(col)
+
+func _add_hitbox_cylinder(area: Area3D, radius: float, height: float, pos := Vector3.ZERO) -> void:
+	var col := CollisionShape3D.new()
+	var cyl := CylinderShape3D.new()
+	cyl.radius = radius
+	cyl.height = height
+	col.shape = cyl
+	col.position = pos
+	area.add_child(col)
+
 func _register_creature_hitbox(creature: Node3D) -> void:
-	creature.set_meta("freeze_timer", 0.0)
-	creature.set_meta("motion_clock", 0.0)
+	if not creature.has_meta("freeze_timer"):
+		creature.set_meta("freeze_timer", 0.0)
+	if not creature.has_meta("motion_clock"):
+		creature.set_meta("motion_clock", 0.0)
 	creature.set_meta("is_creature", true)
-	if creature is CollisionObject3D:
+	if creature is CollisionObject3D or creature.has_node("CreatureHitbox"):
 		return
 	var kind: String = str(creature.get_meta("kind", "fish"))
 	var area := Area3D.new()
@@ -1918,26 +2068,38 @@ func _register_creature_hitbox(creature: Node3D) -> void:
 	area.collision_mask = 0
 	area.monitoring = false
 	area.set_meta("creature", creature)
-	var collision := CollisionShape3D.new()
-	var capsule := CapsuleShape3D.new()
-	var sizes := {
-		"fish": Vector2(0.45, 2.2), "predator": Vector2(0.8, 5.0),
-		"abyss": Vector2(1.0, 4.4), "jellyfish": Vector2(0.8, 2.8),
-		"squid": Vector2(0.85, 5.0), "manta_ray": Vector2(1.0, 3.2),
-		"sea_turtle": Vector2(0.7, 2.4), "crab": Vector2(0.8, 1.8),
-		"sea_spider": Vector2(1.0, 2.0), "seal": Vector2(0.72, 4.4),
-		"water_dragon": Vector2(1.65, 17.0)
-	}
-	var size: Vector2 = sizes.get(kind, Vector2(0.7, 2.0))
-	capsule.radius = size.x
-	capsule.height = maxf(size.y, size.x * 2.0)
-	collision.shape = capsule
-	collision.rotation.x = PI * 0.5
-	if kind == "water_dragon":
-		collision.position.z = -1.4
-	elif kind == "sea_spider":
-		collision.position.y = 0.85
-	area.add_child(collision)
+	match kind:
+		"water_dragon":
+			_add_hitbox_capsule(area, 1.65, 17.0, Vector3(0.0, 0.0, -1.4))
+			_add_hitbox_box(area, Vector3(10.5, 1.0, 3.2), Vector3(0.0, -0.1, 1.6))
+		"boss_flying_fish", "flying_fish":
+			_add_hitbox_capsule(area, 1.65, 11.2, Vector3(0.0, 0.05, -0.3))
+			_add_hitbox_box(area, Vector3(14.6, 1.1, 3.6), Vector3(0.0, 0.25, 1.1))
+			_add_hitbox_box(area, Vector3(0.9, 4.8, 2.8), Vector3(0.0, 0.0, -4.6))
+		"boss_kraken", "kraken":
+			_add_hitbox_sphere(area, 3.6, Vector3(0.0, 2.6, 1.5))
+			_add_hitbox_cylinder(area, 4.8, 8.8, Vector3(0.0, -3.8, 0.0))
+		"boss_turtle", "colossus_turtle":
+			_add_hitbox_box(area, Vector3(8.8, 4.6, 11.2), Vector3(0.0, 1.1, 0.0))
+			_add_hitbox_capsule(area, 1.35, 5.0, Vector3(0.0, 0.55, 5.4))
+			_add_hitbox_box(area, Vector3(17.5, 1.2, 3.2), Vector3(0.0, 0.15, 2.3))
+			_add_hitbox_box(area, Vector3(10.8, 0.9, 2.4), Vector3(0.0, -0.1, -4.4))
+		"sea_wolf":
+			_add_hitbox_capsule(area, 0.95, 6.2, Vector3(0.0, 0.05, 0.05))
+			_add_hitbox_box(area, Vector3(3.3, 0.55, 1.4), Vector3(0.0, -0.18, 0.78))
+		"school_fish":
+			_add_hitbox_capsule(area, 0.42, 1.5, Vector3(0.0, 0.0, -0.08))
+		_:
+			var sizes := {
+				"fish": Vector2(0.45, 2.2), "predator": Vector2(0.8, 5.0),
+				"abyss": Vector2(1.0, 4.4), "jellyfish": Vector2(0.8, 2.8),
+				"squid": Vector2(0.85, 5.0), "manta_ray": Vector2(1.0, 3.2),
+				"sea_turtle": Vector2(0.7, 2.4), "crab": Vector2(0.8, 1.8),
+				"sea_spider": Vector2(1.0, 2.0), "seal": Vector2(0.72, 4.4)
+			}
+			var size: Vector2 = sizes.get(kind, Vector2(0.7, 2.0))
+			var offset := Vector3(0.0, 0.85, 0.0) if kind == "sea_spider" else Vector3.ZERO
+			_add_hitbox_capsule(area, size.x, size.y, offset)
 	creature.add_child(area)
 
 func trace_laser(from: Vector3, direction: Vector3, max_range: float, excluded: Array[RID] = []) -> Dictionary:
@@ -1965,7 +2127,7 @@ func damage_creature(creature: Node3D, damage: float, impulse := Vector3.ZERO, i
 	var health: float = float(creature.get_meta("health", 60.0))
 	health = 0.0 if instant_kill else maxf(0.0, health - damage)
 	creature.set_meta("health", health)
-	if kind != "water_dragon" and float(creature.get_meta("freeze_timer", 0.0)) <= 0.0:
+	if not _is_boss_creature(creature) and float(creature.get_meta("freeze_timer", 0.0)) <= 0.0:
 		creature.position += impulse
 		creature.position.y = clampf(creature.position.y, floor_height(creature.position.x, creature.position.z) + 0.25, -0.05)
 	var at := creature.global_position
@@ -1997,8 +2159,11 @@ func damage_creature(creature: Node3D, damage: float, impulse := Vector3.ZERO, i
 			if creature == boss_nodes[b_id]:
 				conquered_bosses[b_id] = true
 				boss_slain = conquered_bosses.size() >= 4
-				boss_active = false
-				boss_warning = ""
+				if active_boss_id == b_id or active_boss_node == creature or not boss_active:
+					boss_active = false
+					boss_warning = ""
+					active_boss_id = ""
+					active_boss_node = null
 				boss_defeated.emit()
 				if conquered_bosses.size() >= 4 and not mother_tree_spawned_flag:
 					mother_tree_spawned_flag = true
@@ -2076,11 +2241,10 @@ func salvage_creature_with_drone(creature: Node3D) -> Dictionary:
 
 func freeze_creatures(at: Vector3, radius: float, duration: float) -> int:
 	var count := 0
-	var radius_sq: float = radius * radius
 	for creature in get_creatures():
-		if not is_instance_valid(creature) or bool(creature.get_meta("dead", false)):
+		if not is_instance_valid(creature) or bool(creature.get_meta("dead", false)) or bool(creature.get_meta("tamed", false)):
 			continue
-		if creature.global_position.distance_squared_to(at) > radius_sq:
+		if get_creature_hit_distance(creature, at) > radius:
 			continue
 		var prev_freeze: float = float(creature.get_meta("freeze_timer", 0.0))
 		if duration > prev_freeze:
@@ -2106,7 +2270,7 @@ func freeze_creatures(at: Vector3, radius: float, duration: float) -> int:
 				_stasis_sphere_boss.rings = 8
 			var aura := MeshInstance3D.new()
 			aura.name = "StasisAura"
-			aura.mesh = _stasis_sphere_boss if creature == water_dragon else _stasis_sphere_small
+			aura.mesh = _stasis_sphere_boss if _is_boss_creature(creature) else _stasis_sphere_small
 			aura.material_override = _stasis_aura_mat
 			creature.add_child(aura)
 			creature.set_meta("has_stasis_aura", true)
@@ -2273,6 +2437,10 @@ func reset_boss_encounter() -> void:
 		active_boss_node.set_meta("health", max_h)
 		active_boss_node.set_meta("enraged", false)
 		active_boss_node.set_meta("freeze_timer", 0.0)
+		if active_boss_id == "water_dragon":
+			active_boss_node.position = BOSS_ARENA_CENTER + Vector3(0, 3.0, -6)
+		elif boss_arena_centers.has(active_boss_id):
+			active_boss_node.position = boss_arena_centers[active_boss_id]
 
 func get_boss_status() -> Dictionary:
 	var b: Node3D = active_boss_node if is_instance_valid(active_boss_node) else water_dragon
@@ -2484,11 +2652,24 @@ func _process(delta: float) -> void:
 		if direction.length_squared() > 0.0001:
 			seal.look_at(seal.position + direction, Vector3.UP, true)
 		seal.position = next
-	if is_instance_valid(water_dragon) and not _tick_status(water_dragon, delta):
-		water_dragon.animate(delta)
-		if not boss_active:
-			var t: float = float(water_dragon.get_meta("motion_clock"))
-			water_dragon.position = BOSS_ARENA_CENTER + Vector3(0, 3.0 + sin(t * 0.5), -6)
+	for b_id in boss_nodes:
+		var b_node: Node3D = boss_nodes[b_id]
+		if not is_instance_valid(b_node) or bool(b_node.get_meta("tamed", false)):
+			continue
+		if _tick_status(b_node, delta):
+			continue
+		if b_node.has_method("animate"):
+			b_node.animate(delta)
+		if not (boss_active and active_boss_node == b_node):
+			var t_b: float = float(b_node.get_meta("motion_clock", 0.0))
+			if b_id == "water_dragon":
+				var dragon_anchor := BOSS_ARENA_CENTER + Vector3(0, 3.0, -6)
+				if Vector2(b_node.position.x - dragon_anchor.x, b_node.position.z - dragon_anchor.z).length_squared() <= 4.0:
+					b_node.position = BOSS_ARENA_CENTER + Vector3(0, 3.0 + sin(t_b * 0.5), -6)
+			elif boss_arena_centers.has(b_id):
+				var home_center: Vector3 = boss_arena_centers[b_id]
+				if Vector2(b_node.position.x - home_center.x, b_node.position.z - home_center.z).length_squared() <= 4.0:
+					b_node.position = home_center + Vector3(0, sin(t_b * 0.5) * 1.0, 0)
 
 	# 1. 中型温和鱼群巡游与惊扰避障 (遍历独立 neutral_fish 数组，消除每帧过万次数组线性比对)
 	for creature in neutral_fish:
@@ -3344,7 +3525,7 @@ func _populate_open_world_frontiers() -> void:
 	# Register by identity instead of skipping the old combined array length.
 	_creatures_dirty = true
 	for creature in get_creatures():
-		if not creature.has_meta("motion_clock"):
+		if not creature.has_meta("is_creature"):
 			_register_creature_hitbox(creature)
 
 func _spawn_frontier_wildlife(hub: Vector2, life_rng: RandomNumberGenerator) -> void:

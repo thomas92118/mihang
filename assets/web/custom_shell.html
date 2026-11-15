@@ -959,6 +959,12 @@ const engine = new Engine(GODOT_CONFIG);
 		}, 320);
 	}, 4200);
 
+	window.addEventListener('keydown', function (event) {
+		if (event.key === 'F1' || event.code === 'F1') {
+			event.preventDefault();
+		}
+	}, { passive: false });
+
 	const missing = Engine.getMissingFeatures({
 		threads: GODOT_THREADS_ENABLED,
 	});

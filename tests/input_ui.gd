@@ -50,7 +50,7 @@ func _run() -> void:
 	await process_frame
 
 	# Every screen has a usable default focus, and navigation stays in that screen.
-	for screen: String in ["main", "pause", "craft", "sushi", "mount_board", "map", "win", "quick", "controls"]:
+	for screen: String in ["main", "pause", "craft", "sushi", "mount_board", "map", "win", "quick", "controls", "guide"]:
 		hud.set_screen(screen)
 		await process_frame
 		var focused := viewport.gui_get_focus_owner()
@@ -63,7 +63,7 @@ func _run() -> void:
 	await process_frame
 	var chosen: Array[String] = []
 	hud.action_requested.connect(func(action: String) -> void: chosen.append(action))
-	for action: String in ["weapon_4", "mount_slot_6", "scope", "camera_farther", "sushi_menu", "salvage_drone"]:
+	for action: String in ["weapon_4", "mount_slot_6", "scope", "camera_farther", "sushi_menu", "salvage_drone", "gameplay_guide"]:
 		assert(hud.quick_buttons.has(action), "%s must be reachable without a keyboard" % action)
 		hud.quick_buttons[action].pressed.emit()
 		assert(chosen.back() == action)
@@ -83,6 +83,7 @@ func _run() -> void:
 	assert(hud.format_input_text("A B Y S S A L   E C H O") == "A B Y S S A L   E C H O")
 	assert(hud.format_input_text("O₂ +35 · 深海金币: 120 G · 坐标 X:+12 Z:-40") == "O₂ +35 · 深海金币: 120 G · 坐标 X:+12 Z:-40")
 	assert(hud.format_input_text("WASD 航行 / 空格 Ctrl 升降") == "PAD_forward 航行 / PAD_ascend / PAD_descend 升降")
+	assert(hud.format_input_text("按 L 打开指南 · 声望 Lv.2") == "按 PAD_gameplay_guide 打开指南 · 声望 Lv.2")
 	hud.toast("按 E 采集")
 	assert(hud.toast_label.text == "按 PAD_interact 采集")
 	inputs.active_device = "keyboard"
@@ -143,7 +144,7 @@ func _run() -> void:
 		hud.root.size = Vector2(resolution)
 		hud._apply_layout()
 		await process_frame
-		for screen: String in ["main", "craft", "sushi", "mount_board", "map", "quick", "controls"]:
+		for screen: String in ["main", "craft", "sushi", "mount_board", "map", "quick", "controls", "guide"]:
 			hud.set_screen(screen)
 			await process_frame
 			var scroll: ScrollContainer = hud.menu_scrolls[screen]
