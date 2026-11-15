@@ -423,7 +423,7 @@ func restart_onboarding(chosen_mode: String = "") -> void:
 func is_onboarding_visible() -> bool:
 	return (session_active and not onboarding_completed and not onboarding_skipped) or completion_banner_timer > 0.0
 
-func get_hud_payload(pointer_locked: bool = true, is_web: bool = false) -> Dictionary:
+func get_hud_payload(pointer_locked: bool = true, is_web: bool = false, is_touch: bool = false) -> Dictionary:
 	var total := ONBOARDING_STEPS.size()
 	var completed_banner := completion_banner_timer > 0.0 and onboarding_completed
 	var idx := clampi(current_step_index, 0, total - 1)
@@ -452,7 +452,7 @@ func get_hud_payload(pointer_locked: bool = true, is_web: bool = false) -> Dicti
 		sub_hint = "进度 %d/%d · 即将切换为静谧探索视图" % [total, total]
 	elif step_id == "swim":
 		sub_hint = "巡游 %.0f/%.0fm · 升降 %.1f/%.1fm" % [horiz_moved, MOTION_HORIZ_THRESHOLD, vert_moved, MOTION_VERT_THRESHOLD]
-		if is_web and not pointer_locked:
+		if is_web and not pointer_locked and not is_touch:
 			sub_hint += " · 点击锁定视角"
 		else:
 			sub_hint += " · L 指南"

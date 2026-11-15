@@ -75,6 +75,7 @@ var _atmosphere_color := Color(-1, -1, -1)
 var _atmosphere_energy := -1.0
 var _atmosphere_sunlit := -1.0
 var art_depth := 0.0
+var mobile_performance_mode := false
 var sun: DirectionalLight3D
 var water_surface: MeshInstance3D = null
 var water_surface_mat: ShaderMaterial = null
@@ -507,7 +508,8 @@ func _create_environment() -> void:
 	sun.rotation_degrees = Vector3(-68, -28, 0)
 	sun.light_color = Color(1.0, 0.97, 0.89)
 	sun.light_energy = 1.25
-	sun.shadow_enabled = true
+	sun.set_meta("_orig_shadow_enabled", true)
+	sun.shadow_enabled = not mobile_performance_mode
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.directional_shadow_max_distance = 50.0
 	add_child(sun)
@@ -2924,9 +2926,10 @@ func set_depth(depth: float, scoped: bool = false) -> void:
 	art_depth = maxf(depth, 0.0)
 	if scoped != scope_view_enabled:
 		scope_view_enabled = scoped
+		var vis_scale := 0.80 if mobile_performance_mode else 1.0
 		for mesh in scope_meshes:
 			if is_instance_valid(mesh):
-				mesh.visibility_range_end = 300.0 if scoped else float(mesh.get_meta("base_visibility_range", mesh.visibility_range_end))
+				mesh.visibility_range_end = 300.0 if scoped else float(mesh.get_meta("base_visibility_range", mesh.visibility_range_end)) * vis_scale
 	_update_water_surface_state(scoped)
 	var profile := sample_depth_profile(depth)
 	environment.fog_density = float(profile["fog_density"])
@@ -2947,13 +2950,39 @@ func set_depth(depth: float, scoped: bool = false) -> void:
 	if is_instance_valid(sun):
 		sun.light_color = profile["sun_color"]
 		sun.light_energy = float(profile["sun_energy"])
-		sun.shadow_enabled = depth < 58.0
+		var orig_sun_shadow := bool(sun.get_meta("_orig_shadow_enabled", true))
+		sun.shadow_enabled = (not mobile_performance_mode) and orig_sun_shadow and (depth < 58.0)
 		sun.visible = depth < 210.0
 	var camera := get_viewport().get_camera_3d()
 	if camera != null:
 		set_art_observer(camera.global_position, depth)
 	else:
 		_update_water_atmosphere(profile.fog_color, float(profile.fog_energy), depth)
+
+func set_mobile_performance_mode(enabled: bool) -> void:
+	mobile_performance_mode = enabled
+	var dir_lights: Array[DirectionalLight3D] = []
+	if is_instance_valid(sun):
+		dir_lights.append(sun)
+	for node in find_children("*", "DirectionalLight3D", true, false):
+		var dl := node as DirectionalLight3D
+		if dl != null and not dir_lights.has(dl):
+			dir_lights.append(dl)
+	for dl in dir_lights:
+		if not dl.has_meta("_orig_shadow_enabled"):
+			dl.set_meta("_orig_shadow_enabled", dl.shadow_enabled)
+		var orig_shadow := bool(dl.get_meta("_orig_shadow_enabled", true))
+		if dl == sun:
+			dl.shadow_enabled = (not enabled) and orig_shadow and (art_depth < 58.0)
+		else:
+			dl.shadow_enabled = (not enabled) and orig_shadow
+	if not scope_view_enabled:
+		var vis_scale := 0.80 if enabled else 1.0
+		for mesh in scope_meshes:
+			if is_instance_valid(mesh):
+				mesh.visibility_range_end = float(mesh.get_meta("base_visibility_range", mesh.visibility_range_end)) * vis_scale
+	if is_instance_valid(marine_snow) and marine_snow.multimesh != null:
+		marine_snow.multimesh.visible_instance_count = 160 if enabled else -1
 
 func set_world_labels_visible(show_labels: bool) -> void:
 	for node in find_children("*", "Label3D", true, false):

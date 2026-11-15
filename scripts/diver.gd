@@ -168,6 +168,7 @@ var biomod_dash_unlocked: bool = false
 var biomod_vision_unlocked: bool = false
 var dash_cooldown: float = 0.0
 var _lamp_saved_before_sub: bool = false
+var mobile_performance_mode: bool = false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -185,7 +186,8 @@ func _ready() -> void:
 	# High-performance volumetric flashlight: wide beam penetrating deep sea
 	lamp = SpotLight3D.new()
 	lamp.light_color = Color(1.0, 0.96, 0.88)
-	lamp.shadow_enabled = true
+	lamp.set_meta("_orig_shadow_enabled", true)
+	lamp.shadow_enabled = not mobile_performance_mode
 	lamp.light_energy = 9.0
 	lamp.spot_range = 85.0
 	lamp.spot_angle = 55.0
@@ -262,6 +264,22 @@ func toggle_lamp() -> bool:
 	if is_instance_valid(lamp_fill):
 		lamp_fill.visible = lamp.visible
 	return lamp.visible
+
+func set_mobile_performance_mode(enabled: bool) -> void:
+	mobile_performance_mode = enabled
+	var spots: Array[SpotLight3D] = []
+	if is_instance_valid(lamp):
+		spots.append(lamp)
+	if is_instance_valid(booster_light) and not spots.has(booster_light):
+		spots.append(booster_light)
+	for node in find_children("*", "SpotLight3D", true, false):
+		var sp := node as SpotLight3D
+		if sp != null and not spots.has(sp):
+			spots.append(sp)
+	for sp in spots:
+		if not sp.has_meta("_orig_shadow_enabled"):
+			sp.set_meta("_orig_shadow_enabled", sp.shadow_enabled)
+		sp.shadow_enabled = false if enabled else bool(sp.get_meta("_orig_shadow_enabled", false))
 
 func get_character_profile() -> Dictionary:
 	return CharacterRoster.get_profile(current_character)

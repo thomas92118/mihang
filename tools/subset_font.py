@@ -13,7 +13,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path)
     args = parser.parse_args()
-    sources = list((ROOT/'scripts').rglob('*.gd')) + [ROOT/'tools'/'art_report.py']
+    sources = (
+        list((ROOT / 'scripts').rglob('*.gd'))
+        + list((ROOT / 'scenes').rglob('*.tscn'))
+        + [ROOT / 'tools' / 'art_report.py']
+    )
     text = ''.join(path.read_text(encoding='utf-8') for path in sources if path.exists())
     options = subset.Options()
     options.name_IDs = ['*']

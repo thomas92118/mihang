@@ -2,6 +2,8 @@ extends Node
 ## One player's input, aggregated by physical control or virtual input source.
 ## Gameplay calls handle_event only after the GUI has had a chance to consume it.
 
+const SafeArea = preload("res://scripts/presentation/safe_area.gd")
+
 signal action_changed(action: String, pressed: bool, cancelled: bool)
 signal device_changed(device: String)
 signal settings_changed
@@ -15,11 +17,12 @@ const DEFAULT_SETTINGS := {
 	"touch_mode": "auto",
 	"touch_scale": 1.0,
 	"touch_opacity": 0.75,
+	"graphics_quality": "auto",
 }
 const ACTIONS: Array[String] = [
 	"forward", "backward", "left", "right", "ascend", "descend", "sprint",
 	"interact", "craft_menu", "lamp", "pause_game", "weapon_1", "weapon_2",
-	"weapon_3", "weapon_4", "attack", "aim", "scope", "dash", "booster",
+	"weapon_3", "weapon_4", "weapon_cycle", "attack", "aim", "scope", "dash", "booster",
 	"mount_toggle", "toggle_shield", "recall_pets", "salvage_drone", "sushi_menu",
 	"mount_board", "world_map", "sonar_ping", "mount_slot_1", "mount_slot_2",
 	"mount_slot_3", "mount_slot_4", "mount_slot_5", "mount_slot_6",
@@ -41,7 +44,7 @@ const KEY_HINTS := {
 	"forward": "W", "backward": "S", "left": "A", "right": "D",
 	"ascend": "空格", "descend": "Ctrl", "sprint": "Shift", "interact": "E",
 	"craft_menu": "Tab", "lamp": "F", "pause_game": "Esc", "weapon_1": "1",
-	"weapon_2": "2", "weapon_3": "3", "weapon_4": "4", "attack": "R / 左键",
+	"weapon_2": "2", "weapon_3": "3", "weapon_4": "4", "weapon_cycle": "1-4", "attack": "R / 左键",
 	"aim": "T", "scope": "Y", "dash": "Q", "booster": "H", "mount_toggle": "G",
 	"toggle_shield": "C", "recall_pets": "Z", "salvage_drone": "V", "sushi_menu": "B",
 	"mount_board": "O", "world_map": "M", "sonar_ping": "N", "mount_slot_1": "5",
@@ -68,6 +71,7 @@ const ACTION_LABELS := {
 	"char_tilt_up": "角色上仰", "char_tilt_down": "角色下俯",
 	"char_roll_left": "左倾横滚", "char_roll_right": "右倾横滚",
 	"weapon_1": "战术刀", "weapon_2": "战斧", "weapon_3": "蓝光枪", "weapon_4": "指示枪",
+	"weapon_cycle": "切换武器",
 	"mount_slot_1": "伙伴 1", "mount_slot_2": "伙伴 2", "mount_slot_3": "伙伴 3",
 	"mount_slot_4": "伙伴 4", "mount_slot_5": "伙伴 5", "mount_slot_6": "伙伴 6",
 	"camera_closer": "拉近视角", "camera_farther": "拉远视角", "ui_cancel": "返回",
@@ -78,6 +82,7 @@ const PAD_HINTS := {
 	"aim": "LT / L2", "interact": "A / ×", "dash": "B / ○", "ui_cancel": "B / ○",
 	"toggle_shield": "X / □", "quick_menu": "Y / △", "world_map": "View / Touchpad",
 	"gameplay_guide": "Y / △ · 潜航指南",
+	"weapon_cycle": "Y / △ · 切换武器",
 	"pause_game": "Menu / Options", "sonar_ping": "方向键上", "recall_pets": "方向键下",
 	"camera_closer": "方向键左", "camera_farther": "方向键右", "character_angle": "R3",
 }
@@ -96,6 +101,8 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_load_settings()
 	setup_defaults()
+	if SafeArea.is_default_touch_platform() and get_connected_gamepad_count() == 0:
+		active_device = "touch"
 	if not Input.joy_connection_changed.is_connected(_on_joy_connection_changed):
 		Input.joy_connection_changed.connect(_on_joy_connection_changed)
 
@@ -180,7 +187,7 @@ func handle_event(event: InputEvent) -> bool:
 	if event is InputEventKey and event.echo:
 		return false
 	_observe_event(event)
-	if event is InputEventMouse and event.device == -1:
+	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
 		return false
 	if event is InputEventScreenTouch or event is InputEventScreenDrag:
 		return false
@@ -212,6 +219,8 @@ func handle_event(event: InputEvent) -> bool:
 func _observe_event(event: InputEvent) -> void:
 	if event is InputEventKey and event.echo:
 		return
+	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
+		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			notify_device("touch")
@@ -221,7 +230,7 @@ func _observe_event(event: InputEvent) -> void:
 			notify_device("touch")
 		return
 	if event is InputEventMouseMotion:
-		if event.device != -1 and event.relative.length_squared() > 4.0:
+		if not SafeArea.is_default_touch_platform() and event.relative.length_squared() > 4.0:
 			notify_device("keyboard")
 		return
 	var source: String = _event_source(event)
@@ -253,7 +262,7 @@ func _observe_event(event: InputEvent) -> void:
 		_raw_sources.erase(source)
 	else:
 		_raw_sources[source] = values
-	if meaningful and not (event is InputEventMouse and event.device == -1):
+	if meaningful and not (event is InputEventMouse and SafeArea.is_default_touch_platform()):
 		notify_device("gamepad" if event is InputEventJoypadButton or event is InputEventJoypadMotion else "keyboard")
 
 func _release_event(event: InputEvent) -> void:
@@ -488,7 +497,7 @@ func _on_joy_connection_changed(device: int, connected: bool) -> void:
 		if source.begins_with(prefix + ":"):
 			_blocked_sources.erase(source)
 	if active_device == "gamepad" and get_connected_gamepad_count() == 0:
-		notify_device("keyboard")
+		notify_device("touch" if SafeArea.is_default_touch_platform() else "keyboard")
 
 func hint(action: String) -> String:
 	if active_device == "gamepad":
@@ -509,15 +518,20 @@ func apply_settings(values: Dictionary, persist: bool = true) -> void:
 	settings["invert_y"] = bool(settings["invert_y"])
 	if str(settings["touch_mode"]) not in ["auto", "on", "off"]:
 		settings["touch_mode"] = "auto"
+	if str(settings["graphics_quality"]) not in ["auto", "performance", "high"]:
+		settings["graphics_quality"] = "auto"
 	_update_deadzones()
 	if persist:
-		var config := ConfigFile.new()
-		for key: String in DEFAULT_SETTINGS:
-			config.set_value("controls", key, settings[key])
-		var error: Error = config.save(SETTINGS_PATH)
-		if error != OK:
-			push_warning("无法保存操作设置：%s" % error_string(error))
+		_save_settings()
 	settings_changed.emit()
+
+func _save_settings() -> void:
+	var config := ConfigFile.new()
+	for key: String in DEFAULT_SETTINGS:
+		config.set_value("controls", key, settings[key])
+	var error: Error = config.save(SETTINGS_PATH)
+	if error != OK:
+		push_warning("无法保存操作设置：%s" % error_string(error))
 
 func _load_settings() -> void:
 	if _loaded_settings:

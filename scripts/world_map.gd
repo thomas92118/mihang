@@ -166,6 +166,9 @@ class CompassStrip extends Control:
 	var nearest_outpost_pos: Vector3 = Vector3.ZERO
 	var has_nearest_outpost: bool = false
 
+	func _ready() -> void:
+		resized.connect(queue_redraw)
+
 	func update_compass(p_pos: Vector3, forward_vec: Vector3, wp_active: bool, wp_pos: Vector3, out_active: bool, out_pos: Vector3) -> void:
 		player_pos = p_pos
 		var flat := Vector2(forward_vec.x, forward_vec.z)
@@ -218,7 +221,10 @@ class CompassStrip extends Control:
 			draw_line(Vector2(x, h - tick_h), Vector2(x, h - 1.0), tick_col, 1.0)
 
 		if font:
+			var compact_strip := w < 190.0
 			for d in dirs:
+				if compact_strip and not bool(d["major"]):
+					continue
 				var rad := deg_to_rad(float(d["deg"]))
 				var diff := _angle_diff(rad, heading_yaw)
 				if absf(diff) > half_fov:
@@ -228,22 +234,23 @@ class CompassStrip extends Control:
 				if int(d["deg"]) == 0:
 					col = AMBER
 				var txt: String = str(d["txt"])
-				var fsz: int = 12 if bool(d["major"]) else 10
+				var fsz: int = (11 if compact_strip else 12) if bool(d["major"]) else 10
 				draw_string(font, Vector2(x - float(txt.length()) * 3.8, 14.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, col)
 
-			_draw_pip(font, _bearing_to(home_pos), "⌂", HARBOR_SAGE, half_fov, cx, w)
+			var pip_y := minf(h - 3.0, 29.0)
+			_draw_pip(font, _bearing_to(home_pos), "⌂", HARBOR_SAGE, half_fov, cx, w, pip_y)
 			if has_nearest_outpost:
-				_draw_pip(font, _bearing_to(nearest_outpost_pos), "⬡", CYAN, half_fov, cx, w)
+				_draw_pip(font, _bearing_to(nearest_outpost_pos), "⬡", CYAN, half_fov, cx, w, pip_y)
 			if has_waypoint:
-				_draw_pip(font, _bearing_to(waypoint_pos), "✦", AMBER, half_fov, cx, w)
+				_draw_pip(font, _bearing_to(waypoint_pos), "✦", AMBER, half_fov, cx, w, pip_y)
 
 		var tri := PackedVector2Array([Vector2(cx - 4, 1), Vector2(cx + 4, 1), Vector2(cx, 6)])
 		draw_colored_polygon(tri, AMBER)
 
-	func _draw_pip(font: Font, bearing: float, icon: String, col: Color, half_fov: float, cx: float, w: float) -> void:
+	func _draw_pip(font: Font, bearing: float, icon: String, col: Color, half_fov: float, cx: float, w: float, pip_y: float = 29.0) -> void:
 		var diff := clampf(_angle_diff(bearing, heading_yaw), -half_fov, half_fov)
 		var x := cx + (diff / half_fov) * (w * 0.45)
-		draw_string(font, Vector2(x - 5.0, 29.0), icon, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col)
+		draw_string(font, Vector2(x - 5.0, pip_y), icon, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col)
 
 
 class MinimapRadar extends Control:
@@ -267,6 +274,7 @@ class MinimapRadar extends Control:
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		resized.connect(queue_redraw)
 
 	func set_bathymetry(tex: ImageTexture) -> void:
 		bathy_tex = tex
@@ -296,8 +304,12 @@ class MinimapRadar extends Control:
 		return center + Vector2(dx, dz)
 
 	func _draw() -> void:
-		var map_side := minf(size.x - 12.0, size.y - 28.0)
-		var map_rect := Rect2((size.x - map_side) * 0.5, 6.0, map_side, map_side)
+		var compact_radar := size.y < 118.0
+		var pad_x := 8.0 if compact_radar else 12.0
+		var reserve_y := 18.0 if compact_radar else 28.0
+		var top_y := 4.0 if compact_radar else 6.0
+		var map_side := maxf(32.0, minf(size.x - pad_x, size.y - reserve_y))
+		var map_rect := Rect2((size.x - map_side) * 0.5, top_y, map_side, map_side)
 		var center := map_rect.get_center()
 		var half_r := map_side * 0.5
 
@@ -406,8 +418,10 @@ class MinimapRadar extends Control:
 
 		var font: Font = get_theme_default_font()
 		if font:
-			var coord_txt := "X:%+d  Z:%+d  [%s海图]" % [roundi(player_pos.x), roundi(player_pos.z), map_hint]
-			draw_string(font, Vector2(8.0, size.y - 6.0), coord_txt, HORIZONTAL_ALIGNMENT_LEFT, size.x - 12.0, 11, MUTED)
+			var coord_txt := ("X:%+d Z:%+d" % [roundi(player_pos.x), roundi(player_pos.z)]) if compact_radar else ("X:%+d  Z:%+d  [%s海图]" % [roundi(player_pos.x), roundi(player_pos.z), map_hint])
+			var x_off := 5.0 if compact_radar else 8.0
+			var y_off := 4.0 if compact_radar else 6.0
+			draw_string(font, Vector2(x_off, size.y - y_off), coord_txt, HORIZONTAL_ALIGNMENT_LEFT, maxf(24.0, size.x - x_off * 2.0), 10 if compact_radar else 11, MUTED)
 
 
 class SeaChartCanvas extends Control:
@@ -449,6 +463,7 @@ class SeaChartCanvas extends Control:
 		clip_contents = true
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		focus_mode = Control.FOCUS_ALL
+		resized.connect(queue_redraw)
 		visibility_changed.connect(func() -> void:
 			if not is_visible_in_tree():
 				cancel_touches()
@@ -813,12 +828,13 @@ class SeaChartCanvas extends Control:
 			draw_texture_rect_region(f_tex, Rect2(f_p0, f_p1 - f_p0), f_src)
 
 		var font: Font = get_theme_default_font()
+		var compact_chart := minf(size.x, size.y) < 300.0
 		for g in range(-900, 901, 225):
 			var gp := _world_to_canvas(float(g), float(g))
 			var col := Color(CYAN, 0.22 if g == 0 else 0.09)
 			draw_line(Vector2(gp.x, 0), Vector2(gp.x, size.y), col, 1.0)
 			draw_line(Vector2(0, gp.y), Vector2(size.x, gp.y), col, 1.0)
-			if font and g != -900 and g != 900:
+			if font and g != -900 and g != 900 and (not compact_chart or g % 450 == 0):
 				draw_string(font, Vector2(gp.x + 3.0, 13.0), "%+dm" % g, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(MUTED, 0.58))
 
 		if font:

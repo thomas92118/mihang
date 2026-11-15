@@ -3,10 +3,17 @@
 	<head>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, viewport-fit=cover">
+		<meta name="mobile-web-app-capable" content="yes">
+		<meta name="apple-mobile-web-app-capable" content="yes">
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 		<meta name="theme-color" content="#041420">
 		<title>$GODOT_PROJECT_NAME</title>
 		<style>
 :root {
+	--safe-top: env(safe-area-inset-top, 0px);
+	--safe-right: env(safe-area-inset-right, 0px);
+	--safe-bottom: env(safe-area-inset-bottom, 0px);
+	--safe-left: env(safe-area-inset-left, 0px);
 	--bg-abyss: #030e17;
 	--bg-deep: #061d2e;
 	--bg-reef: #0b3950;
@@ -29,7 +36,11 @@ html, body, #canvas {
 	padding: 0;
 	border: 0;
 	width: 100%;
-	height: 100%;
+	height: 100vh;
+	height: 100dvh;
+	user-select: none;
+	-webkit-user-select: none;
+	-webkit-touch-callout: none;
 }
 
 body {
@@ -51,15 +62,31 @@ body {
 	outline: none;
 }
 
+#abyssal-safe-probe {
+	position: fixed;
+	inset: 0;
+	padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+	pointer-events: none;
+	visibility: hidden;
+	z-index: -1;
+}
+
 /* === Custom Abyssal Echo Loading Screen === */
 #status {
 	position: fixed;
 	inset: 0;
+	width: 100%;
+	height: 100vh;
+	height: 100dvh;
 	z-index: 20;
 	display: flex;
 	flex-direction: column;
 	justify-content: space-between;
-	padding: clamp(20px, 4vh, 44px) clamp(24px, 5vw, 72px);
+	box-sizing: border-box;
+	padding: max(16px, var(--safe-top)) max(20px, var(--safe-right)) max(16px, var(--safe-bottom)) max(20px, var(--safe-left));
+	user-select: none;
+	-webkit-user-select: none;
+	-webkit-touch-callout: none;
 	background:
 		radial-gradient(110% 75% at 50% -8%, rgba(28, 134, 158, 0.42) 0%, rgba(11, 57, 80, 0.26) 42%, transparent 76%),
 		radial-gradient(65% 55% at 72% 46%, rgba(18, 92, 114, 0.24) 0%, transparent 72%),
@@ -67,6 +94,16 @@ body {
 	overflow: hidden;
 	opacity: 1;
 	transition: opacity 0.3s cubic-bezier(0.22, 1, 0.36, 1), transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (min-width: 821px) and (min-height: 521px) {
+	#status {
+		padding:
+			max(clamp(20px, 4vh, 44px), var(--safe-top))
+			max(clamp(24px, 5vw, 72px), var(--safe-right))
+			max(clamp(20px, 4vh, 44px), var(--safe-bottom))
+			max(clamp(24px, 5vw, 72px), var(--safe-left));
+	}
 }
 
 #status.is-fading-out {
@@ -145,6 +182,52 @@ body {
 	height: 20px;
 	background: var(--amber);
 	box-shadow: 0 0 10px rgba(237, 206, 122, 0.45);
+}
+
+.topbar-right {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 14px;
+	margin-left: auto;
+}
+
+#abyssal-fullscreen-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-height: 44px;
+	min-width: 44px;
+	padding: 0 14px;
+	border-radius: 999px;
+	border: 1px solid rgba(131, 222, 217, 0.34);
+	background: var(--glass);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	color: var(--cyan);
+	font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+	font-size: 12px;
+	font-weight: 500;
+	letter-spacing: 0.08em;
+	white-space: nowrap;
+	cursor: pointer;
+	touch-action: manipulation;
+	box-shadow: 0 4px 18px rgba(0, 0, 0, 0.32), inset 0 0 12px rgba(131, 222, 217, 0.08);
+	transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.14s ease;
+}
+
+#abyssal-fullscreen-btn[hidden] {
+	display: none;
+}
+
+#abyssal-fullscreen-btn:hover {
+	border-color: rgba(237, 206, 122, 0.58);
+	background: rgba(8, 34, 52, 0.84);
+}
+
+#abyssal-fullscreen-btn:active {
+	transform: scale(0.97);
 }
 
 .depth-telemetry {
@@ -384,9 +467,16 @@ body {
 	display: flex;
 	align-items: center;
 	gap: 10px;
+	min-width: 0;
 	font-size: 13px;
 	letter-spacing: 0.08em;
 	color: var(--paper);
+}
+
+#status-phase-text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .phase-dot {
@@ -471,6 +561,7 @@ body {
 .horizon-ruler span {
 	position: relative;
 	padding-top: 4px;
+	white-space: nowrap;
 }
 
 .horizon-ruler span::before {
@@ -541,10 +632,197 @@ body {
 		display: none;
 	}
 }
+
+@media (max-width: 480px) {
+	.expedition-topbar {
+		align-items: flex-start;
+		gap: 10px;
+	}
+	.journal-tag {
+		font-size: 11px;
+		letter-spacing: 0.14em;
+		gap: 8px;
+	}
+	.topbar-right {
+		flex-direction: column-reverse;
+		align-items: flex-end;
+		gap: 6px;
+	}
+	.depth-caption {
+		font-size: 10px;
+		letter-spacing: 0.16em;
+	}
+	.depth-number {
+		font-size: clamp(17px, 4.8vw, 21px);
+	}
+	.depth-biome {
+		font-size: 11px;
+		letter-spacing: 0.08em;
+	}
+	.astrolabe-wrap {
+		width: clamp(148px, 38vw, 196px);
+	}
+	.eyebrow-line {
+		margin-bottom: 10px;
+		font-size: 11px;
+		letter-spacing: 0.2em;
+		gap: 10px;
+	}
+	.eyebrow-line::before {
+		width: 24px;
+	}
+	.hero-title {
+		font-size: clamp(32px, 9.6vw, 44px);
+	}
+	.hero-subtitle {
+		margin-top: 8px;
+		font-size: clamp(11px, 3.2vw, 14px);
+		letter-spacing: 0.28em;
+	}
+	.hero-divider {
+		margin: 14px 0 12px;
+	}
+	.hero-lead {
+		margin-bottom: 6px;
+		font-size: clamp(15px, 4.2vw, 18px);
+	}
+	.hero-tip {
+		min-height: 0;
+		font-size: 12.5px;
+		line-height: 1.55;
+	}
+	.phase-status {
+		font-size: 12px;
+	}
+	.percent-readout {
+		font-size: 17px;
+	}
+	.horizon-ruler {
+		font-size: 10px;
+		letter-spacing: 0.06em;
+		gap: 6px;
+	}
+	.horizon-ruler span:nth-child(2),
+	.horizon-ruler span:nth-child(4) {
+		display: none;
+	}
+}
+
+@media (max-height: 520px) {
+	#status {
+		padding:
+			max(12px, var(--safe-top))
+			max(20px, var(--safe-right))
+			max(12px, var(--safe-bottom))
+			max(20px, var(--safe-left));
+	}
+	.expedition-topbar {
+		align-items: center;
+		gap: 12px;
+	}
+	.journal-tag {
+		font-size: 11px;
+		letter-spacing: 0.16em;
+		gap: 10px;
+	}
+	.journal-tag::before {
+		height: 15px;
+	}
+	.topbar-right {
+		flex-direction: row;
+		align-items: center;
+		gap: 12px;
+	}
+	.depth-number {
+		font-size: clamp(16px, 4.4vh, 20px);
+	}
+	.depth-biome {
+		margin-top: 1px;
+		font-size: 11px;
+		letter-spacing: 0.08em;
+	}
+	.expedition-stage {
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: center;
+		justify-content: center;
+		justify-items: stretch;
+		text-align: left;
+		gap: clamp(18px, 3.6vw, 36px);
+		width: min(860px, 100%);
+	}
+	.astrolabe-column {
+		order: 1;
+	}
+	.astrolabe-wrap {
+		width: clamp(112px, 33vh, 136px);
+	}
+	.title-column {
+		order: 2;
+		align-items: flex-start;
+		min-width: 0;
+	}
+	.eyebrow-line {
+		margin-bottom: 4px;
+		font-size: 11px;
+		letter-spacing: 0.18em;
+		gap: 10px;
+	}
+	.eyebrow-line::before {
+		width: 24px;
+	}
+	.hero-title {
+		font-size: clamp(26px, 7.2vh, 36px);
+		line-height: 1.05;
+	}
+	.hero-subtitle {
+		margin: 3px 0 0;
+		font-size: clamp(10px, 2.8vh, 13px);
+		letter-spacing: 0.28em;
+	}
+	.hero-divider {
+		margin: 7px 0;
+	}
+	.hero-lead {
+		margin: 0 0 3px;
+		font-size: clamp(13px, 3.6vh, 16px);
+	}
+	.hero-tip {
+		margin: 0;
+		min-height: 0;
+		max-width: 100%;
+		font-size: 12px;
+		line-height: 1.42;
+	}
+	.progress-header {
+		margin-bottom: 5px;
+	}
+	.phase-status {
+		font-size: 12px;
+	}
+	.percent-readout {
+		font-size: 16px;
+	}
+	.horizon-track {
+		height: 5px;
+	}
+	.horizon-ruler {
+		margin-top: 5px;
+		font-size: 10px;
+		letter-spacing: 0.06em;
+	}
+	#status-notice {
+		margin-top: 8px;
+		padding: 10px 16px;
+		max-height: 44vh;
+		overflow-y: auto;
+	}
+}
 		</style>
 		$GODOT_HEAD_INCLUDE
 	</head>
 	<body>
+		<div id="abyssal-safe-probe" aria-hidden="true"></div>
+
 		<canvas id="canvas">
 			您的浏览器不支持 HTML5 Canvas，请升级现代浏览器以运行《深蓝回声》。
 		</canvas>
@@ -560,12 +838,15 @@ body {
 
 			<header class="expedition-topbar">
 				<div class="journal-tag">深 蓝 回 声 &nbsp;/&nbsp; 潜 航 准 备</div>
-				<div class="depth-telemetry">
-					<div class="depth-telemetry-row">
-						<span class="depth-caption">BATHYMETRY</span>
-						<span class="depth-number" id="status-depth">000 m</span>
+				<div class="topbar-right">
+					<div class="depth-telemetry">
+						<div class="depth-telemetry-row">
+							<span class="depth-caption">BATHYMETRY</span>
+							<span class="depth-number" id="status-depth">000 m</span>
+						</div>
+						<div class="depth-biome" id="status-biome">阳光浅礁带 · 逃生舱锚地</div>
 					</div>
-					<div class="depth-biome" id="status-biome">阳光浅礁带 · 逃生舱锚地</div>
+					<button type="button" id="abyssal-fullscreen-btn" hidden aria-label="全屏横屏">⛶ 全屏横屏</button>
 				</div>
 			</header>
 
@@ -688,6 +969,143 @@ const GODOT_THREADS_ENABLED = $GODOT_THREADS_ENABLED;
 const engine = new Engine(GODOT_CONFIG);
 
 (function () {
+	const safeProbeEl = document.getElementById('abyssal-safe-probe');
+	const fullscreenBtn = document.getElementById('abyssal-fullscreen-btn');
+
+	function detectCoarsePointer() {
+		return Boolean(
+			(window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+			navigator.maxTouchPoints > 0
+		);
+	}
+
+	window.__abyssalGetSafeInsets = function () {
+		let top = 0;
+		let right = 0;
+		let bottom = 0;
+		let left = 0;
+		if (safeProbeEl && window.getComputedStyle) {
+			const cs = window.getComputedStyle(safeProbeEl);
+			top = parseFloat(cs.paddingTop) || 0;
+			right = parseFloat(cs.paddingRight) || 0;
+			bottom = parseFloat(cs.paddingBottom) || 0;
+			left = parseFloat(cs.paddingLeft) || 0;
+		}
+		const baseCoarse = detectCoarsePointer();
+		const mock = (window.__abyssalMockSafeInsets && typeof window.__abyssalMockSafeInsets === 'object')
+			? window.__abyssalMockSafeInsets
+			: null;
+		return {
+			top: mock && typeof mock.top === 'number' ? Math.max(0, mock.top) : Math.max(0, top),
+			right: mock && typeof mock.right === 'number' ? Math.max(0, mock.right) : Math.max(0, right),
+			bottom: mock && typeof mock.bottom === 'number' ? Math.max(0, mock.bottom) : Math.max(0, bottom),
+			left: mock && typeof mock.left === 'number' ? Math.max(0, mock.left) : Math.max(0, left),
+			dpr: mock && typeof mock.dpr === 'number' ? mock.dpr : (window.devicePixelRatio || 1),
+			innerWidth: mock && typeof mock.innerWidth === 'number' ? mock.innerWidth : (window.innerWidth || 0),
+			innerHeight: mock && typeof mock.innerHeight === 'number' ? mock.innerHeight : (window.innerHeight || 0),
+			coarsePointer: mock && typeof mock.coarsePointer === 'boolean' ? mock.coarsePointer : baseCoarse,
+		};
+	};
+
+	window.__abyssalGetSafeInsetsJson = function () {
+		return JSON.stringify(window.__abyssalGetSafeInsets());
+	};
+
+	function isFullscreenActive() {
+		return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+	}
+
+	function hasFullscreenSupport() {
+		const root = document.documentElement;
+		return Boolean(root && (root.requestFullscreen || root.webkitRequestFullscreen));
+	}
+
+	function syncFullscreenButton() {
+		if (!fullscreenBtn) return;
+		const shouldShow = window.__abyssalGetSafeInsets().coarsePointer && hasFullscreenSupport();
+		fullscreenBtn.hidden = !shouldShow;
+		if (shouldShow) {
+			fullscreenBtn.textContent = isFullscreenActive() ? '⛶ 退出全屏' : '⛶ 全屏横屏';
+		}
+	}
+
+	window.__abyssalToggleFullscreen = async function () {
+		try {
+			if (isFullscreenActive()) {
+				if (document.exitFullscreen) {
+					await document.exitFullscreen();
+				} else if (document.webkitExitFullscreen) {
+					await document.webkitExitFullscreen();
+				}
+				if (screen.orientation && typeof screen.orientation.unlock === 'function') {
+					try { screen.orientation.unlock(); } catch (_e) {}
+				}
+				syncFullscreenButton();
+				return false;
+			}
+			const root = document.documentElement;
+			if (root) {
+				if (root.requestFullscreen) {
+					await root.requestFullscreen();
+				} else if (root.webkitRequestFullscreen) {
+					await root.webkitRequestFullscreen();
+				}
+			}
+			if (screen.orientation && typeof screen.orientation.lock === 'function') {
+				try {
+					const lockPromise = screen.orientation.lock('landscape');
+					if (lockPromise && typeof lockPromise.catch === 'function') {
+						lockPromise.catch(function () {});
+					}
+				} catch (_e) {}
+			}
+		} catch (_err) {
+			// Ignore Fullscreen/Orientation rejection on iOS Safari or embedded WebViews.
+		}
+		syncFullscreenButton();
+		return isFullscreenActive();
+	};
+
+	if (fullscreenBtn) {
+		syncFullscreenButton();
+		fullscreenBtn.addEventListener('click', function () {
+			window.__abyssalToggleFullscreen();
+		});
+		document.addEventListener('fullscreenchange', syncFullscreenButton);
+		document.addEventListener('webkitfullscreenchange', syncFullscreenButton);
+	}
+
+	function unlockMobileAudio() {
+		if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
+			try { navigator.audioSession.type = 'playback'; } catch (_e) {}
+		}
+		if (window.GodotAudio && window.GodotAudio.ctx && window.GodotAudio.ctx.state === 'suspended') {
+			try {
+				const resumePromise = window.GodotAudio.ctx.resume();
+				if (resumePromise && typeof resumePromise.catch === 'function') {
+					resumePromise.catch(function () {});
+				}
+			} catch (_e) {}
+		}
+	}
+
+	['pointerdown', 'touchstart', 'keydown'].forEach(function (eventName) {
+		window.addEventListener(eventName, unlockMobileAudio, { capture: true, passive: true });
+	});
+
+	function notifyPageHidden() {
+		if (typeof window.__abyssalOnPageHidden === 'function') {
+			try { window.__abyssalOnPageHidden(); } catch (_e) {}
+		}
+	}
+
+	document.addEventListener('visibilitychange', function () {
+		if (document.visibilityState === 'hidden') {
+			notifyPageHidden();
+		}
+	});
+	window.addEventListener('pagehide', notifyPageHidden);
+
 	const statusOverlay = document.getElementById('status');
 	const statusNotice = document.getElementById('status-notice');
 	const progressPanel = document.getElementById('status-progress-panel');
@@ -714,10 +1132,20 @@ const engine = new Engine(GODOT_CONFIG);
 
 	const EXPEDITION_TIPS = [
 		'穿行于摇曳的海底森林与沉没古都之间，用声呐倾听九片海域的回响。',
-		'释放 N 键声呐勘测脉冲，可在幽暗海沟中勾勒地形轮廓与远古遗迹。',
+		window.__abyssalGetSafeInsets().coarsePointer
+			? '轻触声呐按钮释放勘测脉冲，可在幽暗海沟中勾勒地形轮廓与远古遗迹。'
+			: '释放 N 键声呐勘测脉冲，可在幽暗海沟中勾勒地形轮廓与远古遗迹。',
 		'收集钛矿、石英与海藻样本，升级循环呼吸器以从容下潜百米深渊。',
 		'使用蓝光静滞枪平息深海巨兽，靠近即可缔结契约并肩巡游外洋。',
 	];
+
+	function getExpeditionTip(index) {
+		const tip = EXPEDITION_TIPS[index % EXPEDITION_TIPS.length];
+		if (window.__abyssalGetSafeInsets().coarsePointer) {
+			return tip.replace('释放 N 键声呐勘测脉冲', '轻触声呐按钮释放勘测脉冲');
+		}
+		return tip;
+	}
 
 	let initializing = true;
 	let fxAnimId = 0;
@@ -954,7 +1382,7 @@ const engine = new Engine(GODOT_CONFIG);
 		setTimeout(function () {
 			if (!tipEl) return;
 			tipIndex = (tipIndex + 1) % EXPEDITION_TIPS.length;
-			tipEl.textContent = EXPEDITION_TIPS[tipIndex];
+			tipEl.textContent = getExpeditionTip(tipIndex);
 			tipEl.style.opacity = '1';
 		}, 320);
 	}, 4200);

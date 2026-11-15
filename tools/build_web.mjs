@@ -104,11 +104,25 @@ function prepareStageProject(stageDir) {
 	}
 	const srcImported = path.join(ROOT, ".godot", "imported");
 	if (fs.existsSync(srcImported)) {
+		const fontsDir = path.join(ROOT, "assets", "fonts");
+		let newestFontMtime = 0;
+		if (fs.existsSync(fontsDir)) {
+			for (const f of fs.readdirSync(fontsDir)) {
+				if (f.endsWith(".otf") || f.endsWith(".ttf")) {
+					const mtime = fs.statSync(path.join(fontsDir, f)).mtimeMs;
+					if (mtime > newestFontMtime) newestFontMtime = mtime;
+				}
+			}
+		}
 		const dstImported = path.join(resolvedStage, ".godot", "imported");
 		fs.mkdirSync(dstImported, { recursive: true });
 		for (const entry of fs.readdirSync(srcImported)) {
 			if (!entry.endsWith(".fontdata")) continue;
-			fs.copyFileSync(path.join(srcImported, entry), path.join(dstImported, entry));
+			const srcFontData = path.join(srcImported, entry);
+			if (fs.statSync(srcFontData).mtimeMs < newestFontMtime) {
+				continue;
+			}
+			fs.copyFileSync(srcFontData, path.join(dstImported, entry));
 			const companionMd5 = `${entry.slice(0, -".fontdata".length)}.md5`;
 			const srcMd5 = path.join(srcImported, companionMd5);
 			if (fs.existsSync(srcMd5)) {
@@ -269,6 +283,22 @@ function postProcessWebBuild() {
 	};
 	fs.writeFileSync(path.join(WEB_DIR, "chunks.json"), JSON.stringify(manifest, null, 2), "utf8");
 
+	const swPath = path.join(WEB_DIR, "index.service.worker.js");
+	if (fs.existsSync(swPath)) {
+		const chunkFiles = [
+			"chunks.json",
+			"index.manifest.json",
+			...manifest["index.wasm"].parts,
+			...manifest["index.pck"].parts,
+		];
+		let sw = fs.readFileSync(swPath, "utf8");
+		sw = sw.replace(
+			/const CACHEABLE_FILES = \[[^\]]*\];/,
+			`const CACHEABLE_FILES = ${JSON.stringify(chunkFiles)};`
+		);
+		fs.writeFileSync(swPath, sw, "utf8");
+	}
+
 	const htmlPath = path.join(WEB_DIR, "index.html");
 	let html = fs.readFileSync(htmlPath, "utf8");
 	const fetchShim = `<script>
@@ -394,7 +424,21 @@ function postProcessWebBuild() {
 	}
 }
 
+function verifyBundledFontGlyphs() {
+	const scriptPath = path.join(ROOT, "tools", "verify_font_glyphs.py");
+	if (!fs.existsSync(scriptPath)) return;
+	console.log("[build_web] Verifying 100% bundled font glyph coverage...");
+	const res = spawnSync("python", ["-X", "utf8", scriptPath], {
+		cwd: ROOT,
+		stdio: "inherit",
+	});
+	if (res.status !== 0) {
+		throw new Error(`Font glyph coverage verification failed with code ${res.status}`);
+	}
+}
+
 const godotBin = findGodotBinary();
+verifyBundledFontGlyphs();
 prepareStageProject(STAGE_DIR);
 ensureExtractedGlbTextures(STAGE_DIR);
 ensureLossyModelTextures(STAGE_DIR);

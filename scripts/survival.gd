@@ -653,3 +653,304 @@ func recover() -> void:
 	oxygen = max_oxygen
 	health = max_health
 	drone_charges = max_drone_charges
+
+static func _default_inventory() -> Dictionary:
+	return {
+		"titanium": 0, "copper": 0, "quartz": 0, "kelp": 0, "fish_small": 0,
+		"shark_fragment": 0, "abyss_fragment": 0,
+		"fish_meat": 0, "creature_skin": 0, "creature_tooth": 0, "chitin": 0,
+		"mother_tree_essence": 0, "ancient_star_core": 0, "tree_seed": 0
+	}
+
+static func _read_float(data: Dictionary, key: String, fallback: float) -> float:
+	if not data.has(key):
+		return fallback
+	var val: Variant = data[key]
+	if val is float or val is int:
+		var f := float(val)
+		return f if is_finite(f) else fallback
+	return fallback
+
+static func _read_int(data: Dictionary, key: String, fallback: int) -> int:
+	if not data.has(key):
+		return fallback
+	var val: Variant = data[key]
+	if val is int:
+		return val
+	if val is float and is_finite(val):
+		return roundi(val)
+	return fallback
+
+static func _read_bool(data: Dictionary, key: String, fallback: bool) -> bool:
+	if not data.has(key):
+		return fallback
+	var val: Variant = data[key]
+	if val is bool:
+		return val
+	if val is int or val is float:
+		return float(val) != 0.0
+	return fallback
+
+static func _read_string(data: Dictionary, key: String, fallback: String) -> String:
+	if not data.has(key):
+		return fallback
+	var val: Variant = data[key]
+	if val is String:
+		return val
+	return fallback
+
+func to_save_dict() -> Dictionary:
+	var inv_out: Dictionary = {}
+	for k in inventory:
+		inv_out[str(k)] = int(inventory[k])
+	var cells_out: Array = []
+	for cell_key in surveyed_cells:
+		if not bool(surveyed_cells[cell_key]):
+			continue
+		var parts := str(cell_key).split("_")
+		if parts.size() == 2 and parts[0].is_valid_int() and parts[1].is_valid_int():
+			cells_out.append([int(parts[0]), int(parts[1])])
+		else:
+			cells_out.append(str(cell_key))
+	var marinca_out: Dictionary = {}
+	for sp_key in marinca_cards:
+		var entry: Variant = marinca_cards[sp_key]
+		if entry is Dictionary:
+			var ed: Dictionary = entry
+			marinca_out[str(sp_key)] = {
+				"name": str(ed.get("name", MARINCA_SPECIES.get(str(sp_key), "海洋生物"))),
+				"stars": clampi(int(ed.get("stars", 1)), 1, 3),
+				"count": maxi(1, int(ed.get("count", 1)))
+			}
+	var pinged_out: Array = []
+	for p_key in pinged_targets:
+		if bool(pinged_targets[p_key]):
+			pinged_out.append(str(p_key))
+	return {
+		"mode": mode,
+		"selected_character": selected_character,
+		"inventory": inv_out,
+		"weapons": weapons.duplicate(),
+		"weapon_upgrade_level": weapon_upgrade_level,
+		"weapon_attack_bonus": weapon_attack_bonus,
+		"oxygen": oxygen,
+		"max_oxygen": max_oxygen,
+		"max_health": max_health,
+		"health": health,
+		"tank": tank,
+		"fins": fins,
+		"rebreather": rebreather,
+		"biomod_dash": biomod_dash,
+		"biomod_vision": biomod_vision,
+		"black_box_read": black_box_read,
+		"pinned_recipe": pinned_recipe,
+		"reinforced_suit": reinforced_suit,
+		"bio_battery": bio_battery,
+		"rescued": rescued,
+		"boss_defeated": boss_defeated,
+		"all_bosses_defeated": all_bosses_defeated,
+		"mother_tree_active": mother_tree_active,
+		"escape_crafted": escape_crafted,
+		"tamed_beast_count": tamed_beast_count,
+		"elapsed": elapsed,
+		"landmarks_discovered": landmarks_discovered.duplicate(),
+		"gold": gold,
+		"dishes_served": dishes_served,
+		"sushi_reputation": sushi_reputation,
+		"drone_charges": drone_charges,
+		"max_drone_charges": max_drone_charges,
+		"base_max_weight": base_max_weight,
+		"cargo_upgrade_level": cargo_upgrade_level,
+		"marinca_cards": marinca_out,
+		"surveyed_cells": cells_out,
+		"unlocked_outposts": unlocked_outposts.duplicate(),
+		"collected_relics": collected_relics.duplicate(),
+		"pinged_targets": pinged_out,
+		"has_custom_waypoint": has_custom_waypoint,
+		"custom_waypoint": [custom_waypoint.x, custom_waypoint.y, custom_waypoint.z],
+		"sonar_cooldown": sonar_cooldown,
+		"fast_travel_count": fast_travel_count,
+		"explorer_speed_bonus": explorer_speed_bonus,
+		"explorer_rank_level": explorer_rank_level
+	}
+
+func load_save_dict(data: Dictionary) -> void:
+	if data == null or not (data is Dictionary):
+		return
+	var saved_mode := _read_string(data, "mode", "survival")
+	if saved_mode != "explore":
+		saved_mode = "survival"
+	inventory = _default_inventory()
+	landmarks_discovered.clear()
+	unlocked_outposts.clear()
+	collected_relics.clear()
+	marinca_cards.clear()
+	surveyed_cells.clear()
+	pinged_targets.clear()
+	clear_custom_waypoint()
+	max_health = 100.0
+	reinforced_suit = false
+	bio_battery = false
+	rescued = false
+	boss_defeated = false
+	all_bosses_defeated = false
+	mother_tree_active = false
+	escape_crafted = false
+	black_box_read = false
+	pinned_recipe = "tank"
+	tamed_beast_count = 0
+	elapsed = 0.0
+	gold = 0
+	dishes_served = 0
+	sushi_reputation = 1
+	base_max_weight = 40.0
+	cargo_upgrade_level = 0
+	sonar_cooldown = 0.0
+	fast_travel_count = 0
+	explorer_speed_bonus = 0.0
+	explorer_rank_level = 1
+	set_mode(saved_mode)
+
+	selected_character = _read_string(data, "selected_character", selected_character)
+	if data.get("inventory") is Dictionary:
+		var inv_in: Dictionary = data["inventory"]
+		for k in inv_in:
+			var v: Variant = inv_in[k]
+			if v is int or v is float:
+				inventory[str(k)] = maxi(0, roundi(float(v)))
+
+	if data.get("weapons") is Array:
+		var w_arr: Array[String] = []
+		for item in data["weapons"]:
+			var wid := str(item)
+			if not wid.is_empty() and not w_arr.has(wid):
+				w_arr.append(wid)
+		if not w_arr.has("knife"):
+			w_arr.push_front("knife")
+		weapons = w_arr
+
+	weapon_upgrade_level = maxi(0, _read_int(data, "weapon_upgrade_level", weapon_upgrade_level))
+	weapon_attack_bonus = maxf(0.0, _read_float(data, "weapon_attack_bonus", weapon_attack_bonus))
+	max_oxygen = maxf(10.0, _read_float(data, "max_oxygen", max_oxygen))
+	oxygen = clampf(_read_float(data, "oxygen", oxygen), 0.0, max_oxygen)
+	max_health = maxf(10.0, _read_float(data, "max_health", max_health))
+	health = clampf(_read_float(data, "health", health), 0.0, max_health)
+	tank = _read_bool(data, "tank", tank)
+	fins = _read_bool(data, "fins", fins)
+	rebreather = _read_bool(data, "rebreather", rebreather)
+	biomod_dash = _read_bool(data, "biomod_dash", biomod_dash)
+	biomod_vision = _read_bool(data, "biomod_vision", biomod_vision)
+	black_box_read = _read_bool(data, "black_box_read", black_box_read)
+	pinned_recipe = _read_string(data, "pinned_recipe", pinned_recipe)
+	reinforced_suit = _read_bool(data, "reinforced_suit", reinforced_suit)
+	bio_battery = _read_bool(data, "bio_battery", bio_battery)
+	rescued = _read_bool(data, "rescued", rescued)
+	boss_defeated = _read_bool(data, "boss_defeated", boss_defeated)
+	all_bosses_defeated = _read_bool(data, "all_bosses_defeated", all_bosses_defeated)
+	mother_tree_active = _read_bool(data, "mother_tree_active", mother_tree_active)
+	escape_crafted = _read_bool(data, "escape_crafted", escape_crafted)
+	tamed_beast_count = maxi(0, _read_int(data, "tamed_beast_count", tamed_beast_count))
+	elapsed = maxf(0.0, _read_float(data, "elapsed", elapsed))
+	gold = maxi(0, _read_int(data, "gold", gold))
+	dishes_served = maxi(0, _read_int(data, "dishes_served", dishes_served))
+	sushi_reputation = maxi(1, _read_int(data, "sushi_reputation", sushi_reputation))
+	max_drone_charges = maxi(0, _read_int(data, "max_drone_charges", max_drone_charges))
+	drone_charges = clampi(_read_int(data, "drone_charges", drone_charges), 0, max_drone_charges)
+	base_max_weight = maxf(10.0, _read_float(data, "base_max_weight", base_max_weight))
+	cargo_upgrade_level = maxi(0, _read_int(data, "cargo_upgrade_level", cargo_upgrade_level))
+	sonar_cooldown = maxf(0.0, _read_float(data, "sonar_cooldown", sonar_cooldown))
+	fast_travel_count = maxi(0, _read_int(data, "fast_travel_count", fast_travel_count))
+	var spd_fallback := _read_float(data, "speed_bonus", explorer_speed_bonus)
+	explorer_speed_bonus = clampf(_read_float(data, "explorer_speed_bonus", spd_fallback), 0.0, 0.48)
+	explorer_rank_level = clampi(_read_int(data, "explorer_rank_level", explorer_rank_level), 1, EXPLORER_RANKS.size())
+
+	var lm_raw: Variant = data.get("landmarks_discovered", data.get("discovered_landmarks", []))
+	if lm_raw is Array:
+		for item in lm_raw:
+			var lid := str(item)
+			if not lid.is_empty() and not landmarks_discovered.has(lid):
+				landmarks_discovered.append(lid)
+
+	if data.get("unlocked_outposts") is Array:
+		for item in data["unlocked_outposts"]:
+			var oid := str(item)
+			if not oid.is_empty() and not unlocked_outposts.has(oid):
+				unlocked_outposts.append(oid)
+
+	if data.get("collected_relics") is Array:
+		for item in data["collected_relics"]:
+			var rid := str(item)
+			if not rid.is_empty() and not collected_relics.has(rid):
+				collected_relics.append(rid)
+
+	var marinca_raw: Variant = data.get("marinca_cards", data.get("marinca_caught", {}))
+	if marinca_raw is Dictionary:
+		var md: Dictionary = marinca_raw
+		for sp_key in md:
+			var entry: Variant = md[sp_key]
+			if entry is Dictionary:
+				var ed: Dictionary = entry
+				var s_name := _read_string(ed, "name", str(MARINCA_SPECIES.get(str(sp_key), "海洋生物")))
+				var s_stars := clampi(_read_int(ed, "stars", 1), 1, 3)
+				var s_count := maxi(1, _read_int(ed, "count", 1))
+				marinca_cards[str(sp_key)] = {
+					"name": s_name,
+					"stars": s_stars,
+					"count": s_count
+				}
+
+	var cells_raw: Variant = data.get("surveyed_cells", [])
+	if cells_raw is Array:
+		for cell in cells_raw:
+			if cell is Array and (cell as Array).size() >= 2:
+				var ca: Array = cell
+				if (ca[0] is int or ca[0] is float) and (ca[1] is int or ca[1] is float):
+					var gx := clampi(roundi(float(ca[0])), 0, SURVEY_GRID_SIZE - 1)
+					var gz := clampi(roundi(float(ca[1])), 0, SURVEY_GRID_SIZE - 1)
+					surveyed_cells["%d_%d" % [gx, gz]] = true
+			elif cell is String:
+				var s := String(cell)
+				var sep := "," if s.contains(",") else "_"
+				var parts := s.split(sep)
+				if parts.size() == 2 and parts[0].is_valid_int() and parts[1].is_valid_int():
+					var gx := clampi(int(parts[0]), 0, SURVEY_GRID_SIZE - 1)
+					var gz := clampi(int(parts[1]), 0, SURVEY_GRID_SIZE - 1)
+					surveyed_cells["%d_%d" % [gx, gz]] = true
+	elif cells_raw is Dictionary:
+		var cd: Dictionary = cells_raw
+		for ck in cd:
+			if bool(cd[ck]):
+				var s := str(ck)
+				var sep := "," if s.contains(",") else "_"
+				var parts := s.split(sep)
+				if parts.size() == 2 and parts[0].is_valid_int() and parts[1].is_valid_int():
+					var gx := clampi(int(parts[0]), 0, SURVEY_GRID_SIZE - 1)
+					var gz := clampi(int(parts[1]), 0, SURVEY_GRID_SIZE - 1)
+					surveyed_cells["%d_%d" % [gx, gz]] = true
+
+	var pinged_raw: Variant = data.get("pinged_targets", [])
+	if pinged_raw is Array:
+		for pk in pinged_raw:
+			var ps := str(pk)
+			if not ps.is_empty():
+				pinged_targets[ps] = true
+	elif pinged_raw is Dictionary:
+		var pd: Dictionary = pinged_raw
+		for pk in pd:
+			if bool(pd[pk]):
+				pinged_targets[str(pk)] = true
+
+	has_custom_waypoint = _read_bool(data, "has_custom_waypoint", false)
+	var wp_raw: Variant = data.get("custom_waypoint", null)
+	if wp_raw is Array and (wp_raw as Array).size() >= 3:
+		var wa: Array = wp_raw
+		if (wa[0] is int or wa[0] is float) and (wa[1] is int or wa[1] is float) and (wa[2] is int or wa[2] is float):
+			custom_waypoint = Vector3(float(wa[0]), float(wa[1]), float(wa[2]))
+		else:
+			has_custom_waypoint = false
+			custom_waypoint = Vector3.ZERO
+	elif not has_custom_waypoint:
+		custom_waypoint = Vector3.ZERO
+	else:
+		has_custom_waypoint = false
+		custom_waypoint = Vector3.ZERO

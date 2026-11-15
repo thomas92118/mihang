@@ -14,6 +14,10 @@ const GameInput = preload("res://scripts/input_controller.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 const CharacterRoster = preload("res://scripts/presentation/character_roster.gd")
 const GameplayGuide = preload("res://scripts/gameplay_guide.gd")
+const SafeArea = preload("res://scripts/presentation/safe_area.gd")
+
+const VOYAGE_SAVE_PATH := "user://voyage_save.json"
+const VOYAGE_SAVE_VERSION := 1
 
 const LANDMARK_SPECS := {
 	"shallows": {"name": "逃生舱浅礁", "pos": Vector3(0, -9, 8), "radius": 28.0, "desc": "阳光明媚的浅海珊瑚林"},
@@ -89,6 +93,11 @@ var _was_overweight := false
 var _target_ray_query := PhysicsRayQueryParameters3D.new()
 var _target_ray_exclude: Array[RID] = []
 const ATTACK_BUFFER_WINDOW: float = 0.18
+var voyage_save_path: String = VOYAGE_SAVE_PATH
+var voyage_persist_enabled: bool = true
+var voyage_started: bool = false
+var _js_page_hidden_cb: Variant = null
+var _guide_payload_arg_count: int = -1
 
 static func _build_landmarks() -> Dictionary:
 	var landmarks: Dictionary = LANDMARK_SPECS.duplicate(true)
@@ -106,8 +115,10 @@ func _ready() -> void:
 	var cmd_args := OS.get_cmdline_user_args()
 	if "--smoke-world" in cmd_args or "--capture" in cmd_args:
 		gameplay_guide.persist_enabled = false
+		voyage_persist_enabled = false
 	_configure_input_window()
 	get_window().size_changed.connect(_configure_input_window)
+	get_viewport().size_changed.connect(_apply_graphics_quality)
 	_setup_input()
 	input_controller = GameInput.new()
 	input_controller.name = "InputController"
@@ -115,8 +126,8 @@ func _ready() -> void:
 	input_controller.setup_defaults()
 	input_controller.action_changed.connect(_on_input_action_changed)
 	input_controller.device_changed.connect(_on_input_device_changed)
-	input_controller.settings_changed.connect(_sync_input_presentation)
-	if DisplayServer.is_touchscreen_available():
+	input_controller.settings_changed.connect(_on_input_settings_changed)
+	if DisplayServer.is_touchscreen_available() or SafeArea.is_default_touch_platform():
 		input_controller.notify_device("touch")
 	ocean = Ocean.new()
 	add_child(ocean)
@@ -128,6 +139,7 @@ func _ready() -> void:
 	diver.input_controller = input_controller
 	add_child(diver)
 	diver.set_character(initial_char)
+	_apply_graphics_quality()
 	_reset_position()
 	title_camera = Camera3D.new()
 	title_camera.fov = 62.0
@@ -153,6 +165,8 @@ func _ready() -> void:
 		hud.connect("onboarding_restart_requested", _on_onboarding_restart_requested)
 	if hud.has_signal("onboarding_skip_requested"):
 		hud.connect("onboarding_skip_requested", _on_onboarding_skip_requested)
+	if hud.has_signal("continue_requested"):
+		hud.connect("continue_requested", _continue_voyage)
 	hud.start_requested.connect(_start)
 	hud.resume_requested.connect(func(): _set_screen("play"))
 	hud.restart_requested.connect(_restart)
@@ -174,7 +188,9 @@ func _ready() -> void:
 	state.reveal_world_area(diver.position, 135.0)
 	_setup_audio()
 	_setup_overlay()
+	_setup_web_lifecycle_hooks()
 	_set_screen("main")
+	_refresh_continue_voyage_ui()
 	if "--smoke-world" in OS.get_cmdline_user_args():
 		_world_check.call_deferred()
 	if "--capture" in OS.get_cmdline_user_args():
@@ -254,6 +270,8 @@ func _setup_input() -> void:
 	mouse_attack.button_index = MOUSE_BUTTON_LEFT
 	if not InputMap.action_has_event("attack", mouse_attack):
 		InputMap.action_add_event("attack", mouse_attack)
+	if not InputMap.has_action("weapon_cycle"):
+		InputMap.add_action("weapon_cycle")
 
 func _setup_touch_controls() -> void:
 	touch_layer = CanvasLayer.new()
@@ -284,16 +302,55 @@ func _setup_touch_controls() -> void:
 func _configure_input_window() -> void:
 	# Web/mobile menus use device-independent pixels instead of shrinking a
 	# 1280x800 desktop canvas until the controls become too small to touch.
-	if not (OS.has_feature("web") or OS.has_feature("android") or OS.has_feature("ios")):
+	if OS.has_feature("web") or OS.has_feature("android") or OS.has_feature("ios"):
+		var window := get_window()
+		if window == get_tree().root:
+			var display_scale := maxf(1.0, DisplayServer.screen_get_scale())
+			if window.content_scale_size != Vector2i.ZERO:
+				window.content_scale_size = Vector2i.ZERO
+			if not is_equal_approx(window.content_scale_factor, display_scale):
+				window.content_scale_factor = display_scale
+	_apply_graphics_quality()
+
+func _is_touch_presentation_active() -> bool:
+	if not is_instance_valid(input_controller):
+		return false
+	var mode: String = str(input_controller.settings.get("touch_mode", "auto"))
+	if mode == "on":
+		return true
+	if mode == "off":
+		return false
+	return input_controller.active_device == "touch" or (SafeArea.is_default_touch_platform() and input_controller.active_device != "gamepad")
+
+func _on_input_settings_changed() -> void:
+	_sync_input_presentation()
+	_apply_graphics_quality()
+
+func _apply_graphics_quality() -> void:
+	if "--capture" in OS.get_cmdline_user_args():
 		return
-	var window := get_window()
-	if window != get_tree().root:
-		return
+	var pref: String = str(input_controller.settings.get("graphics_quality", "auto")) if is_instance_valid(input_controller) else "auto"
+	var perf_mode: bool = (pref == "performance") or (pref == "auto" and SafeArea.is_default_touch_platform())
 	var display_scale := maxf(1.0, DisplayServer.screen_get_scale())
-	if window.content_scale_size != Vector2i.ZERO:
-		window.content_scale_size = Vector2i.ZERO
-	if not is_equal_approx(window.content_scale_factor, display_scale):
-		window.content_scale_factor = display_scale
+	if is_inside_tree():
+		var window := get_window()
+		if window != null and window == get_tree().root:
+			if OS.has_feature("web") or OS.has_feature("android") or OS.has_feature("ios"):
+				if not is_equal_approx(window.content_scale_factor, display_scale):
+					window.content_scale_factor = display_scale
+			window.scaling_3d_mode = Window.SCALING_3D_MODE_BILINEAR
+			var target_3d_scale := clampf(1.65 / maxf(1.0, display_scale), 0.58, 0.85) if perf_mode else 1.0
+			if not is_equal_approx(window.scaling_3d_scale, target_3d_scale):
+				window.scaling_3d_scale = target_3d_scale
+		var vp := get_viewport()
+		if vp != null:
+			var target_msaa := Viewport.MSAA_DISABLED if perf_mode else Viewport.MSAA_2X
+			if vp.msaa_3d != target_msaa:
+				vp.msaa_3d = target_msaa
+	if is_instance_valid(ocean) and ocean.has_method("set_mobile_performance_mode"):
+		ocean.set_mobile_performance_mode(perf_mode)
+	if is_instance_valid(diver) and diver.has_method("set_mobile_performance_mode"):
+		diver.set_mobile_performance_mode(perf_mode)
 
 func _on_input_device_changed(_device: String) -> void:
 	# Finish registering the new source before hiding/canceling the old touch
@@ -303,13 +360,28 @@ func _on_input_device_changed(_device: String) -> void:
 func _sync_input_presentation() -> void:
 	if not is_instance_valid(input_controller):
 		return
-	var mode: String = str(input_controller.settings.get("touch_mode", "auto"))
-	var show_touch: bool = mode == "on" or (mode == "auto" and input_controller.active_device == "touch")
+	var show_touch: bool = _is_touch_presentation_active()
 	if is_instance_valid(touch_controls):
 		touch_controls.configure(input_controller.settings)
 		touch_controls.set_gameplay_enabled(screen == "play" and show_touch)
 		touch_controls.visible = screen == "play" and show_touch
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if screen == "play" and input_controller.active_device == "keyboard" and not show_touch else Input.MOUSE_MODE_VISIBLE
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if screen == "play" and input_controller.active_device == "keyboard" and not show_touch and not SafeArea.is_default_touch_platform() else Input.MOUSE_MODE_VISIBLE
+
+func _get_onboarding_hud_payload() -> Dictionary:
+	var show_touch := _is_touch_presentation_active()
+	var pointer_locked := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var is_web := OS.has_feature("web") and not show_touch
+	if _guide_payload_arg_count < 0:
+		_guide_payload_arg_count = 2
+		for m: Dictionary in gameplay_guide.get_method_list():
+			if String(m.get("name", "")) == "get_hud_payload":
+				var args: Variant = m.get("args", [])
+				if args is Array:
+					_guide_payload_arg_count = (args as Array).size()
+				break
+	if _guide_payload_arg_count >= 3:
+		return gameplay_guide.call("get_hud_payload", pointer_locked, is_web, show_touch) as Dictionary
+	return gameplay_guide.get_hud_payload(pointer_locked, is_web)
 
 func _close_input_screen() -> void:
 	if screen == "controls":
@@ -435,15 +507,31 @@ func _reset_position() -> void:
 	_has_prev_diver_pos = false
 
 func _start(chosen_mode: String = "survival") -> void:
-	state.set_mode(chosen_mode)
+	var restarting_active_voyage := voyage_started
+	if is_instance_valid(active_submarine):
+		_disembark_submarine()
+	if active_mount_idx >= 0:
+		_dismount_beast()
+	var char_id: String = str(diver.current_character) if is_instance_valid(diver) else CharacterRoster.load_saved_character()
+	state.load_save_dict({"mode": chosen_mode, "selected_character": char_id})
 	diver.exploration_mode = chosen_mode == "explore"
+	diver.damage_bonus = state.weapon_attack_bonus
+	diver.explorer_speed_mult = 1.0
+	if diver.shield_active:
+		diver.toggle_shield()
+	if diver.booster_active:
+		diver.toggle_booster()
 	diver.set_weapon("knife")
+	if restarting_active_voyage:
+		_reset_position()
 	state.reveal_world_area(diver.position, 140.0)
 	gameplay_guide.start_voyage(chosen_mode)
+	voyage_started = true
 	_set_screen("play")
 	_prev_diver_pos = diver.global_position
 	_has_prev_diver_pos = true
 	_was_overweight = state.is_overweight()
+	save_voyage()
 	if gameplay_guide.is_onboarding_visible():
 		hud.toast("欢迎来到开放深蓝海域 · 请跟随左上角初航引导熟悉潜航（按 L 打开潜航指南）")
 	elif chosen_mode == "explore":
@@ -565,6 +653,10 @@ func _set_screen(value: String) -> void:
 	get_tree().paused = screen in ["pause", "craft", "sushi", "mount_board", "map", "win", "quick", "controls", "guide"]
 	hud.set_screen(screen)
 	_sync_input_presentation()
+	if screen == "main":
+		_refresh_continue_voyage_ui()
+	elif screen == "pause" and prev_screen != "pause" and voyage_started:
+		save_voyage()
 	if screen == "map":
 		gameplay_guide.notify_event("map_opened")
 	elif prev_screen == "map" and screen == "play":
@@ -633,6 +725,7 @@ func _check_landmarks() -> void:
 				hud.toast("【发现新海域地标】%s · %s (已解锁海图跃迁 · +35G)" % [str(landmark["name"]), str(landmark["desc"])])
 				effect.play()
 				_check_explorer_rank_up()
+				save_voyage()
 				if state.landmarks_discovered.size() >= LANDMARKS.size():
 					hud.toast("【全域二十四景勘测达成】你已探明整片开放大洋的全部生态地标！")
 
@@ -659,9 +752,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 	if is_instance_valid(input_controller):
-		if screen == "play" and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			var touch_forced: bool = str(input_controller.settings.get("touch_mode", "auto")) == "on"
-			if not touch_forced and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		if screen == "play" and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and event.device != InputEvent.DEVICE_ID_EMULATION:
+			if not _is_touch_presentation_active() and not SafeArea.is_default_touch_platform() and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 				# Web pointer lock can be lost independently of the active device.
 				# Retry inside a real pressed event; a deferred refresh cannot
 				# reliably regain it. Consume this click so it does not attack.
@@ -774,6 +866,8 @@ func _handle_action_event(event: InputEvent) -> void:
 		_switch_weapon("sonic")
 	elif event.is_action_pressed("weapon_4") and screen == "play":
 		_switch_weapon("marker_gun")
+	elif event.is_action_pressed("weapon_cycle") and screen == "play":
+		_cycle_weapon()
 	elif event.is_action_pressed("toggle_shield") and screen == "play":
 		var active: bool = diver.toggle_shield()
 		if active:
@@ -804,6 +898,19 @@ func _handle_action_event(event: InputEvent) -> void:
 			hud.toast("【角色视角】已恢复背后跟随与标准姿态")
 		elif screen == "main":
 			reset_title_showcase_angles()
+
+func _cycle_weapon() -> void:
+	if not is_instance_valid(diver):
+		return
+	var order: Array[String] = ["knife", "axe", "sonic", "marker_gun"]
+	var cur_idx: int = order.find(diver.current_weapon)
+	if cur_idx < 0:
+		cur_idx = 0
+	for step in range(1, order.size() + 1):
+		var candidate: String = order[(cur_idx + step) % order.size()]
+		if candidate == "marker_gun" or state.weapons.has(candidate):
+			_switch_weapon(candidate)
+			return
 
 func _switch_weapon(weapon_id: String) -> void:
 	var names := {"knife": "潜水战术刀", "axe": "破拆战斧", "sonic": "蓝光静滞枪", "marker_gun": "光标指示枪"}
@@ -1055,6 +1162,7 @@ func _on_boss_defeated() -> void:
 		hud.toast("【神迹降临】四大巨兽全部制伏！远古母树于深海极渊 (坐标 0, -125, -340) 苏醒！游向母树！")
 	elif state.mode == "explore" and c_cnt == 1:
 		state.boss_defeated = true
+	save_voyage()
 
 func _present_attack_hit(atk: Dictionary, hit: Dictionary, from: Vector3, dir: Vector3) -> void:
 	var weapon_type: String = str(atk.get("weapon", "knife"))
@@ -1122,13 +1230,18 @@ func _present_attack_hit(atk: Dictionary, hit: Dictionary, from: Vector3, dir: V
 
 func _notification(what: int) -> void:
 	# Web canvas blur sends the window notification, not application focus out.
-	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_WM_WINDOW_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED]:
 		if is_instance_valid(input_controller):
 			input_controller.cancel_all()
 		if is_instance_valid(touch_controls):
 			touch_controls.cancel_all()
 		if screen == "play" and is_instance_valid(hud):
 			_set_screen("pause")
+		elif voyage_started:
+			save_voyage()
+	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
+		if voyage_started:
+			save_voyage()
 
 func _process(delta: float) -> void:
 	if screen == "main":
@@ -1416,7 +1529,7 @@ func _process(delta: float) -> void:
 		"has_waypoint": state.has_custom_waypoint,
 		"waypoint_pos": state.custom_waypoint,
 		"sonar_cooldown": state.sonar_cooldown,
-		"onboarding": gameplay_guide.get_hud_payload(Input.mouse_mode == Input.MOUSE_MODE_CAPTURED, OS.has_feature("web"))
+		"onboarding": _get_onboarding_hud_payload()
 	})
 	if screen == "play":
 		_update_home_marker(distance)
@@ -1655,7 +1768,7 @@ func _trigger_drone_salvage() -> void:
 	state.inventory["chitin"] = int(state.inventory.get("chitin", 0)) + 2
 	state.inventory["creature_tooth"] = int(state.inventory.get("creature_tooth", 0)) + 2
 	var m_res: Dictionary = state.register_marinca_catch(kind, c_name, 3)
-	hud.toast("🎈【无人机 ★★★ 完美打捞】已用浮力袋回收【%s】！获顶级生肉 ×4 · 玛琳卡赏金 +%dG (余 %d 次)" % [
+	hud.toast("✦【无人机 ★★★ 完美打捞】已用浮力袋回收【%s】！获顶级生肉 ×4 · 玛琳卡赏金 +%dG (余 %d 次)" % [
 		c_name, int(m_res.get("reward_gold", 45)), state.drone_charges
 	])
 	_apply_guide_result(gameplay_guide.notify_event("loot_collected"))
@@ -1668,9 +1781,10 @@ func _on_sushi_cook(dish_id: String) -> void:
 		return
 	diver.damage_bonus = state.weapon_attack_bonus
 	UnderwaterAudio.play_sound(get_tree(), "sushi_serve", -2.5, 1.0)
-	hud.toast("🍣【班乔料理出锅】已售出【%s】！收入 +%d 金币 · %s" % [
+	hud.toast("◆【班乔料理出锅】已售出【%s】！收入 +%d 金币 · %s" % [
 		str(res.get("name", "料理")), int(res.get("gold_earned", 0)), str(res.get("buff", ""))
 	])
+	save_voyage()
 
 func _on_sushi_serve_all() -> void:
 	var res: Dictionary = state.serve_all_surplus_fish()
@@ -1678,9 +1792,10 @@ func _on_sushi_serve_all() -> void:
 		hud.toast(str(res.get("error", "暂无可售出的鲜鱼或生肉")))
 		return
 	UnderwaterAudio.play_sound(get_tree(), "sushi_serve", -2.0, 1.08)
-	hud.toast("🏮【班乔寿司吧夜营业大捷】共售出 %d 份深海料理！赚取 +%d 金币 · 背包负重已清空！" % [
+	hud.toast("★【班乔寿司吧夜营业大捷】共售出 %d 份深海料理！赚取 +%d 金币 · 背包负重已清空！" % [
 		int(res.get("plates", 1)), int(res.get("gold_earned", 0))
 	])
+	save_voyage()
 
 func _on_cobra_buy(item_id: String) -> void:
 	var res: Dictionary = state.buy_cobra_item(item_id)
@@ -1689,9 +1804,10 @@ func _on_cobra_buy(item_id: String) -> void:
 		return
 	diver.damage_bonus = state.weapon_attack_bonus
 	UnderwaterAudio.play_sound(get_tree(), "sushi_serve", -2.5, 0.92)
-	hud.toast("🛒【柯布拉深海商店】已购入【%s】！%s" % [
+	hud.toast("◇【柯布拉深海商店】已购入【%s】！%s" % [
 		str(res.get("name", "装备")), str(res.get("effect", ""))
 	])
+	save_voyage()
 
 func _board_submarine(sub: Node3D) -> void:
 	active_submarine = sub as Submarine
@@ -1767,6 +1883,7 @@ func _craft(recipe: String) -> void:
 				hud.toast("【载具强化】生物高能电池已激活！潜艇与助推器航速提升 25%")
 			"serrated_blade":
 				hud.toast("【武器精工】深海锯齿骨刃已研磨！全武器伤害额外 +25！")
+	save_voyage()
 
 func _setup_audio() -> void:
 	var headless := DisplayServer.get_name() == "headless"
@@ -1784,6 +1901,11 @@ func _setup_audio() -> void:
 	add_child(effect)
 
 func _exit_tree() -> void:
+	if OS.has_feature("web") and Engine.has_singleton("JavaScriptBridge"):
+		var win: Variant = JavaScriptBridge.get_interface("window")
+		if win != null:
+			win.__abyssalOnPageHidden = null
+	_js_page_hidden_cb = null
 	if is_instance_valid(ambience):
 		ambience.stop()
 		ambience.stream = null
@@ -1892,6 +2014,7 @@ func _interact_outpost(outpost: Node3D) -> void:
 		outpost_name, int(res.get("gold_reward", 150))
 	])
 	_apply_guide_result(gameplay_guide.notify_event("outpost_activated"))
+	save_voyage()
 
 func _collect_explorer_relic(relic: Node3D) -> void:
 	if not is_instance_valid(relic) or bool(relic.get_meta("collected", false)):
@@ -1915,10 +2038,11 @@ func _collect_explorer_relic(relic: Node3D) -> void:
 		relic_name, int(res.get("collected_count", state.collected_relics.size())), Ocean.RELIC_SPECS.size()
 	])
 	_apply_guide_result(gameplay_guide.notify_event("relic_collected"))
+	save_voyage()
 
 func _trigger_sonar_ping() -> bool:
 	if state.sonar_cooldown > 0.0:
-		hud.toast("📡 广域声呐电容充能中 (%.1f 秒)" % state.sonar_cooldown)
+		hud.toast("⬡ 广域声呐电容充能中 (%.1f 秒)" % state.sonar_cooldown)
 		return false
 	state.sonar_cooldown = 4.0 if state.mode == "explore" else 8.0
 	var origin: Vector3 = diver.global_position
@@ -1957,11 +2081,11 @@ func _trigger_sonar_ping() -> bool:
 	UnderwaterAudio.play_sound(get_tree(), "sonic_blast", -4.5, 1.25)
 	_check_explorer_rank_up()
 	if ping_count > 0:
-		hud.toast("📡【广域声呐回波】已揭开周边海图，探测到 %d 处未知信标！最近：%s" % [ping_count, nearest_hint])
+		hud.toast("⬡【广域声呐回波】已揭开周边海图，探测到 %d 处未知信标！最近：%s" % [ping_count, nearest_hint])
 	elif not nearest_hint.is_empty():
-		hud.toast("📡【广域声呐回波】周边海图已更新 · 最近未激活前哨：%s" % nearest_hint)
+		hud.toast("⬡【广域声呐回波】周边海图已更新 · 最近未激活前哨：%s" % nearest_hint)
 	else:
-		hud.toast("📡【广域声呐回波】周边 220m 海图扇区已完整测绘！")
+		hud.toast("⬡【广域声呐回波】周边 220m 海图扇区已完整测绘！")
 	_apply_guide_result(gameplay_guide.notify_event("sonar_pinged"))
 	return true
 
@@ -1998,7 +2122,7 @@ func _on_fast_travel_requested(target_id: String, world_pos: Vector3, target_nam
 		var fy_d := Ocean.terrain_height(world_pos.x, world_pos.z + 4.0)
 		dest_pos = Vector3(world_pos.x, clampf(maxf(world_pos.y + 3.0, fy_d + 3.0), -OceanDepths.MAX_DIVE_DEPTH + 2.0, -1.8), world_pos.z + 4.0)
 	if not allowed:
-		hud.toast("🔒 该节点尚未解锁洋流跃迁，请先潜航前往勘测或激活前哨站")
+		hud.toast("◇ 该节点尚未解锁洋流跃迁，请先潜航前往勘测或激活前哨站")
 		return
 	if is_instance_valid(active_submarine):
 		_disembark_submarine()
@@ -2335,6 +2459,7 @@ func _tame_creature(c: Node3D) -> void:
 	else:
 		var cur_mult := pow(2.0, maxf(0.0, float(tamed_beasts.size() - 1)))
 		hud.toast("【契约缔结】成功驯服【%s】！(已契约: %d/20 · 全体攻击力提高至: ×%.0f)" % [c_name, tamed_beasts.size(), cur_mult])
+	save_voyage()
 
 func _mount_beast(idx: int) -> void:
 	if idx < 0 or idx >= tamed_beasts.size():
@@ -2691,6 +2816,7 @@ func _collect_mother_tree_item(item: Node3D) -> void:
 		hud.toast("【母树遗物齐集】3大圣物全部获得！立即返回逃生舱基地的中央控制台制作逃生舰！")
 	else:
 		hud.toast("【遗物收取】已获得【%s】！已集齐 %d / 3" % [item_name, collected])
+	save_voyage()
 
 func _interact_escape_console() -> void:
 	var has_ess := int(state.inventory.get("mother_tree_essence", 0))
@@ -2702,9 +2828,366 @@ func _interact_escape_console() -> void:
 		CombatVFX.spawn_tame_ring(self, Ocean.HOME + Vector3(2.2, 0.4, 1.4), 6.0)
 		hud.toast("【跃迁核心注入完成】逃生舰系统全面启动！准备星际跃迁！")
 		stasis_fields.clear()
+		save_voyage()
 		_set_screen("win")
 	else:
 		hud.toast("【逃生控制台】需放入深海母树核心3大遗物：母树精华(%d/1) 星核源石(%d/1) 启迪之种(%d/1)" % [has_ess, has_cor, has_sed])
+
+func _setup_web_lifecycle_hooks() -> void:
+	if not OS.has_feature("web") or not Engine.has_singleton("JavaScriptBridge"):
+		return
+	_js_page_hidden_cb = JavaScriptBridge.create_callback(_on_web_page_hidden)
+	var win: Variant = JavaScriptBridge.get_interface("window")
+	if win != null:
+		win.__abyssalOnPageHidden = _js_page_hidden_cb
+
+func _on_web_page_hidden(_args: Array = []) -> void:
+	if is_instance_valid(input_controller):
+		input_controller.cancel_all()
+	if is_instance_valid(touch_controls):
+		touch_controls.cancel_all()
+	if screen == "play" and is_instance_valid(hud):
+		_set_screen("pause")
+	elif voyage_started:
+		save_voyage()
+
+func _read_voyage_save_dict() -> Dictionary:
+	if not voyage_persist_enabled and voyage_save_path == VOYAGE_SAVE_PATH:
+		return {}
+	if voyage_save_path.is_empty() or not FileAccess.file_exists(voyage_save_path):
+		return {}
+	var f := FileAccess.open(voyage_save_path, FileAccess.READ)
+	if f == null:
+		return {}
+	var raw := f.get_as_text()
+	f.close()
+	if raw.is_empty():
+		return {}
+	var parsed: Variant = JSON.parse_string(raw)
+	if parsed is Dictionary:
+		var d: Dictionary = parsed
+		if d.get("survival") is Dictionary:
+			return d
+	return {}
+
+func has_voyage_save() -> bool:
+	return not _read_voyage_save_dict().is_empty()
+
+func get_voyage_save_summary() -> String:
+	var data := _read_voyage_save_dict()
+	if data.is_empty():
+		return ""
+	var surv: Dictionary = data.get("survival", {})
+	var saved_mode := str(data.get("mode", surv.get("mode", "survival")))
+	var mode_label := "自由探险" if saved_mode == "explore" else "生存航程"
+	var pos_arr: Variant = data.get("diver_pos", [0.0, -9.0, 17.0])
+	var depth_m := 9
+	if pos_arr is Array and (pos_arr as Array).size() >= 2 and ((pos_arr as Array)[1] is int or (pos_arr as Array)[1] is float):
+		depth_m = maxi(0, roundi(-float((pos_arr as Array)[1])))
+	var gold_val := 0
+	var g_raw: Variant = surv.get("gold", 0)
+	if g_raw is int or g_raw is float:
+		gold_val = maxi(0, roundi(float(g_raw)))
+	return "%s · 深度 %dm · 金币 %d" % [mode_label, depth_m, gold_val]
+
+func _refresh_continue_voyage_ui() -> void:
+	if is_instance_valid(hud) and hud.has_method("set_can_continue_voyage"):
+		var available := has_voyage_save()
+		hud.call("set_can_continue_voyage", available, get_voyage_save_summary() if available else "")
+
+func save_voyage() -> bool:
+	if not voyage_started:
+		return false
+	if not voyage_persist_enabled and voyage_save_path == VOYAGE_SAVE_PATH:
+		return false
+	if voyage_save_path.is_empty() or not is_instance_valid(diver):
+		return false
+	var save_pos: Vector3 = diver.global_position if diver.is_inside_tree() else diver.position
+	if is_instance_valid(active_submarine):
+		var sub_pos: Vector3 = active_submarine.global_position if active_submarine.is_inside_tree() else active_submarine.position
+		save_pos = sub_pos + Vector3(0.0, 2.2, 3.2)
+	save_pos.x = clampf(save_pos.x, -890.0, 890.0)
+	save_pos.z = clampf(save_pos.z, -890.0, 890.0)
+	save_pos.y = clampf(maxf(save_pos.y, Ocean.terrain_height(save_pos.x, save_pos.z) + 1.0), -OceanDepths.MAX_DIVE_DEPTH + 1.0, 1.2)
+
+	var beast_defs: Array[Dictionary] = []
+	for b_entry: Dictionary in tamed_beasts:
+		var b_node: Node3D = b_entry.get("node", null)
+		if b_node != null and (not is_instance_valid(b_node) or bool(b_node.get_meta("dead", false))):
+			continue
+		var boss_id := ""
+		if is_instance_valid(ocean) and is_instance_valid(b_node):
+			for bid in ocean.boss_nodes:
+				if ocean.boss_nodes[bid] == b_node:
+					boss_id = str(bid)
+					break
+		beast_defs.append({
+			"kind": str(b_entry.get("kind", "")),
+			"name": str(b_entry.get("name", "深海战兽")),
+			"boss_id": boss_id,
+			"health": float(b_entry.get("health", 600.0)),
+			"max_health": float(b_entry.get("max_health", 600.0)),
+			"speed": float(b_entry.get("speed", 17.5)),
+			"damage": float(b_entry.get("damage", 32.0)),
+			"deployed": bool(b_entry.get("deployed", true))
+		})
+
+	var boss_ids: Array = []
+	if is_instance_valid(ocean):
+		for b_key in ocean.conquered_bosses:
+			if bool(ocean.conquered_bosses[b_key]):
+				boss_ids.append(str(b_key))
+
+	var guide_data := {
+		"completed": gameplay_guide.onboarding_completed,
+		"skipped": gameplay_guide.onboarding_skipped,
+		"step_index": gameplay_guide.current_step_index,
+		"horiz_moved": gameplay_guide.horiz_moved,
+		"vert_moved": gameplay_guide.vert_moved,
+		"completed_flags": gameplay_guide.completed_flags.duplicate(),
+		"seen_tips": gameplay_guide.seen_tips.duplicate()
+	}
+
+	var payload := {
+		"version": VOYAGE_SAVE_VERSION,
+		"timestamp": int(Time.get_unix_time_from_system()),
+		"mode": state.mode,
+		"character_id": diver.current_character,
+		"diver_pos": [save_pos.x, save_pos.y, save_pos.z],
+		"diver_rot_y": diver.rotation.y,
+		"cam_pitch": diver.camera.rotation.x if is_instance_valid(diver.camera) else -0.16,
+		"current_weapon": diver.current_weapon,
+		"lamp_on": diver.lamp.visible if is_instance_valid(diver.lamp) else false,
+		"shield_active": diver.shield_active,
+		"booster_active": diver.booster_active,
+		"conquered_bosses": boss_ids,
+		"tamed_beasts": beast_defs,
+		"gameplay_guide": guide_data,
+		"survival": state.to_save_dict()
+	}
+
+	var dir_path := voyage_save_path.get_base_dir()
+	if not dir_path.is_empty() and dir_path != "user://" and dir_path != "res://":
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir_path))
+	var f := FileAccess.open(voyage_save_path, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_string(JSON.stringify(payload))
+	f.close()
+	if OS.has_feature("web") and Engine.has_singleton("JavaScriptBridge"):
+		JavaScriptBridge.eval("try { if (typeof FS !== 'undefined' && FS.syncfs) FS.syncfs(false, function(){}); } catch(_e) {}", true)
+	return true
+
+func _restore_tamed_beasts_from_save(defs: Variant, leader_pos: Vector3, leader_basis: Basis) -> void:
+	if active_mount_idx >= 0:
+		_dismount_beast()
+	for old_entry: Dictionary in tamed_beasts:
+		var old_node: Node3D = old_entry.get("node", null)
+		if is_instance_valid(old_node):
+			old_node.set_meta("tamed", false)
+			if old_node.has_method("set_tamed"):
+				old_node.set_tamed(false)
+			old_node.visible = true
+	tamed_beasts.clear()
+	if not (defs is Array) or not is_instance_valid(ocean):
+		state.tamed_beast_count = 0
+		return
+	var slot := 0
+	for item in defs:
+		if not (item is Dictionary):
+			continue
+		var bd: Dictionary = item
+		var kind := str(bd.get("kind", ""))
+		var boss_id := str(bd.get("boss_id", ""))
+		var cand: Node3D = null
+		if not boss_id.is_empty() and ocean.boss_nodes.has(boss_id):
+			var bnode: Node3D = ocean.boss_nodes[boss_id]
+			if is_instance_valid(bnode) and not bool(bnode.get_meta("tamed", false)):
+				cand = bnode
+		if cand == null:
+			for c: Node3D in ocean.get_creatures():
+				if not is_instance_valid(c) or bool(c.get_meta("tamed", false)) or bool(c.get_meta("dead", false)):
+					continue
+				if str(c.get_meta("kind", "")) == kind:
+					cand = c
+					break
+		if cand == null:
+			continue
+		cand.set_meta("dead", false)
+		cand.set_meta("tamed", true)
+		cand.set_meta("freeze_timer", 0.0)
+		if cand.has_method("set_tamed"):
+			cand.set_tamed(true)
+		var deployed := bool(bd.get("deployed", true))
+		cand.visible = deployed
+		var rear_pos := leader_pos + leader_basis.z * (4.0 + float(slot % 4) * 2.5) + leader_basis.x * (float((slot % 4) - 2) * 2.2)
+		cand.position = rear_pos
+		slot += 1
+		tamed_beasts.append({
+			"node": cand,
+			"kind": kind,
+			"name": str(bd.get("name", cand.get_meta("name", "深海战兽"))),
+			"health": float(bd.get("health", cand.get_meta("health", 600.0))),
+			"max_health": float(bd.get("max_health", cand.get_meta("max_health", 600.0))),
+			"speed": float(bd.get("speed", 22.0 if kind.begins_with("boss") else 17.5)),
+			"damage": float(bd.get("damage", 55.0 if kind.begins_with("boss") else 32.0)),
+			"deployed": deployed
+		})
+	state.tamed_beast_count = tamed_beasts.size()
+
+func load_voyage() -> bool:
+	var data := _read_voyage_save_dict()
+	if data.is_empty():
+		return false
+	if is_instance_valid(active_submarine):
+		_disembark_submarine()
+	if active_mount_idx >= 0:
+		_dismount_beast()
+	_cancel_attack_input()
+	stasis_fields.clear()
+	companion_attack_target = null
+	has_target_pos = false
+	if is_instance_valid(persistent_red_dot):
+		persistent_red_dot.queue_free()
+		persistent_red_dot = null
+
+	var surv_dict: Dictionary = data.get("survival", {})
+	state.load_save_dict(surv_dict)
+	if state.health <= 0.0:
+		state.recover()
+
+	var saved_char := str(data.get("character_id", state.selected_character))
+	_select_character(saved_char, false)
+
+	var saved_pos := Vector3(0.0, -9.0, 17.0)
+	var pos_raw: Variant = data.get("diver_pos", null)
+	if pos_raw is Array and (pos_raw as Array).size() >= 3:
+		var pa: Array = pos_raw
+		if (pa[0] is int or pa[0] is float) and (pa[1] is int or pa[1] is float) and (pa[2] is int or pa[2] is float):
+			saved_pos = Vector3(float(pa[0]), float(pa[1]), float(pa[2]))
+	saved_pos.x = clampf(saved_pos.x, -890.0, 890.0)
+	saved_pos.z = clampf(saved_pos.z, -890.0, 890.0)
+	saved_pos.y = clampf(maxf(saved_pos.y, Ocean.terrain_height(saved_pos.x, saved_pos.z) + 1.0), -OceanDepths.MAX_DIVE_DEPTH + 1.0, 1.2)
+
+	var rot_y := 0.0
+	var ry_raw: Variant = data.get("diver_rot_y", 0.0)
+	if ry_raw is int or ry_raw is float:
+		rot_y = float(ry_raw)
+	var cam_pitch := -0.16
+	var cp_raw: Variant = data.get("cam_pitch", -0.16)
+	if cp_raw is int or cp_raw is float:
+		cam_pitch = clampf(float(cp_raw), -1.35, 1.35)
+
+	if is_instance_valid(diver):
+		diver.cancel_gun_charge()
+		diver.aiming = false
+		diver.scoped = false
+		diver.set_submarine_mode(false)
+		diver.set_mount_mode(false)
+		diver.exploration_mode = state.mode == "explore"
+		diver.upgraded = state.fins
+		diver.overweight = state.is_overweight()
+		diver.biomod_dash_unlocked = state.biomod_dash
+		diver.biomod_vision_unlocked = state.biomod_vision
+		diver.damage_bonus = state.weapon_attack_bonus
+		diver.explorer_speed_mult = 1.0 + state.explorer_speed_bonus
+		if diver.is_inside_tree():
+			diver.global_position = saved_pos
+		else:
+			diver.position = saved_pos
+		diver.rotation = Vector3(0.0, rot_y, 0.0)
+		diver.velocity = Vector3.ZERO
+		diver.reset_camera_alignment(cam_pitch)
+		var w_id := str(data.get("current_weapon", "knife"))
+		if w_id != "marker_gun" and not state.weapons.has(w_id):
+			w_id = "knife"
+		diver.set_weapon(w_id)
+		diver.equip_anim_time = 0.0
+		var want_lamp := bool(data.get("lamp_on", false))
+		if is_instance_valid(diver.lamp):
+			diver.lamp.visible = want_lamp
+		if is_instance_valid(diver.lamp_fill):
+			diver.lamp_fill.visible = want_lamp
+		var want_shield := bool(data.get("shield_active", false))
+		if diver.shield_active != want_shield:
+			diver.toggle_shield()
+		var want_booster := bool(data.get("booster_active", false))
+		if diver.booster_active != want_booster:
+			diver.toggle_booster()
+		diver._update_third_person_camera(0.0)
+
+	if is_instance_valid(ocean):
+		ocean.reset_boss_encounter()
+		for out in ocean.outposts:
+			if is_instance_valid(out) and state.unlocked_outposts.has(str(out.get_meta("outpost_id", ""))):
+				ocean.set_outpost_activated_visual(out)
+		for rel in ocean.explorer_relics:
+			if is_instance_valid(rel) and state.collected_relics.has(str(rel.get_meta("relic_id", ""))):
+				rel.set_meta("collected", true)
+				rel.visible = false
+				if rel is CollisionObject3D:
+					(rel as CollisionObject3D).collision_layer = 0
+		ocean.conquered_bosses.clear()
+		var cb_raw: Variant = data.get("conquered_bosses", [])
+		if cb_raw is Array:
+			for bid in cb_raw:
+				ocean.conquered_bosses[str(bid)] = true
+		elif cb_raw is Dictionary:
+			for bid in cb_raw:
+				if bool(cb_raw[bid]):
+					ocean.conquered_bosses[str(bid)] = true
+		_restore_tamed_beasts_from_save(data.get("tamed_beasts", []), saved_pos, diver.global_basis if is_instance_valid(diver) else Basis.IDENTITY)
+		for bid in ocean.boss_nodes:
+			var bnode: Node3D = ocean.boss_nodes[bid]
+			if is_instance_valid(bnode) and ocean.conquered_bosses.has(str(bid)) and not bool(bnode.get_meta("tamed", false)):
+				bnode.set_meta("dead", true)
+				bnode.visible = false
+		ocean.boss_slain = ocean.conquered_bosses.size() >= 4
+		if (ocean.conquered_bosses.size() >= 4 or state.all_bosses_defeated or state.mother_tree_active) and not ocean.mother_tree_spawned_flag:
+			ocean.spawn_mother_tree()
+		for m_item in ocean.mother_tree_items.duplicate():
+			if is_instance_valid(m_item):
+				var mk := str(m_item.get_meta("kind", ""))
+				if int(state.inventory.get(mk, 0)) > 0 or state.escape_crafted:
+					ocean.mother_tree_items.erase(m_item)
+					m_item.queue_free()
+		ocean.set_depth(maxf(0.0, -saved_pos.y), false)
+
+	var guide_raw: Variant = data.get("gameplay_guide", null)
+	if guide_raw is Dictionary:
+		var gd: Dictionary = guide_raw
+		gameplay_guide.onboarding_completed = bool(gd.get("completed", gameplay_guide.onboarding_completed))
+		gameplay_guide.onboarding_skipped = bool(gd.get("skipped", gameplay_guide.onboarding_skipped))
+		if gd.get("step_index") is int or gd.get("step_index") is float:
+			gameplay_guide.current_step_index = clampi(roundi(float(gd["step_index"])), 0, GameplayGuide.ONBOARDING_STEPS.size() - 1)
+		if gd.get("horiz_moved") is int or gd.get("horiz_moved") is float:
+			gameplay_guide.horiz_moved = maxf(0.0, float(gd["horiz_moved"]))
+		if gd.get("vert_moved") is int or gd.get("vert_moved") is float:
+			gameplay_guide.vert_moved = maxf(0.0, float(gd["vert_moved"]))
+		if gd.get("completed_flags") is Dictionary:
+			gameplay_guide.completed_flags.clear()
+			for fk in gd["completed_flags"]:
+				if bool(gd["completed_flags"][fk]):
+					gameplay_guide.completed_flags[str(fk)] = true
+		if gd.get("seen_tips") is Dictionary:
+			gameplay_guide.seen_tips.clear()
+			for tk in gd["seen_tips"]:
+				if bool(gd["seen_tips"][tk]):
+					gameplay_guide.seen_tips[str(tk)] = true
+	gameplay_guide.start_voyage(state.mode)
+
+	voyage_started = true
+	_set_screen("play")
+	if is_instance_valid(diver):
+		_prev_diver_pos = diver.global_position if diver.is_inside_tree() else diver.position
+		_has_prev_diver_pos = true
+	_was_overweight = state.is_overweight()
+	if is_instance_valid(hud):
+		hud.toast("已恢复上次潜航进度")
+	return true
+
+func _continue_voyage() -> void:
+	load_voyage()
 
 func _update_title_camera(delta: float) -> void:
 	_title_clock += delta
