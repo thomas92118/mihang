@@ -187,8 +187,14 @@ func _verify_touch_and_hud_matrix() -> void:
 	hud.action_requested.connect(func(a: String) -> void: emitted_actions.append(a))
 	hud.scope_exit_btn.show()
 	_check(hud.scope_exit_btn.size.y >= 44.0, "Scope exit button height must be >= 44px")
+	_check(hud.scope_exit_btn.icon != null and hud.scope_exit_btn.text.is_empty(), "Touch scope_exit_btn must use pure image icon without text")
 	hud.scope_exit_btn.pressed.emit()
 	_check(emitted_actions.has("scope"), "Scope exit button must emit scope toggle action")
+	var skip_box := {"count": 0}
+	hud.onboarding_skip_requested.connect(func() -> void: skip_box["count"] = int(skip_box["count"]) + 1)
+	_check(is_instance_valid(hud.onboarding_close_btn) and hud.onboarding_close_btn.icon != null and hud.onboarding_close_btn.text.is_empty(), "Onboarding skip button must use image icon in touch mode")
+	hud.onboarding_close_btn.pressed.emit()
+	_check(int(skip_box["count"]) == 1, "Onboarding close icon button must emit onboarding_skip_requested")
 
 	viewport.queue_free()
 	await process_frame

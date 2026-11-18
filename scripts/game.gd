@@ -436,7 +436,9 @@ func _sync_touch_context_and_margins(force_hud_sync: bool = false) -> void:
 		var s_type: String = str(active_submarine.sub_type) if in_sub else ""
 		var has_torp: bool = is_instance_valid(active_torpedo) and not bool(active_torpedo.exploded)
 		var is_sc: bool = bool(diver.scoped) if is_instance_valid(diver) else false
-		touch_controls.set_vehicle_context(in_sub, s_type, has_torp, is_sc)
+		var shield_on: bool = bool(diver.shield_active) if is_instance_valid(diver) else false
+		var lamp_on: bool = (is_instance_valid(diver.lamp) and diver.lamp.visible) if is_instance_valid(diver) else false
+		touch_controls.set_vehicle_context(in_sub, s_type, has_torp, is_sc, shield_on, lamp_on)
 	if is_instance_valid(hud) and hud.has_method("set_touch_margins") and touch_controls.has_method("get_hud_safe_margins"):
 		var margins: Dictionary = touch_controls.get_hud_safe_margins()
 		if force_hud_sync or margins != _last_touch_margins:
@@ -2156,7 +2158,8 @@ func _setup_overlay() -> void:
 	overlay.add_child(waypoint_arrow)
 
 func _update_home_marker(distance: float) -> void:
-	home_arrow.visible = screen == "play" and distance >= 7.0
+	var use_touch := _is_touch_presentation_active() and is_instance_valid(touch_controls)
+	home_arrow.visible = screen == "play" and distance >= (24.0 if use_touch else 7.0)
 	if not home_arrow.visible:
 		return
 	var camera: Camera3D = diver.camera
@@ -2167,7 +2170,6 @@ func _update_home_marker(distance: float) -> void:
 	var max_x := maxf(min_x, safe.end.x - 168.0)
 	var min_y := safe.position.y + 112.0
 	var max_y := maxf(min_y, safe.end.y - 164.0)
-	var use_touch := _is_touch_presentation_active() and is_instance_valid(touch_controls)
 	if use_touch and touch_controls.has_method("get_hud_safe_margins"):
 		var margins: Dictionary = touch_controls.get_hud_safe_margins()
 		min_y = maxf(safe.position.y + 62.0, float(margins.get("top_bar_bottom", min_y)) + 10.0)
@@ -2240,6 +2242,10 @@ func _avoid_touch_clusters_for_marker(pos: Vector2, marker_size: Vector2, min_x:
 			out.x = clampf(center_max_x, min_x, max_x)
 		else:
 			out.y = clampf(minf(out.y, float(margins.get("right_cluster_top", max_y)) - marker_size.y - 8.0), min_y, max_y)
+	if is_instance_valid(hud) and is_instance_valid(hud.onboarding_panel) and (hud.onboarding_panel as Control).is_visible_in_tree():
+		var ob_rect: Rect2 = (hud.onboarding_panel as Control).get_global_rect().grow(6.0)
+		if Rect2(out, marker_size).intersects(ob_rect):
+			out.y = clampf(ob_rect.end.y + 6.0, min_y, max_y)
 	return Vector2(clampf(out.x, min_x, max_x), clampf(out.y, min_y, max_y))
 
 func _check_explorer_rank_up() -> void:

@@ -60,6 +60,15 @@ func _run() -> void:
 	await process_frame
 	assert(surface.mouse_filter == Control.MOUSE_FILTER_IGNORE, "The full-screen overlay must not block GUI controls")
 	assert(surface.size.is_equal_approx(Vector2(1280, 800)))
+	for icon_key: String in ["attack", "interact", "aim", "ascend", "descend", "sprint", "dash", "weapon_cycle", "toggle_shield", "sonar_ping", "lamp", "world_map", "pause_game", "quick_menu", "scope_exit", "torpedo", "sub_exit"]:
+		var tex: Texture2D = TouchControls.ICONS.get(icon_key)
+		assert(tex != null and tex.get_width() >= 128 and tex.get_height() == tex.get_width(), "Missing or non-square GPT touch icon: " + icon_key)
+	surface.set_vehicle_context(false, "", false, true)
+	assert(surface._resolve_icon("aim") == TouchControls.ICONS["scope_exit"], "Scoped aim button must switch to scope_exit icon")
+	surface.set_vehicle_context(true, "scout", false, false)
+	assert(surface._resolve_icon("attack") == TouchControls.ICONS["torpedo"], "Submarine attack must switch to torpedo icon")
+	assert(surface._resolve_icon("interact") == TouchControls.ICONS["sub_exit"], "Submarine interact must switch to sub_exit icon")
+	surface.set_vehicle_context(false, "", false, false)
 
 	var joystick: Rect2 = surface.get_joystick_rect()
 	var attack: Rect2 = surface.get_control_rect("attack")

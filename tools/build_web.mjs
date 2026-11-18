@@ -26,6 +26,7 @@ const STAGE_DIRS = [
 	path.join("assets", "collision"),
 	path.join("assets", "fonts"),
 	path.join("assets", "models"),
+	path.join("assets", "ui"),
 	path.join("assets", "web"),
 ];
 

@@ -7,6 +7,7 @@ const CharacterRoster = preload("res://scripts/presentation/character_roster.gd"
 const GameplayGuide = preload("res://scripts/gameplay_guide.gd")
 const GuidePanel = preload("res://scripts/presentation/guide_panel.gd")
 const SafeArea = preload("res://scripts/presentation/safe_area.gd")
+const SCOPE_EXIT_ICON: Texture2D = preload("res://assets/ui/touch_icons/scope_exit.png")
 
 signal start_requested(mode: String)
 signal continue_requested
@@ -178,11 +179,13 @@ var onboarding_title: Label
 var onboarding_bar: ProgressBar
 var onboarding_desc: Label
 var onboarding_sub: Label
+var onboarding_close_btn: Button
 var continue_voyage_btn: Button
 var continue_summary_label: Label
 var _can_continue_voyage := false
 var scope_exit_btn: Button
 var _scoped_active := false
+var _weapon_flash_time := 0.0
 var _is_narrow := false
 var _is_short := false
 var _is_portrait := false
@@ -291,6 +294,7 @@ func _notification(what: int) -> void:
 
 func _process(delta: float) -> void:
 	_detail_time = maxf(0.0, _detail_time - delta)
+	_weapon_flash_time = maxf(0.0, _weapon_flash_time - delta)
 	_safe_poll_clock -= delta
 	if _safe_poll_clock <= 0.0:
 		_safe_poll_clock = 0.2
@@ -379,6 +383,13 @@ func _build_instruments() -> void:
 	onboarding_desc.clip_text = false
 	onboarding_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	onboarding_sub = _label(onboarding_panel, "", Rect2(12, 122, 244, 20), 14, MUTED)
+	onboarding_close_btn = _button(onboarding_panel, "", Rect2(232, 4, 30, 30), func() -> void: onboarding_skip_requested.emit())
+	onboarding_close_btn.name = "OnboardingSkipIconButton"
+	onboarding_close_btn.custom_minimum_size = Vector2(28, 28)
+	onboarding_close_btn.focus_mode = Control.FOCUS_NONE
+	onboarding_close_btn.set_meta("_no_hint", true)
+	_apply_pure_icon_button_style(onboarding_close_btn, SCOPE_EXIT_ICON)
+	onboarding_close_btn.hide()
 	onboarding_panel.hide()
 	compass_strip = WorldMap.CompassStrip.new()
 	_place(compass_strip, instruments, Rect2(-160, 18, 320, 34), Vector2(0.5, 0))
@@ -408,8 +419,10 @@ func _build_instruments() -> void:
 	pinned_panel.hide()
 	_compact_pin_label = _label(instruments, "", Rect2(-184, 180, 172, 24), 14, CYAN, Vector2(1, 0))
 	_compact_pin_label.name = "CompactPinnedRecipeLabel"
-	_compact_pin_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_compact_pin_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_compact_pin_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_compact_pin_label.clip_text = true
+	_compact_pin_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_compact_pin_label.set_meta("_no_hint", true)
 	var pin_pill := _style(Color(Art.INK, 0.78), Color(CYAN, 0.26), 3)
 	pin_pill.content_margin_left = 8
@@ -1326,6 +1339,8 @@ func update_hud(data: Dictionary) -> void:
 	if low_oxygen != _low_oxygen_alert:
 		_low_oxygen_alert = low_oxygen
 		status_value.add_theme_stylebox_override("normal", _status_alert_style if low_oxygen else _status_normal_style)
+		if _touch_layout and _is_portrait:
+			_apply_layout()
 	if low_oxygen:
 		status_value.text = "氧气不足  /  请上浮、靠近巨砗磲或前往科考前哨站"
 		_set_font_color(status_value, ORANGE)
@@ -1400,7 +1415,10 @@ func update_hud(data: Dictionary) -> void:
 	var hp_num := ceili(float(data.get("health", 100.0)))
 	var low_hp := float(data.get("health", 100.0)) < 30.0
 	var show_compact_overweight := overweight and (_touch_layout or _is_narrow or _is_short)
-	health_value.text = ("!超重 · 生命 %d" % hp_num) if show_compact_overweight else ("＋  生命 %d" % hp_num)
+	if _touch_layout:
+		health_value.text = ("!超重 · %d" % hp_num) if show_compact_overweight else ("＋ %d" % hp_num)
+	else:
+		health_value.text = ("!超重 · 生命 %d" % hp_num) if show_compact_overweight else ("＋  生命 %d" % hp_num)
 	_set_font_color(health_value, Art.DANGER if low_hp else (ORANGE if show_compact_overweight else INK))
 	var marinca_cards: Dictionary = data.get("marinca_cards", {})
 	var marinca_species: Dictionary = data.get("marinca_species", {})
@@ -1514,7 +1532,11 @@ func update_hud(data: Dictionary) -> void:
 			short_parts.append("%s%d/%d%s" % [str(it.get("name")), int(it.get("current")), int(it.get("required")), ready_mark])
 		pinned_progress.text = "   ".join(parts)
 		if is_instance_valid(_compact_pin_label):
-			_compact_pin_label.text = ("✦ %s · 可制作✓" % p_name) if is_all_ready else ("✦ %s: %s" % [p_name, " ".join(short_parts)])
+			_compact_pin_label.add_theme_font_size_override("font_size", 12 if _touch_layout else 14)
+			if _touch_layout:
+				_compact_pin_label.text = ("✦ %s ✓" % p_name) if is_all_ready else ("✦ %s" % " ".join(short_parts))
+			else:
+				_compact_pin_label.text = ("✦ %s · 可制作✓" % p_name) if is_all_ready else ("✦ %s: %s" % [p_name, " ".join(short_parts)])
 			_set_font_color(_compact_pin_label, ORANGE if is_all_ready else CYAN)
 
 	# 更新潜水面罩 Shader 呼吸与冰霜凝雾
@@ -1576,7 +1598,7 @@ func update_hud(data: Dictionary) -> void:
 	var w_bonus: float = float(data.get("damage_bonus", 0.0))
 	var weapon_names := {"knife": "潜水刀", "axe": "破拆战斧", "sonic": "蓝光静滞枪", "marker": "光标指示枪"}
 	var upgrade_info := " · 强化 %d / +%d" % [w_level, int(w_bonus)] if w_level > 0 else ""
-	weapon_bar_label.text = "1—4 切换 / %s%s" % [str(weapon_names.get(cur_w, "潜水装备")), upgrade_info]
+	weapon_bar_label.text = ("%s%s" % [str(weapon_names.get(cur_w, "潜水装备")), upgrade_info]) if _touch_layout else ("1—4 切换 / %s%s" % [str(weapon_names.get(cur_w, "潜水装备")), upgrade_info])
 	var is_gun := cur_w == "sonic"
 	var aiming: bool = is_gun and bool(data.get("aiming", false))
 	var scoped: bool = is_gun and bool(data.get("scoped", false))
@@ -1637,11 +1659,11 @@ func update_hud(data: Dictionary) -> void:
 		var w_cd: float = float(data.get("sub_cooldown", 0.0))
 		var s_name_str := str(data.get("sub_name", ""))
 		if s_name_str.contains("微型"):
-			sub_weapon_label.text = "电磁脉冲炮 [就绪 · T/Y瞄准]" if w_ready else "电磁脉冲炮 [冷却 %.1fs]" % w_cd
+			sub_weapon_label.text = (("电磁脉冲炮 · 就绪" if _touch_layout else "电磁脉冲炮 [就绪 · T/Y瞄准]") if w_ready else "电磁脉冲炮 [冷却 %.1fs]" % w_cd)
 		elif torp_guided:
 			sub_weapon_label.text = "车载鱼雷 [飞行中]"
 		elif w_ready:
-			sub_weapon_label.text = "车载鱼雷 [就绪 · R发射]"
+			sub_weapon_label.text = "车载鱼雷 · 就绪" if _touch_layout else "车载鱼雷 [就绪 · R发射]"
 		else:
 			sub_weapon_label.text = "车载鱼雷 [装填 %.1fs]" % w_cd
 
@@ -1733,10 +1755,12 @@ func update_hud(data: Dictionary) -> void:
 
 	if cur_w != _previous_weapon or inventory != _previous_inventory:
 		_detail_time = 3.5
+		if cur_w != _previous_weapon and not _previous_weapon.is_empty():
+			_weapon_flash_time = 1.8
 		_previous_weapon = cur_w
 		_previous_inventory = inventory.duplicate()
 	var details := _detail_time > 0.0 or aiming or charging or fighting or not target.is_empty()
-	weapon_bar_label.get_parent().visible = details and not in_sub and not booster_on
+	weapon_bar_label.get_parent().visible = ((_weapon_flash_time > 0.0 and not scoped) if _touch_layout else details) and not in_sub and not booster_on
 	equipment_value.visible = details and not in_sub and not scoped and not _touch_layout
 	_cargo_wants_visible = details or overweight
 	_cargo.visible = details or overweight
@@ -1746,7 +1770,7 @@ func update_hud(data: Dictionary) -> void:
 	var ob_active := bool(onboarding.get("active", false))
 	var show_onboarding := ob_active and not scoped and not fighting and not in_sub
 	var story_route := bool(data.get("mother_tree_active", false)) and not bool(data.get("escape_crafted", false))
-	var show_mission := (has_wp or fighting or details or story_route) and not show_onboarding
+	var show_mission := ((has_wp or fighting or story_route) if _touch_layout else (has_wp or fighting or details or story_route)) and not show_onboarding
 	mission_title.visible = show_mission
 	mission_detail.visible = show_mission
 	explore_summary_label.visible = details
@@ -1778,6 +1802,8 @@ func update_hud(data: Dictionary) -> void:
 			onboarding_sub.set_meta("_hint_generation", _hint_generation)
 			onboarding_panel.modulate.a = 0.52 if low_oxygen else 0.96
 			_layout_onboarding()
+			if is_instance_valid(toast_label) and toast_label.visible:
+				_layout_toast()
 	var life_alert := low_oxygen or float(data.get("health", 100.0)) < 30.0
 	var quiet_explore := not show_mission and not show_onboarding and not life_alert and not in_sub and not booster_on and not scoped
 	var life_panel: Panel = instruments.get_node("LifeSupportInstrument")
@@ -2041,12 +2067,26 @@ func _layout_toast() -> void:
 		var boss_rect := boss_panel.get_global_rect()
 		if left < boss_rect.end.x and left + width > boss_rect.position.x:
 			top = maxf(top, boss_rect.end.y + 10.0)
+	if _is_portrait and is_instance_valid(minimap_radar) and (minimap_radar.is_visible_in_tree() or (instruments.visible and minimap_radar.visible)):
+		var rd_rect := minimap_radar.get_global_rect()
+		if left < rd_rect.end.x and left + width > rd_rect.position.x:
+			top = maxf(top, rd_rect.end.y + 8.0)
+	if _is_portrait and is_instance_valid(_compact_pin_label) and (_compact_pin_label.is_visible_in_tree() or (instruments.visible and _compact_pin_label.visible)):
+		var pin_rect := _compact_pin_label.get_global_rect()
+		if left < pin_rect.end.x and left + width > pin_rect.position.x:
+			top = maxf(top, pin_rect.end.y + 8.0)
 	# Allow long discoveries to wrap without crossing the depth or boss readouts.
 	var height := 66.0 if toast_label.text.length() > int(width / 17.0) else 44.0
 	if is_instance_valid(onboarding_panel) and (onboarding_panel.is_visible_in_tree() or (instruments.visible and onboarding_panel.visible)):
 		var ob_rect := onboarding_panel.get_global_rect()
 		if left < ob_rect.end.x and left + width > ob_rect.position.x and top < ob_rect.end.y and top + height > ob_rect.position.y:
 			top = maxf(top, ob_rect.end.y + 8.0)
+	if is_instance_valid(instruments) and instruments.has_node("LifeSupportInstrument"):
+		var life_ctrl: Control = instruments.get_node("LifeSupportInstrument")
+		if life_ctrl.is_visible_in_tree() or (instruments.visible and life_ctrl.visible):
+			var lf_rect := life_ctrl.get_global_rect()
+			if lf_rect.position.y < safe.position.y + safe.size.y * 0.48 and left < lf_rect.end.x and left + width > lf_rect.position.x and top < lf_rect.end.y and top + height > lf_rect.position.y:
+				top = maxf(top, lf_rect.end.y + 8.0)
 	top = minf(top, maxf(safe.position.y + 8.0, safe.end.y - height - 8.0))
 	_set_control_rect(toast_label, Rect2(left, top, width, height))
 
@@ -2170,9 +2210,16 @@ func _polish_touch_hint_phrasing(rendered: String) -> String:
 		s = s.replace("使用 %s" % h, "切换「%s」" % h)
 		s = s.replace("[%s] %s" % [h, h], "点按「%s」" % h)
 		s = s.replace("[%s]" % h, "「%s」" % h)
+	s = s.replace("推动左摇杆 ", "推动左摇杆")
 	s = s.replace("点按「交互」 交互", "点按「交互」")
+	s = s.replace("点按「上浮」 上浮", "点按「上浮」")
+	s = s.replace("点按「下潜」 下潜", "点按「下潜」")
+	s = s.replace("、下潜 下潜", "、「下潜」")
 	s = s.replace("交互 交互", "点按「交互」")
 	s = s.replace("攻击 攻击", "点按「攻击」")
+	s = s.replace("上浮 上浮", "「上浮」")
+	s = s.replace("下潜 下潜", "「下潜」")
+	s = s.replace("」 ", "」")
 	return s
 
 static func _is_currency_unit(text: String, index: int) -> bool:
@@ -2397,62 +2444,59 @@ func set_touch_margins(margins: Dictionary) -> void:
 		_apply_layout()
 
 static func _est_land_m(u: float, shrink: float = 1.0) -> Dictionary:
-	var atk_size := maxf(64.0, 104.0 * u) * shrink
-	var joy_box := maxf(128.0, 200.0 * u) * shrink
+	var atk_d := clampf(80.0 * u, 66.0, 92.0) * shrink
+	var sec_d := clampf(50.0 * u, 45.0, 58.0) * shrink
+	var joy_box := clampf(156.0 * u, 124.0, 174.0) * shrink
 	return {
-		"pad": maxf(8.0, 18.0 * u) * shrink,
-		"gap": maxf(6.0, 10.0 * u) * shrink,
+		"pad": clampf(14.0 * u, 8.0, 18.0) * shrink,
+		"gap": clampf(8.0 * u, 6.0, 10.0) * shrink,
 		"joy_box": joy_box,
-		"atk_size": atk_size,
-		"col2_w": maxf(52.0, 96.0 * u) * shrink,
-		"col2_h": maxf(44.0, 60.0 * u) * shrink,
-		"pill_h": maxf(44.0, 52.0 * u) * shrink,
-		"top_w": maxf(64.0, 96.0 * u) * shrink,
-		"top_h": maxf(44.0, 46.0 * u) * shrink,
-		"qs_w": maxf(48.0, 74.0 * u) * shrink,
-		"qs_h": maxf(44.0, 48.0 * u) * shrink,
+		"atk_d": atk_d,
+		"sec_d": sec_d,
+		"top_d": clampf(47.0 * u, 44.0, 54.0) * shrink,
+		"qs_d": clampf(46.0 * u, 44.0, 52.0) * shrink,
+		"center_min_w": 196.0 * shrink,
 	}
 
 static func _est_land_bounds(m: Dictionary) -> Vector2:
 	var pad: float = m["pad"]
 	var gap: float = m["gap"]
-	var bottom_w: float = 2.0 * pad + float(m["joy_box"]) + gap + (4.0 * float(m["qs_w"]) + 3.0 * gap) + gap + float(m["col2_w"]) + gap + float(m["atk_size"])
-	var top_w: float = 2.0 * pad + 3.0 * float(m["top_w"]) + 2.0 * gap
-	var left_h: float = 2.0 * pad + float(m["top_h"]) + gap + float(m["pill_h"]) + gap + float(m["joy_box"])
-	var r1_h: float = 2.0 * pad + float(m["top_h"]) + gap + 2.0 * float(m["pill_h"]) + 2.0 * gap + float(m["atk_size"])
-	var r2_h: float = 2.0 * pad + float(m["top_h"]) + gap + float(m["pill_h"]) + 2.0 * gap + 2.0 * float(m["col2_h"])
+	var qs_span := maxf(4.0 * float(m["qs_d"]) + 3.0 * gap, float(m["center_min_w"]))
+	var right_w := float(m["atk_d"]) + gap + float(m["sec_d"])
+	var bottom_w: float = 2.0 * pad + float(m["joy_box"]) + gap + qs_span + gap + right_w
+	var top_w: float = 2.0 * pad + 3.0 * float(m["top_d"]) + 2.0 * gap
+	var left_h: float = 2.0 * pad + float(m["top_d"]) + gap + float(m["sec_d"]) + gap + float(m["joy_box"])
+	var r1_h: float = 2.0 * pad + float(m["top_d"]) + gap + 2.0 * float(m["sec_d"]) + 2.0 * gap + float(m["atk_d"])
+	var r2_h: float = 2.0 * pad + float(m["top_d"]) + gap + 3.0 * float(m["sec_d"]) + 2.0 * gap
 	return Vector2(maxf(bottom_w, top_w), maxf(left_h, maxf(r1_h, r2_h)))
 
 static func _est_port_m(u: float, shrink: float = 1.0) -> Dictionary:
-	var atk_size := maxf(68.0, 84.0 * u) * shrink
-	var joy_box := maxf(144.0, 168.0 * u) * shrink
+	var atk_d := clampf(72.0 * u, 64.0, 84.0) * shrink
+	var sec_d := clampf(46.0 * u, 44.0, 54.0) * shrink
+	var joy_box := clampf(130.0 * u, 118.0, 150.0) * shrink
 	return {
-		"pad": maxf(8.0, 12.0 * u) * shrink,
-		"gap": maxf(6.0, 8.0 * u) * shrink,
-		"row_gap": maxf(8.0, 14.0 * u) * shrink,
+		"pad": clampf(9.0 * u, 8.0, 11.0) * shrink,
+		"gap": clampf(7.0 * u, 6.0, 9.0) * shrink,
+		"row_gap": clampf(8.0 * u, 6.0, 11.0) * shrink,
 		"joy_box": joy_box,
-		"atk_size": atk_size,
-		"col2_w": maxf(56.0, 72.0 * u) * shrink,
-		"col2_h": maxf(44.0, 50.0 * u) * shrink,
-		"pill_h": maxf(44.0, 48.0 * u) * shrink,
-		"top_w": maxf(64.0, 84.0 * u) * shrink,
-		"top_h": maxf(44.0, 46.0 * u) * shrink,
-		"qs_w": maxf(52.0, 74.0 * u) * shrink,
-		"qs_h": maxf(44.0, 46.0 * u) * shrink,
-		"look_band": 64.0 * shrink,
+		"atk_d": atk_d,
+		"sec_d": sec_d,
+		"top_d": clampf(46.0 * u, 44.0, 52.0) * shrink,
+		"qs_d": clampf(45.0 * u, 44.0, 50.0) * shrink,
+		"look_band": 96.0 * shrink,
 	}
 
 static func _est_port_bounds(m: Dictionary) -> Vector2:
 	var pad: float = m["pad"]
 	var gap: float = m["gap"]
-	var bottom_w: float = 2.0 * pad + float(m["joy_box"]) + gap + float(m["col2_w"]) + gap + float(m["atk_size"])
-	var qs_w: float = 2.0 * pad + 4.0 * float(m["qs_w"]) + 3.0 * gap
-	var top_w: float = 2.0 * pad + 3.0 * float(m["top_w"]) + 2.0 * gap
-	var l_h: float = float(m["joy_box"]) + gap + float(m["pill_h"])
-	var r1_h: float = float(m["atk_size"]) + 2.0 * gap + 2.0 * float(m["pill_h"])
-	var r2_h: float = 2.0 * float(m["col2_h"]) + 2.0 * gap + float(m["pill_h"])
+	var bottom_w: float = 2.0 * pad + float(m["joy_box"]) + gap + float(m["sec_d"]) + gap + float(m["atk_d"])
+	var qs_w: float = 2.0 * pad + 4.0 * float(m["qs_d"]) + 3.0 * gap
+	var top_w: float = 2.0 * pad + 3.0 * float(m["top_d"]) + 2.0 * gap
+	var l_h: float = float(m["joy_box"]) + gap + float(m["sec_d"])
+	var r1_h: float = float(m["atk_d"]) + 2.0 * gap + 2.0 * float(m["sec_d"])
+	var r2_h: float = 3.0 * float(m["sec_d"]) + 2.0 * gap
 	var cluster_h := maxf(l_h, maxf(r1_h, r2_h))
-	var total_h: float = 2.0 * pad + float(m["top_h"]) + gap + float(m["look_band"]) + float(m["qs_h"]) + float(m["row_gap"]) + cluster_h
+	var total_h: float = 2.0 * pad + float(m["top_d"]) + gap + float(m["look_band"]) + float(m["qs_d"]) + float(m["row_gap"]) + cluster_h
 	return Vector2(maxf(bottom_w, maxf(qs_w, top_w)), total_h)
 
 func _compute_touch_envelopes(safe: Rect2) -> Dictionary:
@@ -2462,7 +2506,7 @@ func _compute_touch_envelopes(safe: Rect2) -> Dictionary:
 	var is_land := safe.size.x >= safe.size.y
 	var env := {}
 	if is_land:
-		var base_u := clampf(minf(safe.size.x / 1280.0, safe.size.y / 800.0), 0.56, 1.25)
+		var base_u := clampf(minf(safe.size.x / 1280.0, safe.size.y / 800.0), 0.64, 1.20)
 		var u := base_u * touch_scale
 		var eff_u := u
 		var m := _est_land_m(u)
@@ -2488,35 +2532,33 @@ func _compute_touch_envelopes(safe: Rect2) -> Dictionary:
 				m = _est_land_m(0.0, shrink)
 		var pad: float = m["pad"]
 		var gap: float = m["gap"]
-		var top_w: float = m["top_w"]
-		var top_h: float = m["top_h"]
+		var top_d: float = m["top_d"]
 		var joy_box: float = m["joy_box"]
-		var atk_size: float = m["atk_size"]
-		var col2_w: float = m["col2_w"]
-		var col2_h: float = m["col2_h"]
-		var pill_h: float = m["pill_h"]
-		var qs_w: float = m["qs_w"]
-		var qs_h: float = m["qs_h"]
-		var qs_total_w := 4.0 * qs_w + 3.0 * gap
-		var min_col2_x := maxf(pad + joy_box + gap + qs_total_w + gap, safe.size.x * 0.5 + 126.0)
-		var atk_inset_x := clampf(22.0 * eff_u, 0.0, minf(28.0, maxf(0.0, (safe.size.x - pad - atk_size - gap - col2_w) - min_col2_x)))
-		var right_needed_h := maxf(atk_size + 2.0 * gap + 2.0 * pill_h, 2.0 * col2_h + 2.0 * gap + pill_h)
-		var max_inset_y := maxf(0.0, (safe.size.y - pad - right_needed_h) - maxf(pad + top_h + gap + 6.0, 162.0))
-		var atk_inset_y := clampf(16.0 * eff_u, 0.0, minf(22.0, max_inset_y))
-		var r1_top := safe.size.y - pad - atk_inset_y - atk_size - 2.0 * gap - 2.0 * pill_h
-		var r2_top := safe.size.y - pad - atk_inset_y - 2.0 * col2_h - 2.0 * gap - pill_h
+		var atk_d: float = m["atk_d"]
+		var sec_d: float = m["sec_d"]
+		var qs_d: float = m["qs_d"]
+		var qs_total_w := 4.0 * qs_d + 3.0 * gap
+		var center_min_w := maxf(qs_total_w, float(m["center_min_w"]))
+		var right_w := atk_d + gap + sec_d
+		var min_right_x := maxf(pad + joy_box + gap + center_min_w + gap, safe.size.x * 0.5 + 88.0)
+		var atk_inset_x := clampf(16.0 * eff_u, 0.0, minf(22.0, maxf(0.0, (safe.size.x - pad - right_w) - min_right_x)))
+		var right_needed_h := maxf(atk_d + 2.0 * gap + 2.0 * sec_d, 3.0 * sec_d + 2.0 * gap)
+		var max_inset_y := maxf(0.0, (safe.size.y - pad - right_needed_h) - maxf(pad + top_d + gap + 6.0, 148.0))
+		var atk_inset_y := clampf(12.0 * eff_u, 0.0, minf(18.0, max_inset_y))
+		var r1_top := safe.size.y - pad - atk_inset_y - atk_d - 2.0 * gap - 2.0 * sec_d
+		var r2_top := safe.size.y - pad - atk_inset_y - 3.0 * sec_d - 2.0 * gap
 		env = {
 			"top_pad": pad,
-			"top_h": top_h,
+			"top_h": top_d,
 			"gap": gap,
-			"top_bar_bottom": pad + top_h,
-			"top_left_right": pad + top_w,
-			"top_right_left": safe.size.x - pad - 2.0 * top_w - gap,
-			"quick_slots_top": safe.size.y - pad - qs_h,
-			"left_cluster_top": safe.size.y - pad - joy_box - gap - pill_h,
+			"top_bar_bottom": pad + top_d,
+			"top_left_right": pad + top_d,
+			"top_right_left": safe.size.x - pad - 2.0 * top_d - gap,
+			"quick_slots_top": safe.size.y - pad - qs_d,
+			"left_cluster_top": safe.size.y - pad - joy_box - gap - sec_d,
 			"right_cluster_top": minf(r1_top, r2_top),
 			"joy_right": pad + joy_box,
-			"right_cluster_left": safe.size.x - pad - atk_inset_x - atk_size - gap - col2_w,
+			"right_cluster_left": safe.size.x - pad - atk_inset_x - right_w,
 		}
 	else:
 		var base_u := clampf(minf(safe.size.x / 390.0, safe.size.y / 760.0), 0.72, 1.25)
@@ -2543,30 +2585,27 @@ func _compute_touch_envelopes(safe: Rect2) -> Dictionary:
 		var pad: float = m["pad"]
 		var gap: float = m["gap"]
 		var row_gap: float = m["row_gap"]
-		var top_w: float = m["top_w"]
-		var top_h: float = m["top_h"]
+		var top_d: float = m["top_d"]
 		var joy_box: float = m["joy_box"]
-		var atk_size: float = m["atk_size"]
-		var col2_w: float = m["col2_w"]
-		var col2_h: float = m["col2_h"]
-		var pill_h: float = m["pill_h"]
-		var qs_h: float = m["qs_h"]
-		var l_top := safe.size.y - pad - joy_box - gap - pill_h
-		var r1_top := safe.size.y - pad - atk_size - 2.0 * gap - 2.0 * pill_h
-		var r2_top := safe.size.y - pad - 2.0 * col2_h - 2.0 * gap - pill_h
+		var atk_d: float = m["atk_d"]
+		var sec_d: float = m["sec_d"]
+		var qs_d: float = m["qs_d"]
+		var l_top := safe.size.y - pad - joy_box - gap - sec_d
+		var r1_top := safe.size.y - pad - atk_d - 2.0 * gap - 2.0 * sec_d
+		var r2_top := safe.size.y - pad - 3.0 * sec_d - 2.0 * gap
 		var cluster_top := minf(l_top, minf(r1_top, r2_top))
 		env = {
 			"top_pad": pad,
-			"top_h": top_h,
+			"top_h": top_d,
 			"gap": gap,
-			"top_bar_bottom": pad + top_h,
-			"top_left_right": pad + top_w,
-			"top_right_left": safe.size.x - pad - 2.0 * top_w - gap,
-			"quick_slots_top": cluster_top - row_gap - qs_h,
+			"top_bar_bottom": pad + top_d,
+			"top_left_right": pad + top_d,
+			"top_right_left": safe.size.x - pad - 2.0 * top_d - gap,
+			"quick_slots_top": cluster_top - row_gap - qs_d,
 			"left_cluster_top": l_top,
 			"right_cluster_top": minf(r1_top, r2_top),
 			"joy_right": pad + joy_box,
-			"right_cluster_left": safe.size.x - pad - atk_size - gap - col2_w,
+			"right_cluster_left": safe.size.x - pad - atk_d - gap - sec_d,
 		}
 	if not _touch_margins.is_empty():
 		var vp := get_viewport()
@@ -2662,11 +2701,15 @@ func _apply_layout() -> void:
 		minimap_radar.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if _touch_layout else Control.CURSOR_ARROW
 		_set_control_rect(minimap_radar, Rect2(-172.0, 24.0, 148.0, 148.0), Vector2(1.0, 0.0))
 	if is_instance_valid(scope_exit_btn):
-		_set_control_rect(scope_exit_btn, Rect2(-124.0, 20.0, 112.0, 44.0), Vector2(1.0, 0.0))
+		_sync_scope_exit_btn_appearance()
+		if _touch_layout:
+			_set_control_rect(scope_exit_btn, Rect2(-60.0, 20.0, 46.0, 46.0), Vector2(1.0, 0.0))
+		else:
+			_set_control_rect(scope_exit_btn, Rect2(-124.0, 20.0, 112.0, 44.0), Vector2(1.0, 0.0))
 	if is_instance_valid(_journal_bar):
-		_journal_bar.visible = true
+		_journal_bar.visible = not _touch_layout
 	if is_instance_valid(_journal_heading):
-		_journal_heading.visible = true
+		_journal_heading.visible = not _touch_layout
 	if is_instance_valid(_aim_frame_label):
 		_set_control_rect(_aim_frame_label, Rect2(12.0, 8.0, 250.0, 22.0))
 
@@ -2699,52 +2742,69 @@ func _apply_compact_hud_layout(safe: Rect2, _is_narrow: bool, is_short: bool, is
 
 	if is_portrait:
 		var y_start := (top_bar_bot + 6.0) if _touch_layout else 12.0
-		radar_sz = 84.0 if safe.size.y < 620.0 else 92.0
+		radar_sz = (74.0 if safe.size.y < 620.0 else 80.0) if _touch_layout else (84.0 if safe.size.y < 620.0 else 92.0)
 		radar_y = y_start
 		if is_instance_valid(minimap_radar):
 			_set_control_rect(minimap_radar, Rect2(-(radar_sz + 12.0), radar_y, radar_sz, radar_sz), Vector2(1.0, 0.0))
 		if is_instance_valid(scope_exit_btn) and _touch_layout:
-			_set_control_rect(scope_exit_btn, Rect2(-120.0, y_start, 108.0, 44.0), Vector2(1.0, 0.0))
-		var right_top_w := 108.0 if (_scoped_active and _touch_layout) else radar_sz
-		left_w = maxf(136.0, safe.size.x - right_top_w - 30.0)
+			_set_control_rect(scope_exit_btn, Rect2(-58.0, y_start, 46.0, 46.0), Vector2(1.0, 0.0))
+		var right_top_w := 46.0 if (_scoped_active and _touch_layout) else radar_sz
+		left_w = maxf(136.0, safe.size.x - right_top_w - 28.0)
 		_set_control_rect(compass_strip, Rect2(left_x, y_start, left_w, 24.0))
-		_set_control_rect(depth_value, Rect2(left_x, y_start + 26.0, left_w, 22.0))
-		depth_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		depth_value.add_theme_font_size_override("font_size", 18)
 		var cur_ly := y_start + 50.0
-		var show_jrnl := safe.size.y >= 680.0
+		if _touch_layout:
+			depth_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+			depth_value.add_theme_font_size_override("font_size", 16)
+			if _low_oxygen_alert:
+				_set_control_rect(depth_value, Rect2(left_x, y_start + 25.0, left_w, 20.0))
+				_set_control_rect(status_value, Rect2(left_x, y_start + 46.0, left_w, 22.0))
+				cur_ly = y_start + 69.0
+			else:
+				_set_control_rect(depth_value, Rect2(left_x, y_start + 25.0, 68.0, 22.0))
+				_set_control_rect(status_value, Rect2(left_x + 72.0, y_start + 25.0, maxf(76.0, left_w - 72.0), 22.0))
+				cur_ly = y_start + 48.0
+		else:
+			_set_control_rect(depth_value, Rect2(left_x, y_start + 26.0, left_w, 22.0))
+			depth_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+			depth_value.add_theme_font_size_override("font_size", 18)
+		var show_jrnl := (not _touch_layout) and safe.size.y >= 680.0
 		_journal_bar.visible = show_jrnl
 		_journal_heading.visible = show_jrnl
 		if show_jrnl:
 			_set_control_rect(_journal_bar, Rect2(left_x, cur_ly + 3.0, 3.0, 16.0))
 			_set_control_rect(_journal_heading, Rect2(left_x + 9.0, cur_ly, maxf(96.0, left_w - 9.0), 22.0))
 			cur_ly += 22.0
-		_set_control_rect(status_value, Rect2(left_x, cur_ly, left_w, 22.0))
+		if not _touch_layout:
+			_set_control_rect(status_value, Rect2(left_x, cur_ly, left_w, 22.0))
+			cur_ly += 23.0
 		status_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		status_value.clip_text = true
-		_set_control_rect(mission_title, Rect2(left_x, cur_ly + 23.0, left_w, 22.0))
+		_set_control_rect(mission_title, Rect2(left_x, cur_ly, left_w, 22.0))
 		mission_title.clip_text = true
-		_set_control_rect(target_value, Rect2(left_x, cur_ly + 46.0, left_w, 22.0))
+		_set_control_rect(target_value, Rect2(left_x, cur_ly + 22.0, left_w, 22.0))
 		target_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		target_value.clip_text = true
-		var left_bottom := cur_ly + 68.0
+		var left_bottom := cur_ly + 44.0
 		if is_instance_valid(_compact_pin_label):
-			var pin_w := minf(safe.size.x - left_x - left_w - 20.0, radar_sz + 8.0)
-			_set_control_rect(_compact_pin_label, Rect2(-(pin_w + 10.0), radar_y + radar_sz + 3.0, maxf(84.0, pin_w), 22.0), Vector2(1.0, 0.0))
-		var life_h := 42.0
-		var life_w := minf(260.0, maxf(180.0, safe.size.x - 24.0))
+			var pin_w := clampf(radar_sz + 32.0, 108.0, 136.0) if _touch_layout else minf(safe.size.x - left_x - left_w - 20.0, radar_sz + 8.0)
+			_set_control_rect(_compact_pin_label, Rect2(-(pin_w + 10.0), radar_y + radar_sz + 3.0, maxf(96.0, pin_w), 22.0), Vector2(1.0, 0.0))
+		var life_h := 38.0 if _touch_layout else 42.0
+		var life_w := minf(198.0 if _touch_layout else 260.0, maxf(172.0, safe.size.x - 24.0))
 		var max_life_y := (qs_top - life_h - 6.0) if _touch_layout else (safe.size.y - life_h - 14.0)
-		var life_y := clampf(maxf(left_bottom + 4.0, radar_y + radar_sz + 26.0), y_start + 76.0, maxf(y_start + 76.0, max_life_y))
-		_set_control_rect(life, Rect2(12.0, life_y, life_w, life_h))
+		var min_life_y := y_start + (52.0 if _touch_layout else 76.0)
+		var life_y := clampf(max_life_y, min_life_y, maxf(min_life_y, max_life_y)) if _touch_layout else clampf(maxf(left_bottom + 4.0, radar_y + radar_sz + 26.0), min_life_y, maxf(min_life_y, max_life_y))
+		var life_x := (safe.size.x - life_w) * 0.5 if _touch_layout else 12.0
+		_set_control_rect(life, Rect2(life_x, life_y, life_w, life_h))
 		_layout_compact_life_contents(life_w)
 
-		var band_top := life_y + life_h + 4.0
-		var band_bot := (qs_top - 4.0) if _touch_layout else (safe.size.y - 16.0)
+		var band_top := (left_bottom + 4.0) if _touch_layout else (life_y + life_h + 4.0)
+		var band_bot := (life_y - 4.0) if _touch_layout else (safe.size.y - 16.0)
 		var center_w := minf(312.0, maxf(180.0, safe.size.x - 24.0))
-		var wep_h := 32.0
+		var wep_w := 148.0 if _touch_layout else center_w
+		var wep_h := 28.0 if _touch_layout else 32.0
 		var wep_top := clampf(band_bot - wep_h, band_top, maxf(band_top, safe.size.y - wep_h - 6.0))
-		_set_control_rect(weapon_bar_label.get_parent(), Rect2(-center_w * 0.5, wep_top, center_w, wep_h), Vector2(0.5, 0.0))
-		_set_control_rect(weapon_bar_label, Rect2(8.0, 5.0, center_w - 16.0, 22.0))
+		_set_control_rect(weapon_bar_label.get_parent(), Rect2(-wep_w * 0.5, wep_top, wep_w, wep_h), Vector2(0.5, 0.0))
+		_set_control_rect(weapon_bar_label, Rect2(8.0, 3.0 if _touch_layout else 5.0, wep_w - 16.0, 22.0))
 		weapon_bar_label.clip_text = true
 		_set_control_rect(booster_indicator, Rect2(-center_w * 0.5, wep_top, center_w, wep_h), Vector2(0.5, 0.0))
 		_set_control_rect(equipment_value, Rect2(-center_w * 0.5, wep_top + 34.0, center_w, 22.0), Vector2(0.5, 0.0))
@@ -2755,16 +2815,17 @@ func _apply_compact_hud_layout(safe: Rect2, _is_narrow: bool, is_short: bool, is
 		bottom_hud_top = minf(life_y, minf(wep_top, sub_top))
 
 		var b_w := minf(340.0, maxf(180.0, safe.size.x - 24.0))
-		var b_y := life_y + life_h + 6.0
+		var b_y := (maxf(left_bottom, radar_y + radar_sz) + 6.0) if _touch_layout else (life_y + life_h + 6.0)
 		_set_control_rect(boss_panel, Rect2(-b_w * 0.5, b_y, b_w, 62.0), Vector2(0.5, 0.0))
 		_set_control_rect(boss_name, Rect2(12.0, 6.0, b_w - 24.0, 20.0))
 		_set_control_rect(boss_bar, Rect2(12.0, 29.0, b_w - 24.0, 4.0))
 		_set_control_rect(boss_warning, Rect2(12.0, 36.0, b_w - 24.0, 22.0))
 	else:
-		var sc_btn_w := 98.0
+		var sc_btn_w := 46.0 if _touch_layout else 98.0
 		var sc_btn_x := safe.size.x - 120.0
 		if _touch_layout and is_instance_valid(scope_exit_btn):
 			var sc_btn_h := maxf(44.0, float(env["top_h"]))
+			sc_btn_w = sc_btn_h
 			sc_btn_x = maxf(float(env["top_left_right"]) + 8.0, float(env["top_right_left"]) - float(env["gap"]) - sc_btn_w)
 			_set_control_rect(scope_exit_btn, Rect2(sc_btn_x, float(env["top_pad"]), sc_btn_w, sc_btn_h))
 		var compass_y := maxf(8.0, float(env["top_pad"])) if _touch_layout else 10.0
@@ -2786,7 +2847,7 @@ func _apply_compact_hud_layout(safe: Rect2, _is_narrow: bool, is_short: bool, is
 		_set_control_rect(depth_value, Rect2(compass_x + (compass_w - depth_w) * 0.5, compass_y + 30.0, depth_w, 26.0))
 		depth_value.add_theme_font_size_override("font_size", 20)
 
-		radar_sz = 92.0 if is_short else 108.0
+		radar_sz = (80.0 if is_short else 92.0) if _touch_layout else (92.0 if is_short else 108.0)
 		radar_y = (top_bar_bot + 8.0) if _touch_layout else 18.0
 		var radar_right_inset := 12.0
 		if _touch_layout and radar_y + radar_sz > right_cluster_top - 6.0:
@@ -2799,13 +2860,13 @@ func _apply_compact_hud_layout(safe: Rect2, _is_narrow: bool, is_short: bool, is
 		if is_instance_valid(minimap_radar):
 			_set_control_rect(minimap_radar, Rect2(-(radar_sz + radar_right_inset), radar_y, radar_sz, radar_sz), Vector2(1.0, 0.0))
 
-		left_w = minf(310.0, maxf(148.0, safe.size.x * 0.34))
+		left_w = minf(224.0 if _touch_layout else 310.0, maxf(144.0, safe.size.x * (0.29 if _touch_layout else 0.34)))
 		var top_y := (top_bar_bot + 6.0) if _touch_layout else 14.0
-		if _touch_layout and top_y + 68.0 > left_cluster_top - 4.0:
+		if _touch_layout and top_y + 46.0 > left_cluster_top - 4.0:
 			left_x = float(env["joy_right"]) + 8.0
 			top_y = maxf(top_y, compass_y + 58.0)
-			left_w = clampf(safe.size.x - radar_right_inset - radar_sz - left_x - 12.0, 132.0, 260.0)
-		var show_jrnl_l := not (_touch_layout and top_y + 92.0 > left_cluster_top - 4.0)
+			left_w = clampf(safe.size.x - radar_right_inset - radar_sz - left_x - 12.0, 132.0, 236.0)
+		var show_jrnl_l := not _touch_layout
 		_journal_bar.visible = show_jrnl_l
 		_journal_heading.visible = show_jrnl_l
 		var cur_y_l := top_y
@@ -2823,7 +2884,7 @@ func _apply_compact_hud_layout(safe: Rect2, _is_narrow: bool, is_short: bool, is
 		target_value.clip_text = true
 
 		if is_instance_valid(_compact_pin_label):
-			var pin_w := clampf(radar_sz + 56.0, 132.0, 196.0)
+			var pin_w := (clampf(radar_sz + 36.0, 112.0, 142.0) if _touch_layout else clampf(radar_sz + 56.0, 132.0, 196.0))
 			if not _touch_layout or radar_y + radar_sz + 28.0 <= right_cluster_top:
 				_set_control_rect(_compact_pin_label, Rect2(-(pin_w + radar_right_inset), radar_y + radar_sz + 4.0, pin_w, 24.0), Vector2(1.0, 0.0))
 			else:
@@ -2838,8 +2899,8 @@ func _apply_compact_hud_layout(safe: Rect2, _is_narrow: bool, is_short: bool, is
 			var chan_right := float(env["right_cluster_left"]) - 8.0
 			var chan_w := maxf(176.0, chan_right - chan_left)
 			var chan_cx := (chan_left + chan_right) * 0.5
-			var life_h := 42.0
-			var life_w := clampf(chan_w - 8.0, 176.0, 236.0)
+			var life_h := 38.0
+			var life_w := clampf(chan_w - 8.0, 176.0, 206.0)
 			var life_y := maxf(compass_y + 62.0, qs_top - life_h - 8.0)
 			var life_x := clampf(chan_cx - life_w * 0.5, chan_left, maxf(chan_left, chan_right - life_w))
 			_set_control_rect(life, Rect2(life_x, life_y, life_w, life_h))
@@ -2847,9 +2908,11 @@ func _apply_compact_hud_layout(safe: Rect2, _is_narrow: bool, is_short: bool, is
 
 			var center_w := clampf(chan_w - 4.0, 176.0, 340.0)
 			var center_x := clampf(chan_cx - center_w * 0.5, chan_left, maxf(chan_left, chan_right - center_w))
-			var wep_y := maxf(compass_y + 58.0, life_y - 36.0)
-			_set_control_rect(weapon_bar_label.get_parent(), Rect2(center_x, wep_y, center_w, 32.0))
-			_set_control_rect(weapon_bar_label, Rect2(8.0, 5.0, center_w - 16.0, 22.0))
+			var wep_w_l := minf(152.0, center_w)
+			var wep_x_l := clampf(chan_cx - wep_w_l * 0.5, chan_left, maxf(chan_left, chan_right - wep_w_l))
+			var wep_y := maxf(compass_y + 58.0, life_y - 32.0)
+			_set_control_rect(weapon_bar_label.get_parent(), Rect2(wep_x_l, wep_y, wep_w_l, 28.0))
+			_set_control_rect(weapon_bar_label, Rect2(8.0, 3.0, wep_w_l - 16.0, 22.0))
 			weapon_bar_label.clip_text = true
 			_set_control_rect(booster_indicator, Rect2(center_x, wep_y, center_w, 32.0))
 			_set_control_rect(equipment_value, Rect2(center_x, wep_y + 32.0, center_w, 22.0))
@@ -2906,13 +2969,13 @@ func _apply_compact_hud_layout(safe: Rect2, _is_narrow: bool, is_short: bool, is
 func _layout_compact_life_contents(life_w: float) -> void:
 	_life_o2_label.add_theme_font_size_override("font_size", 15)
 	oxygen_value.add_theme_font_size_override("font_size", 18)
-	_set_control_rect(_life_o2_label, Rect2(8.0, 5.0, 28.0, 22.0))
-	_set_control_rect(oxygen_value, Rect2(36.0, 3.0, 46.0, 24.0))
+	_set_control_rect(_life_o2_label, Rect2(8.0, 4.0, 28.0, 22.0))
+	_set_control_rect(oxygen_value, Rect2(36.0, 2.0, 46.0, 24.0))
 	oxygen_unit.visible = false
 	_life_caption_label.visible = false
-	_set_control_rect(health_value, Rect2(82.0, 5.0, maxf(72.0, life_w - 90.0), 22.0))
+	_set_control_rect(health_value, Rect2(82.0, 4.0, maxf(72.0, life_w - 90.0), 22.0))
 	health_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_set_control_rect(oxygen_bar, Rect2(8.0, 33.0, maxf(80.0, life_w - 16.0), 4.0))
+	_set_control_rect(oxygen_bar, Rect2(8.0, 30.0 if _touch_layout else 33.0, maxf(80.0, life_w - 16.0), 4.0))
 
 func _layout_compact_sub_panel(rect: Rect2) -> void:
 	_set_control_rect(sub_panel, rect)
@@ -3625,38 +3688,66 @@ func _layout_onboarding() -> void:
 		return
 	var safe := _safe_area_rect()
 	var max_w := maxf(180.0, safe.size.x - 24.0)
+	if is_instance_valid(onboarding_close_btn):
+		onboarding_close_btn.visible = _touch_layout
+	onboarding_desc.add_theme_font_size_override("font_size", 13 if _touch_layout else 14)
+	var right_reserve := 38.0 if _touch_layout else 10.0
 	if _touch_layout or _is_compact:
 		if _is_portrait:
 			var life_node: Control = instruments.get_node("LifeSupportInstrument")
-			var ob_w := minf(320.0, max_w)
-			var y_top := maxf(life_node.offset_bottom + 8.0, target_value.offset_bottom + 8.0)
+			var y_top := status_value.offset_bottom + 8.0
+			if mission_title.visible:
+				y_top = maxf(y_top, mission_title.offset_bottom + 6.0)
+			if not target_value.text.is_empty():
+				y_top = maxf(y_top, target_value.offset_bottom + 6.0)
+			if not _touch_layout:
+				y_top = maxf(y_top, life_node.offset_bottom + 8.0)
 			var ob_h := 112.0
+			if _touch_layout and y_top + ob_h > life_node.offset_top - 6.0 and life_node.offset_top > y_top + 60.0:
+				ob_h = life_node.offset_top - y_top - 6.0
+			var right_col_x := safe.size.x - 12.0
+			if is_instance_valid(minimap_radar) and minimap_radar.visible:
+				var r_top := minimap_radar.anchor_top * safe.size.y + minimap_radar.offset_top
+				var r_bot := minimap_radar.anchor_bottom * safe.size.y + minimap_radar.offset_bottom
+				if y_top < r_bot + 4.0 and y_top + ob_h > r_top - 4.0:
+					right_col_x = minf(right_col_x, minimap_radar.anchor_left * safe.size.x + minimap_radar.offset_left - 8.0)
+			if is_instance_valid(_compact_pin_label) and _compact_pin_label.visible:
+				var p_top := _compact_pin_label.anchor_top * safe.size.y + _compact_pin_label.offset_top
+				var p_bot := _compact_pin_label.anchor_bottom * safe.size.y + _compact_pin_label.offset_bottom
+				if y_top < p_bot + 4.0 and y_top + ob_h > p_top - 4.0:
+					right_col_x = minf(right_col_x, _compact_pin_label.anchor_left * safe.size.x + _compact_pin_label.offset_left - 8.0)
+			var ob_w := minf(276.0 if _touch_layout else 320.0, minf(max_w, maxf(180.0, right_col_x - 12.0)))
 			_set_control_rect(onboarding_panel, Rect2(12.0, y_top, ob_w, ob_h))
-			_set_control_rect(onboarding_badge, Rect2(10.0, 4.0, ob_w - 20.0, 22.0))
-			_set_control_rect(onboarding_title, Rect2(10.0, 25.0, ob_w - 20.0, 22.0))
-			_set_control_rect(onboarding_bar, Rect2(10.0, 49.0, ob_w - 20.0, 3.0))
-			_set_control_rect(onboarding_desc, Rect2(10.0, 55.0, ob_w - 20.0, 52.0))
+			_set_control_rect(onboarding_badge, Rect2(10.0, 3.0, ob_w - 10.0 - right_reserve, 20.0))
+			_set_control_rect(onboarding_title, Rect2(10.0, 22.0, ob_w - 10.0 - right_reserve, 20.0))
+			_set_control_rect(onboarding_bar, Rect2(10.0, 44.0, ob_w - 20.0, 2.0))
+			_set_control_rect(onboarding_desc, Rect2(10.0, 48.0, ob_w - 20.0, ob_h - 52.0))
+			if is_instance_valid(onboarding_close_btn):
+				_set_control_rect(onboarding_close_btn, Rect2(ob_w - 32.0, 4.0, 28.0, 28.0))
 			onboarding_desc.clip_text = false
 			onboarding_sub.visible = false
 		elif _is_short:
 			var left_limit := maxf(status_value.offset_right, target_value.offset_right) + 10.0
 			var right_limit := safe.size.x + minimap_radar.offset_left - 10.0
 			var avail_mid := right_limit - left_limit
-			var ob_w := minf(280.0, minf(max_w, maxf(180.0, avail_mid)))
+			var ob_w := minf(244.0 if _touch_layout else 280.0, minf(max_w, maxf(180.0, avail_mid)))
 			var ob_x := clampf((left_limit + right_limit - ob_w) * 0.5, 12.0, maxf(12.0, safe.size.x - ob_w - 12.0))
 			var ob_y := maxf(depth_value.offset_bottom + 6.0, 70.0)
 			if ob_x < left_limit:
 				ob_y = maxf(ob_y, target_value.offset_bottom + 6.0)
-			_set_control_rect(onboarding_panel, Rect2(ob_x, ob_y, ob_w, 78.0))
-			_set_control_rect(onboarding_badge, Rect2(8.0, 2.0, ob_w - 16.0, 22.0))
-			_set_control_rect(onboarding_title, Rect2(8.0, 23.0, ob_w - 16.0, 22.0))
-			_set_control_rect(onboarding_bar, Rect2(8.0, 46.0, ob_w - 16.0, 2.0))
-			_set_control_rect(onboarding_desc, Rect2(8.0, 50.0, ob_w - 16.0, 24.0))
+			var ob_h_s := 72.0 if _touch_layout else 78.0
+			_set_control_rect(onboarding_panel, Rect2(ob_x, ob_y, ob_w, ob_h_s))
+			_set_control_rect(onboarding_badge, Rect2(8.0, 2.0, ob_w - 8.0 - right_reserve, 20.0))
+			_set_control_rect(onboarding_title, Rect2(8.0, 21.0, ob_w - 8.0 - right_reserve, 20.0))
+			_set_control_rect(onboarding_bar, Rect2(8.0, 43.0, ob_w - 16.0, 2.0))
+			_set_control_rect(onboarding_desc, Rect2(8.0, 46.0, ob_w - 16.0, 24.0))
+			if is_instance_valid(onboarding_close_btn):
+				_set_control_rect(onboarding_close_btn, Rect2(ob_w - 31.0, 3.0, 28.0, 28.0))
 			onboarding_desc.clip_text = true
 			onboarding_sub.visible = false
 		else:
 			var life_node: Control = instruments.get_node("LifeSupportInstrument")
-			var ob_w := minf(268.0, max_w)
+			var ob_w := minf(248.0 if _touch_layout else 268.0, max_w)
 			var y_pos := maxf(target_value.offset_bottom + 8.0, maxf(status_value.offset_bottom + 10.0, 136.0))
 			var life_top := life_node.anchor_top * safe.size.y + life_node.offset_top
 			var life_bot := life_node.anchor_bottom * safe.size.y + life_node.offset_bottom
@@ -3669,15 +3760,18 @@ func _layout_onboarding() -> void:
 				var tame_left := tame_panel.anchor_left * safe.size.x + tame_panel.offset_left
 				if tame_top < safe.size.y * 0.45 and tame_left < 16.0 + ob_w + 8.0:
 					y_pos = maxf(y_pos, tame_bot + 10.0)
-			y_pos = minf(y_pos, maxf(12.0, safe.size.y - 158.0))
-			_set_control_rect(onboarding_panel, Rect2(16.0, y_pos, ob_w, 146.0))
-			_set_control_rect(onboarding_badge, Rect2(12.0, 6.0, ob_w - 24.0, 22.0))
-			_set_control_rect(onboarding_title, Rect2(12.0, 28.0, ob_w - 24.0, 22.0))
-			_set_control_rect(onboarding_bar, Rect2(12.0, 52.0, ob_w - 24.0, 3.0))
-			_set_control_rect(onboarding_desc, Rect2(12.0, 58.0, ob_w - 24.0, 58.0))
+			var ob_h_l := 104.0 if _touch_layout else 146.0
+			y_pos = minf(y_pos, maxf(12.0, safe.size.y - ob_h_l - 12.0))
+			_set_control_rect(onboarding_panel, Rect2(16.0, y_pos, ob_w, ob_h_l))
+			_set_control_rect(onboarding_badge, Rect2(12.0, 5.0, ob_w - 12.0 - right_reserve, 22.0))
+			_set_control_rect(onboarding_title, Rect2(12.0, 26.0, ob_w - 12.0 - right_reserve, 22.0))
+			_set_control_rect(onboarding_bar, Rect2(12.0, 50.0, ob_w - 24.0, 3.0))
+			_set_control_rect(onboarding_desc, Rect2(12.0, 55.0, ob_w - 24.0, 44.0 if _touch_layout else 58.0))
 			_set_control_rect(onboarding_sub, Rect2(12.0, 118.0, ob_w - 24.0, 22.0))
+			if is_instance_valid(onboarding_close_btn):
+				_set_control_rect(onboarding_close_btn, Rect2(ob_w - 34.0, 5.0, 28.0, 28.0))
 			onboarding_desc.clip_text = false
-			onboarding_sub.visible = true
+			onboarding_sub.visible = not _touch_layout
 	else:
 		var ob_w := minf(268.0, max_w)
 		_set_control_rect(onboarding_panel, Rect2(28.0, 56.0, ob_w, 148.0))
@@ -3722,6 +3816,30 @@ func _apply_touch_visibility() -> void:
 		if node is Label and str(node.get_meta("_hint_source", node.text)).begins_with("W/S"):
 			node.visible = not _touch_layout and not compact
 	_sync_visor_visibility()
+
+func _apply_pure_icon_button_style(btn: Button, icon_tex: Texture2D) -> void:
+	btn.text = ""
+	btn.icon = icon_tex
+	btn.expand_icon = true
+	btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var empty_sb := StyleBoxEmpty.new()
+	for st: String in ["normal", "hover", "pressed", "focus", "disabled"]:
+		btn.add_theme_stylebox_override(st, empty_sb)
+
+func _sync_scope_exit_btn_appearance() -> void:
+	if not is_instance_valid(scope_exit_btn):
+		return
+	if _touch_layout:
+		scope_exit_btn.custom_minimum_size = Vector2(46, 46)
+		_apply_pure_icon_button_style(scope_exit_btn, SCOPE_EXIT_ICON)
+	else:
+		scope_exit_btn.icon = null
+		scope_exit_btn.expand_icon = false
+		scope_exit_btn.text = "退出瞄准"
+		scope_exit_btn.custom_minimum_size = Vector2(108, 44)
+		for st: String in ["normal", "hover", "pressed", "focus", "disabled"]:
+			scope_exit_btn.remove_theme_stylebox_override(st)
+		OceanUiTheme.button(scope_exit_btn, true)
 
 func _set_font_color(ctrl: Control, col: Color) -> void:
 	if ctrl.get_meta("_fc", Color(-1.0, -1.0, -1.0, -1.0)) != col:

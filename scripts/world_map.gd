@@ -314,8 +314,9 @@ class MinimapRadar extends Control:
 
 	func _draw() -> void:
 		var compact_radar := size.y < 118.0
+		var icon_only_radar := size.y <= 94.0
 		var pad_x := 8.0 if compact_radar else 12.0
-		var reserve_y := 18.0 if compact_radar else 28.0
+		var reserve_y := 8.0 if icon_only_radar else (18.0 if compact_radar else 28.0)
 		var top_y := 4.0 if compact_radar else 6.0
 		var map_side := maxf(32.0, minf(size.x - pad_x, size.y - reserve_y))
 		var map_rect := Rect2((size.x - map_side) * 0.5, top_y, map_side, map_side)
@@ -426,7 +427,7 @@ class MinimapRadar extends Control:
 		draw_rect(map_rect, Color(CYAN, 0.26), false, 1.0)
 
 		var font: Font = get_theme_default_font()
-		if font:
+		if font and not icon_only_radar:
 			var coord_txt := ("X:%+d Z:%+d" % [roundi(player_pos.x), roundi(player_pos.z)]) if compact_radar else ("X:%+d  Z:%+d  [%s海图]" % [roundi(player_pos.x), roundi(player_pos.z), map_hint])
 			var x_off := 5.0 if compact_radar else 8.0
 			var y_off := 4.0 if compact_radar else 6.0
