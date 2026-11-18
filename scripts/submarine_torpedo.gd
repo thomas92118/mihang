@@ -22,6 +22,7 @@ var turn_rate: float = 7.5
 
 var torpedo_camera: Camera3D = null
 var has_camera_focus: bool = false
+var mobile_performance_mode: bool = false
 
 var trail_particles: CPUParticles3D
 var nose_mesh: MeshInstance3D
@@ -139,13 +140,39 @@ func _build_trail() -> void:
 	p_mesh.material = p_mat
 	trail_particles.mesh = p_mesh
 	add_child(trail_particles)
+	if mobile_performance_mode:
+		trail_particles.amount = 16
+
+func set_mobile_performance_mode(enabled: bool) -> void:
+	mobile_performance_mode = enabled
+	if is_instance_valid(trail_particles):
+		trail_particles.amount = 16 if enabled else 36
+	if is_instance_valid(torpedo_camera):
+		torpedo_camera.far = 165.0 if enabled else 320.0
+
+func _adapted_torpedo_fov(base_vfov_deg: float = 82.0) -> float:
+	if not is_inside_tree() or get_viewport() == null:
+		return base_vfov_deg
+	var sz := get_viewport().get_visible_rect().size
+	if sz.x <= 1.0 or sz.y <= 1.0:
+		return base_vfov_deg
+	var aspect := sz.x / sz.y
+	if aspect < 1.58:
+		var narrow_scale := minf(1.6 / maxf(aspect, 0.35), 1.45)
+		return clampf(rad_to_deg(2.0 * atan(tan(deg_to_rad(base_vfov_deg) * 0.5) * narrow_scale)), base_vfov_deg, 98.0)
+	if aspect > 1.85:
+		var max_hfov_rad := deg_to_rad(110.0)
+		var cur_hfov := 2.0 * atan(tan(deg_to_rad(base_vfov_deg) * 0.5) * aspect)
+		if cur_hfov > max_hfov_rad:
+			return rad_to_deg(2.0 * atan(tan(max_hfov_rad * 0.5) / aspect))
+	return base_vfov_deg
 
 func activate_fpv_camera() -> Camera3D:
 	torpedo_camera = Camera3D.new()
 	torpedo_camera.name = "TorpedoFPVCamera"
-	torpedo_camera.fov = 82.0
+	torpedo_camera.fov = _adapted_torpedo_fov(82.0)
 	torpedo_camera.near = 0.05
-	torpedo_camera.far = 320.0
+	torpedo_camera.far = 165.0 if mobile_performance_mode else 320.0
 	# Camera mounted just above the nose looking forward, so the nose cone and canards are visible
 	torpedo_camera.position = Vector3(0, 0.16, -0.22)
 	add_child(torpedo_camera)
@@ -164,6 +191,8 @@ func disengage_camera() -> void:
 func _physics_process(delta: float) -> void:
 	if exploded:
 		return
+	if has_camera_focus and is_instance_valid(torpedo_camera):
+		torpedo_camera.fov = _adapted_torpedo_fov(82.0)
 	lifetime += delta
 	if lifetime >= max_lifetime:
 		_detonate(global_position, Vector3.UP)

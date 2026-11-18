@@ -8,6 +8,7 @@ var animation_clock := 0.0
 var limbs: Array[Node3D] = []
 var tail: Array[Node3D] = []
 var glow_material: StandardMaterial3D
+var _glow_unique := false
 
 func configure(kind: String) -> void:
 	species = kind
@@ -30,6 +31,50 @@ func configure(kind: String) -> void:
 		"school_fish":
 			_build_school_fish()
 	ModelFinish.apply(self, kind)
+	var vis_range := 75.0
+	if kind in ["school_fish", "sea_spider"]:
+		vis_range = 45.0
+	elif kind in ["water_dragon", "flying_fish", "kraken", "colossus_turtle"]:
+		vis_range = 130.0
+	for child in find_children("*", "GeometryInstance3D", true, false):
+		var gi := child as GeometryInstance3D
+		if gi != null:
+			gi.visibility_range_end = vis_range
+			gi.set_meta("base_visibility_range", vis_range)
+			gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+
+func _ensure_unique_glow_material() -> void:
+	if _glow_unique or glow_material == null:
+		return
+	var old_glow := glow_material
+	var unique_glow := old_glow.duplicate() as StandardMaterial3D
+	if unique_glow == null:
+		return
+	unique_glow.set_meta("authored_pbr", true)
+	unique_glow.set_meta("painterly_finished", true)
+	for child in find_children("*", "MeshInstance3D", true, false):
+		var mi := child as MeshInstance3D
+		if mi == null:
+			continue
+		if mi.material_override == old_glow:
+			mi.material_override = unique_glow
+		if mi.mesh != null:
+			for s_idx in range(mi.mesh.get_surface_count()):
+				if mi.get_surface_override_material(s_idx) == old_glow:
+					mi.set_surface_override_material(s_idx, unique_glow)
+	glow_material = unique_glow
+	_glow_unique = true
+
+func _apply_glow_emission(enraged: bool, enraged_col: Color, calm_col: Color) -> void:
+	if glow_material == null:
+		return
+	if enraged:
+		_ensure_unique_glow_material()
+		if not glow_material.emission.is_equal_approx(enraged_col):
+			glow_material.emission = enraged_col
+	elif _glow_unique:
+		if not glow_material.emission.is_equal_approx(calm_col):
+			glow_material.emission = calm_col
 
 func animate(delta: float) -> void:
 	animation_clock += delta
@@ -40,16 +85,14 @@ func animate(delta: float) -> void:
 				var base_yaw: float = float(limbs[i].get_meta("base_yaw", 0.0))
 				limbs[i].rotation.y = base_yaw + sin(animation_clock * 5.0 + i * PI * 0.8) * 0.18
 				limbs[i].rotation.z = sin(animation_clock * 5.0 + i * PI) * 0.12
-			if glow_material:
-				glow_material.emission = Color(1.0, 0.22, 0.08) if enraged else Color(0.85, 0.48, 0.16)
+			_apply_glow_emission(enraged, Color(1.0, 0.22, 0.08), Color(0.85, 0.48, 0.16))
 		"seal":
 			for i in range(limbs.size()):
 				limbs[i].rotation.z = sin(animation_clock * 2.8 + i * PI) * 0.28
 			for part in tail:
 				part.rotation.y = sin(animation_clock * 3.1) * 0.22
 				part.rotation.x = cos(animation_clock * 2.8) * 0.12
-			if glow_material:
-				glow_material.emission = Color(1.0, 0.30, 0.12) if enraged else Color(0.75, 0.88, 0.96)
+			_apply_glow_emission(enraged, Color(1.0, 0.30, 0.12), Color(0.75, 0.88, 0.96))
 		"water_dragon":
 			for i in range(tail.size()):
 				var rest: Vector3 = tail[i].get_meta("rest")
@@ -57,16 +100,14 @@ func animate(delta: float) -> void:
 				tail[i].rotation.y = cos(animation_clock * 2.0 - i * 0.5) * 0.18
 			for i in range(limbs.size()):
 				limbs[i].rotation.z = sin(animation_clock * 1.8 + i * PI * 0.5) * 0.22
-			if glow_material:
-				glow_material.emission = Color(1.0, 0.25, 0.12) if enraged else Color(0.92, 0.72, 0.24)
+			_apply_glow_emission(enraged, Color(1.0, 0.25, 0.12), Color(0.92, 0.72, 0.24))
 		"flying_fish":
 			for i in range(limbs.size()):
 				limbs[i].rotation.z = sin(animation_clock * 7.5 + i * PI) * 0.34
 				limbs[i].rotation.y = cos(animation_clock * 4.0) * 0.14
 			for part in tail:
 				part.rotation.y = sin(animation_clock * 8.5) * 0.35
-			if glow_material:
-				glow_material.emission = Color(1.0, 0.35, 0.1) if enraged else Color(0.32, 0.82, 1.0)
+			_apply_glow_emission(enraged, Color(1.0, 0.35, 0.1), Color(0.32, 0.82, 1.0))
 		"kraken":
 			for i in range(limbs.size()):
 				var t: float = animation_clock * 2.8 + i * 0.75
@@ -74,15 +115,13 @@ func animate(delta: float) -> void:
 				limbs[i].rotation.y = base_yaw + cos(t * 0.6) * 0.14
 				limbs[i].rotation.x = sin(t) * 0.28
 				limbs[i].rotation.z = cos(t * 0.7) * 0.20
-			if glow_material:
-				glow_material.emission = Color(1.0, 0.2, 0.08) if enraged else Color(0.95, 0.68, 0.18)
+			_apply_glow_emission(enraged, Color(1.0, 0.2, 0.08), Color(0.95, 0.68, 0.18))
 		"colossus_turtle":
 			for i in range(limbs.size()):
 				limbs[i].rotation.z = sin(animation_clock * 1.8 + i * PI * 0.5) * 0.28
 			for part in tail:
 				part.rotation.y = sin(animation_clock * 1.5) * 0.18
-			if glow_material:
-				glow_material.emission = Color(1.0, 0.3, 0.1) if enraged else Color(0.38, 0.92, 0.62)
+			_apply_glow_emission(enraged, Color(1.0, 0.3, 0.1), Color(0.38, 0.92, 0.62))
 		"sea_wolf":
 			for i in range(limbs.size()):
 				limbs[i].rotation.z = sin(animation_clock * 4.2 + i * PI * 0.7) * 0.28
@@ -90,15 +129,13 @@ func animate(delta: float) -> void:
 			for part in tail:
 				part.rotation.x = sin(animation_clock * 5.5) * 0.28
 				part.rotation.y = cos(animation_clock * 2.75) * 0.10
-			if glow_material:
-				glow_material.emission = Color(1.0, 0.38, 0.08) if enraged else Color(0.94, 0.70, 0.20)
+			_apply_glow_emission(enraged, Color(1.0, 0.38, 0.08), Color(0.94, 0.70, 0.20))
 		"school_fish":
 			for part in tail:
 				part.rotation.y = sin(animation_clock * 11.0) * 0.45
 			for i in range(limbs.size()):
 				limbs[i].rotation.z = sin(animation_clock * 8.0 + i * PI) * 0.35
-			if glow_material:
-				glow_material.emission = Color(1.0, 0.45, 0.15) if enraged else Color(0.92, 0.76, 0.34)
+			_apply_glow_emission(enraged, Color(1.0, 0.45, 0.15), Color(0.92, 0.76, 0.34))
 
 func set_limp_corpse() -> void:
 	set_meta("dead", true)
@@ -221,8 +258,9 @@ func _build_dragon() -> void:
 	name = "AbyssalWaterDragon"
 	set_meta("name", "深渊水龙 · 潮汐君主")
 	if BlenderArt.mesh("creature_water_dragon_pectoral_r") != null:
-		var mats := BlenderArt.create_creature_materials(Color(0.92, 0.72, 0.24), Color(0.18, 0.38, 0.72))
+		var mats := BlenderArt.create_creature_materials(Color(0.92, 0.72, 0.24), Color(0.18, 0.38, 0.72), false)
 		glow_material = mats["glow"]
+		_glow_unique = true
 		for i in range(14):
 			var segment := Node3D.new()
 			segment.name = "DragonSegment_%d" % i
@@ -261,6 +299,7 @@ func _build_dragon() -> void:
 	var pale := _material(Color(0.45, 0.88, 0.98), 0.25)
 	var horns := _material(Color(1.0, 0.78, 0.24), 0.45)
 	glow_material = _material(Color(0.22, 0.92, 1.0), 0.15, true)
+	_glow_unique = true
 	for i in range(14):
 		var segment := Node3D.new()
 		segment.position = Vector3(0, 0, 3.3 - i * 0.95)
@@ -338,6 +377,7 @@ func _build_flying_fish() -> void:
 	var belly := _material(Color(0.95, 0.98, 1.0), 0.12)
 	var fins_mat := _material(Color(1.0, 0.62, 0.18), 0.35)
 	glow_material = wings
+	_glow_unique = true
 
 	# Streamlined Hydrodynamic Body
 	_ellipsoid("FishFuselage", Vector3.ZERO, Vector3(2.4, 2.0, 8.5), scales)
@@ -402,6 +442,7 @@ func _build_kraken() -> void:
 	var dark_skin := _material(Color(0.42, 0.12, 0.48), 0.32)
 	var sucker_mat := _material(Color(1.0, 0.42, 0.92), 0.15, true)
 	glow_material = sucker_mat
+	_glow_unique = true
 
 	# Massive Cephalopod Mantle Dome (百米深海巨型章鱼头部/外套膜)
 	_ellipsoid("MantleDome", Vector3(0, 3.2, 2.5), Vector3(5.6, 6.2, 7.8), skin)
@@ -478,6 +519,7 @@ func _build_colossus_turtle() -> void:
 	var crystal_mat := _material(Color(0.28, 1.0, 0.76), 0.18, true)
 	var skin := _material(Color(0.24, 0.76, 0.56), 0.24)
 	glow_material = crystal_mat
+	_glow_unique = true
 
 	# Colossal Rugged Shell Carapace (巨型坚甲神鳌重装甲壳)
 	_ellipsoid("Carapace", Vector3(0, 1.4, 0), Vector3(8.5, 4.4, 11.0), shell_mat)
@@ -592,8 +634,9 @@ func _build_sea_wolf() -> void:
 	name = "AbyssalSeaWolf"
 	set_meta("name", "幽影海狼 · 深渊猎手")
 	if BlenderArt.mesh("creature_sea_wolf_pectoral_r") != null:
-		var mats := BlenderArt.create_creature_materials(Color(0.94, 0.70, 0.20), Color(0.32, 0.42, 0.52))
+		var mats := BlenderArt.create_creature_materials(Color(0.94, 0.70, 0.20), Color(0.32, 0.42, 0.52), false)
 		glow_material = mats["glow"]
+		_glow_unique = true
 		BlenderArt.attach_part(self, "LupineTorso", "creature_sea_wolf_body", mats)
 		BlenderArt.attach_part(self, "LupineHead", "creature_sea_wolf_head", mats, Vector3(0.0, 0.20, 1.92))
 		for side in [-1.0, 1.0]:
@@ -629,6 +672,7 @@ func _build_sea_wolf() -> void:
 	var fangs := _material(Color(0.95, 0.96, 0.98), 0.15)
 	var eyes_glow := _material(Color(0.2, 0.95, 1.0), 0.1, true)
 	glow_material = eyes_glow
+	_glow_unique = true
 
 	_ellipsoid("WolfBody", Vector3(0, 0, 0), Vector3(1.7, 1.45, 4.2), pelt)
 	_ellipsoid("WolfBelly", Vector3(0, -0.28, 0.2), Vector3(1.3, 0.85, 3.2), belly)
@@ -692,6 +736,7 @@ func _build_school_fish() -> void:
 	var scales := _material(Color(0.18, 0.78, 0.98), 0.18)
 	var belly := _material(Color(0.92, 0.98, 1.0), 0.12, true)
 	glow_material = belly
+	_glow_unique = true
 	_ellipsoid("Body", Vector3.ZERO, Vector3(0.22, 0.32, 1.15), scales)
 	_ellipsoid("BellyGlow", Vector3(0, -0.06, 0.05), Vector3(0.18, 0.18, 0.9), belly)
 	for side in [-1.0, 1.0]:

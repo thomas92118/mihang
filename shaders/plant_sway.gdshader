@@ -16,6 +16,7 @@ uniform sampler2D emission_texture : source_color, hint_default_white, filter_li
 uniform float normal_scale = 1.0;
 uniform vec3 uv_scale = vec3(1.0);
 uniform vec3 uv_offset = vec3(0.0);
+uniform bool use_surface_maps = true;
 
 // Optional pigment remapping for stylized source assets. Luminance retains
 // pores, weathering and contrasting coral tips while replacing neon hues.
@@ -29,15 +30,17 @@ uniform float sway_frequency : hint_range(0.0, 5.0) = 1.25;
 uniform float phase_offset : hint_range(0.0, 6.283) = 0.0;
 uniform float retract_progress : hint_range(0.0, 1.0) = 0.0;
 varying float v_world_depth;
+varying float v_auto_phase;
 
 void vertex() {
 	float h = max(0.0, VERTEX.y);
 	vec3 world_p = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_world_depth = max(-world_p.y, 0.0);
+	// Procedural phase from world position enables sharing a single material instance across all plants
+	v_auto_phase = dot(MODEL_MATRIX[3].xz, vec2(1.73, 2.41));
 	if (sway_strength > 0.001) {
-		// Procedural phase from world position enables sharing a single material instance across all plants
-		float auto_phase = dot(MODEL_MATRIX[3].xz, vec2(1.73, 2.41));
-		float t = (review_time >= 0.0 ? review_time : TIME) * sway_frequency + phase_offset + auto_phase;
+		float anim_time = review_time >= 0.0 ? review_time : mod(TIME, 3600.0);
+		float t = anim_time * sway_frequency + phase_offset + v_auto_phase;
 		float wave1 = sin(t + world_p.x * 0.18 + world_p.z * 0.14);
 		float wave2 = cos(t * 0.72 + world_p.z * 0.16);
 		float sway = h * h * 0.045 * sway_strength;
@@ -52,7 +55,10 @@ void vertex() {
 
 void fragment() {
 	vec2 material_uv = UV * uv_scale.xy + uv_offset.xy;
-	vec3 raw_albedo = albedo.rgb * texture(albedo_texture, material_uv).rgb * COLOR.rgb;
+	vec2 uv_dx = dFdx(material_uv);
+	vec2 uv_dy = dFdy(material_uv);
+	vec3 albedo_sample = use_surface_maps ? textureGrad(albedo_texture, material_uv, uv_dx, uv_dy).rgb : vec3(1.0);
+	vec3 raw_albedo = albedo.rgb * albedo_sample * COLOR.rgb;
 	float luma = dot(raw_albedo, vec3(0.299, 0.587, 0.114));
 	// Preserve the imported pigments without the old saturation boost. Absorption
 	// belongs to incident sunlight, not albedo: a nearby lamp restores warm hues.
@@ -64,24 +70,28 @@ void fragment() {
 		vec3 pigment = mix(palette_dark, palette_light, pigment_value);
 		ALBEDO = mix(ALBEDO, pigment, palette_strength);
 	}
-	float detail_weight = 1.0 - smoothstep(12.0, 38.0, length(VERTEX));
+	float detail_weight = use_surface_maps ? (1.0 - smoothstep(12.0, 38.0, length(VERTEX))) : 0.0;
 	if (detail_weight > 0.001) {
-		vec3 orm = texture(orm_texture, material_uv).rgb;
+		vec3 orm = textureGrad(orm_texture, material_uv, uv_dx, uv_dy).rgb;
 		AO = orm.r;
 		ROUGHNESS = clamp(roughness * mix(0.72, 1.0, orm.g), 0.18, 1.0);
 		METALLIC = metallic * orm.b;
-		NORMAL_MAP = texture(normal_texture, material_uv).rgb;
-		NORMAL_MAP_DEPTH = normal_scale * 0.68 * detail_weight;
+		if (normal_scale > 0.001) {
+			NORMAL_MAP = textureGrad(normal_texture, material_uv, uv_dx, uv_dy).rgb;
+			NORMAL_MAP_DEPTH = normal_scale * 0.68 * detail_weight;
+		} else {
+			NORMAL_MAP_DEPTH = 0.0;
+		}
 	} else {
 		ROUGHNESS = clamp(roughness, 0.18, 1.0);
 		METALLIC = metallic;
-		NORMAL_MAP = vec3(0.5, 0.5, 1.0);
 		NORMAL_MAP_DEPTH = 0.0;
 	}
 	if (emission_energy > 0.0) {
-		float auto_phase = dot(MODEL_MATRIX[3].xz, vec2(1.73, 2.41));
-		float pulse = 0.92 + sin((review_time >= 0.0 ? review_time : TIME) * 0.8 + phase_offset + auto_phase) * 0.08;
-		EMISSION = emission * texture(emission_texture, material_uv).rgb * (emission_energy * pulse);
+		float anim_time = review_time >= 0.0 ? review_time : mod(TIME, 3600.0);
+		float pulse = 0.92 + sin(anim_time * 0.8 + phase_offset + v_auto_phase) * 0.08;
+		vec3 em_sample = use_surface_maps ? textureGrad(emission_texture, material_uv, uv_dx, uv_dy).rgb : vec3(1.0);
+		EMISSION = emission * em_sample * (emission_energy * pulse);
 	} else {
 		EMISSION = vec3(0.0);
 	}

@@ -22,6 +22,8 @@ var attack_cooldown: float = 0.0
 var attack_interval: float = 0.35
 var interact_radius: float = 5.8
 var is_scoped: bool = false
+var headlights_enabled: bool = true
+var mobile_performance_mode: bool = false
 
 var cockpit_seat: Marker3D
 var headlights: Array[Light3D] = []
@@ -59,9 +61,37 @@ func configure(type: String) -> void:
 		_build_mini()
 	ModelFinish.apply(self, "submarine")
 	for index in headlights.size():
-		headlights[index].visible = is_piloted
-		headlights[index].shadow_enabled = is_piloted and index == 0
 		headlights[index].light_color = Color(1.0, 0.96, 0.87)
+	var cull_dist := 160.0 if sub_type == "titan" else 125.0
+	for node in find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi != null and mi.visibility_range_end <= 0.0:
+			mi.visibility_range_end = cull_dist
+			mi.visibility_range_end_margin = 16.0
+			mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+	set_mobile_performance_mode(mobile_performance_mode)
+	_refresh_headlights()
+
+func _refresh_headlights() -> void:
+	for index in headlights.size():
+		var hl := headlights[index]
+		if not is_instance_valid(hl):
+			continue
+		var allow_in_perf := not (mobile_performance_mode and sub_type == "titan" and index >= 2)
+		var should_show := is_piloted and headlights_enabled and allow_in_perf
+		hl.visible = should_show
+		hl.shadow_enabled = should_show and index == 0 and not mobile_performance_mode
+
+func toggle_headlights() -> bool:
+	headlights_enabled = not headlights_enabled
+	_refresh_headlights()
+	return headlights_enabled
+
+func set_mobile_performance_mode(enabled: bool) -> void:
+	mobile_performance_mode = enabled
+	if is_instance_valid(wake_particles):
+		wake_particles.amount = 20 if enabled else 48
+	_refresh_headlights()
 
 func _build_scout() -> void:
 	sub_name = "深海斥候号"
@@ -545,10 +575,8 @@ func _setup_wake_particles(at: Vector3, radius: float) -> void:
 func board(diver: Node3D) -> void:
 	is_piloted = true
 	pilot_diver = diver
-	for index in headlights.size():
-		if is_instance_valid(headlights[index]):
-			headlights[index].visible = true
-			headlights[index].shadow_enabled = index == 0
+	headlights_enabled = true
+	_refresh_headlights()
 	for pod in escape_pods:
 		if is_instance_valid(pod):
 			var pod_lbl := pod.get_node_or_null("PodLabel") as Label3D
@@ -566,10 +594,7 @@ func disembark() -> Vector3:
 		remove_collision_exception_with(pilot_diver)
 	is_piloted = false
 	pilot_diver = null
-	for index in headlights.size():
-		if is_instance_valid(headlights[index]):
-			headlights[index].visible = false
-			headlights[index].shadow_enabled = false
+	_refresh_headlights()
 	for pod in escape_pods:
 		if is_instance_valid(pod):
 			var pod_lbl := pod.get_node_or_null("PodLabel") as Label3D

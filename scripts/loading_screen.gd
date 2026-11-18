@@ -6,6 +6,8 @@ extends CanvasLayer
 ## seamless dissolve straight into the rendered 3D ocean title showcase.
 
 const Art = preload("res://scripts/art_direction.gd")
+const SafeArea = preload("res://scripts/presentation/safe_area.gd")
+const AudioGen = preload("res://scripts/underwater_audio.gd")
 const MAIN_SCENE_PATH := "res://scenes/main.tscn"
 const MIN_DESKTOP_DISPLAY_TIME := 1.45
 const FADE_OUT_DURATION := 0.42
@@ -82,6 +84,7 @@ var _stage := "loading" # loading -> instantiating -> warmup -> fading -> done
 var _warmup_frames := 0
 var _fade_elapsed := 0.0
 var _skip_min_wait := false
+var _last_safe_rect := Rect2()
 
 func _ready() -> void:
 	layer = 100
@@ -93,6 +96,8 @@ func _ready() -> void:
 		_fast_boot_cli.call_deferred()
 		return
 
+	_configure_startup_window()
+
 	if OS.has_feature("web"):
 		set_process(false)
 		_build_web_bridge_backdrop()
@@ -102,11 +107,27 @@ func _ready() -> void:
 	_build_desktop_ui()
 	_start_preload_queue()
 
+func _configure_startup_window() -> void:
+	if OS.has_feature("web") or OS.has_feature("android") or OS.has_feature("ios"):
+		var window := get_window()
+		if window != null and window == get_tree().root:
+			var display_scale := SafeArea.get_display_scale()
+			if window.content_scale_size != Vector2i.ZERO:
+				window.content_scale_size = Vector2i.ZERO
+			if not is_equal_approx(window.content_scale_factor, display_scale):
+				window.content_scale_factor = display_scale
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch and event.pressed:
+		_skip_min_wait = true
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode in [KEY_SPACE, KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE]:
 			_skip_min_wait = true
 	elif event is InputEventMouseButton and event.pressed:
+		_skip_min_wait = true
+	elif event is InputEventScreenTouch and event.pressed:
 		_skip_min_wait = true
 
 func _fast_boot_cli() -> void:
@@ -142,7 +163,13 @@ func _run_web_handoff() -> void:
 	_eval_web_js("if (window.__abyssalSetEngineStage) window.__abyssalSetEngineStage(0.96, '正在整备珊瑚浅礁与深海光影...');")
 	await get_tree().process_frame
 
+	for _i in range(6):
+		if AudioGen.warmup_step(4):
+			break
+		await get_tree().process_frame
+
 	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	_held_resources.clear()
 	if packed != null:
 		var inst := packed.instantiate()
 		get_tree().root.add_child(inst)
@@ -155,7 +182,6 @@ func _run_web_handoff() -> void:
 	await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 
-	_held_resources.clear()
 	_eval_web_js("window.__abyssalGameReady = true; if (window.__abyssalFinishLoading) window.__abyssalFinishLoading();")
 	queue_free()
 
@@ -181,7 +207,7 @@ func _build_desktop_ui() -> void:
 	_root.name = "LoadingRoot"
 	_root.theme = theme
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	_root.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(_root)
 
 	_backdrop = ColorRect.new()
@@ -277,69 +303,157 @@ func _layout_ui() -> void:
 	var vp := _root.size
 	if vp.x <= 1.0 or vp.y <= 1.0:
 		vp = Vector2(get_viewport().size)
+	var safe := SafeArea.get_safe_rect(get_viewport(), Vector2(20.0, 16.0), 8.0)
+	_last_safe_rect = safe
+	var sx := safe.position.x
+	var sy := safe.position.y
+	var sw := safe.size.x
+	var sh := safe.size.y
+	var is_portrait := sw < sh
+	var is_short := (not is_portrait) and sh < 480.0
 
-	var pad_x := clampf(vp.x * 0.058, 28.0, 88.0)
-	var pad_y := clampf(vp.y * 0.052, 24.0, 52.0)
-	var content_w := vp.x - pad_x * 2.0
+	var pad_x := sx + (clampf(sw * 0.032, 8.0, 56.0) if (is_portrait or is_short) else clampf(sw * 0.042, 16.0, 68.0))
+	var pad_y := sy + (clampf(sh * 0.025, 6.0, 24.0) if (is_portrait or is_short) else clampf(sh * 0.038, 12.0, 36.0))
+	var right_x := safe.end.x - (pad_x - sx)
+	var bottom_y := safe.end.y - (pad_y - sy)
+	var content_w := maxf(180.0, right_x - pad_x)
 
-	# Top bar
+	# Top bar inside SafeArea
 	_header_bar.position = Vector2(pad_x, pad_y + 2.0)
-	_header_bar.size = Vector2(3.0, 20.0)
-	_header_label.position = Vector2(pad_x + 15.0, pad_y)
-	_header_label.size = Vector2(340.0, 24.0)
+	_header_bar.size = Vector2(3.0, 18.0 if is_portrait else 20.0)
+	_header_label.position = Vector2(pad_x + 12.0, pad_y)
+	_header_label.size = Vector2(maxf(140.0, content_w - 150.0), 24.0)
 
-	_depth_value.position = Vector2(vp.x - pad_x - 160.0, pad_y - 6.0)
-	_depth_value.size = Vector2(160.0, 34.0)
-	_depth_caption.position = Vector2(vp.x - pad_x - 172.0, pad_y + 5.0)
-	_depth_caption.size = Vector2(64.0, 20.0)
-	_biome_label.position = Vector2(vp.x - pad_x - 280.0, pad_y + 30.0)
-	_biome_label.size = Vector2(280.0, 22.0)
+	_depth_value.add_theme_font_size_override("font_size", 20 if (is_portrait or is_short) else 26)
+	_depth_value.position = Vector2(right_x - 140.0, pad_y - 4.0)
+	_depth_value.size = Vector2(140.0, 30.0)
+	_depth_caption.position = Vector2(right_x - 152.0, pad_y + 4.0)
+	_depth_caption.size = Vector2(56.0, 20.0)
+	_biome_label.position = Vector2(right_x - minf(260.0, content_w), pad_y + (24.0 if is_short else 28.0))
+	_biome_label.size = Vector2(minf(260.0, content_w), 20.0)
 
-	# Editorial title column (left) & astrolabe center (right)
-	var center_y := vp.y * 0.46
-	var col_w := minf(520.0, content_w * 0.54)
-	var top_block_y := center_y - 168.0
+	# Bottom horizon gauge inside SafeArea
+	var bar_y := bottom_y - (22.0 if is_short else 26.0)
+	var bar_rect := Rect2(pad_x, bar_y, content_w, 5.0 if is_short else 6.0)
+	_phase_label.position = Vector2(pad_x + 16.0, bar_y - 26.0)
+	_phase_label.size = Vector2(content_w * (0.74 if is_portrait else 0.62), 22.0)
 
-	_eyebrow_bar.position = Vector2(pad_x, top_block_y + 12.0)
-	_eyebrow_bar.size = Vector2(38.0, 2.0)
-	_eyebrow_label.position = Vector2(pad_x + 52.0, top_block_y)
-	_eyebrow_label.size = Vector2(col_w, 26.0)
-
-	_title_label.position = Vector2(pad_x - 4.0, top_block_y + 38.0)
-	_title_label.size = Vector2(col_w + 40.0, 96.0)
-
-	_subtitle_label.position = Vector2(pad_x + 4.0, top_block_y + 140.0)
-	_subtitle_label.size = Vector2(col_w, 30.0)
-
-	_divider_bar.position = Vector2(pad_x + 4.0, top_block_y + 190.0)
-	_divider_bar.size = Vector2(52.0, 1.0)
-
-	_lead_label.position = Vector2(pad_x + 2.0, top_block_y + 210.0)
-	_lead_label.size = Vector2(col_w, 36.0)
-
-	_tip_label.position = Vector2(pad_x + 4.0, top_block_y + 258.0)
-	_tip_label.size = Vector2(minf(450.0, col_w), 58.0)
-
-	# Bottom horizon gauge
-	var bar_y := vp.y - pad_y - 28.0
-	var bar_rect := Rect2(pad_x, bar_y, content_w, 6.0)
-	_phase_label.position = Vector2(pad_x + 18.0, bar_y - 30.0)
-	_phase_label.size = Vector2(content_w * 0.62, 24.0)
-
-	_percent_label.position = Vector2(vp.x - pad_x - 84.0, bar_y - 34.0)
-	_percent_label.size = Vector2(84.0, 28.0)
-	_range_label.position = Vector2(vp.x - pad_x - 310.0, bar_y - 29.0)
-	_range_label.size = Vector2(216.0, 22.0)
+	_percent_label.add_theme_font_size_override("font_size", 16 if (is_portrait or is_short) else 20)
+	_percent_label.position = Vector2(right_x - 76.0, bar_y - 30.0)
+	_percent_label.size = Vector2(76.0, 24.0)
+	_range_label.visible = not is_portrait and content_w >= 460.0
+	_range_label.position = Vector2(right_x - 296.0, bar_y - 27.0)
+	_range_label.size = Vector2(210.0, 20.0)
 
 	for i in range(_ruler_labels.size()):
 		var t := float(i) / float(maxi(1, _ruler_labels.size() - 1))
 		var rx := pad_x + content_w * t
-		_ruler_labels[i].position = Vector2(rx - 36.0, bar_y + 12.0)
-		_ruler_labels[i].size = Vector2(72.0, 18.0)
+		_ruler_labels[i].visible = (not is_portrait) or (i % 2 == 0)
+		_ruler_labels[i].position = Vector2(rx - 32.0, bar_y + 9.0)
+		_ruler_labels[i].size = Vector2(64.0, 16.0)
 
-	var astro_radius := clampf(minf(vp.x * 0.135, vp.y * 0.215), 96.0, 162.0)
-	var astro_center := Vector2(vp.x - pad_x - astro_radius - clampf(vp.x * 0.04, 12.0, 64.0), center_y + 4.0)
-	_plate.configure_geometry(astro_center, astro_radius, bar_rect, Vector2(pad_x + 5.0, bar_y - 18.0))
+	if is_portrait:
+		var top_clear := pad_y + 54.0
+		var bot_clear := bar_y - 36.0
+		var mid_h := maxf(180.0, bot_clear - top_clear)
+		var astro_radius := clampf(minf(content_w * 0.27, mid_h * 0.22), 52.0, 108.0)
+		var astro_center := Vector2(pad_x + content_w * 0.5, top_clear + astro_radius + clampf(mid_h * 0.04, 6.0, 24.0))
+		var text_y := astro_center.y + astro_radius + clampf(mid_h * 0.05, 14.0, 28.0)
+		var title_fs := clampi(int(content_w * 0.125), 34, 52)
+		_title_label.add_theme_font_size_override("font_size", title_fs)
+		_subtitle_label.add_theme_font_size_override("font_size", 13)
+		_lead_label.add_theme_font_size_override("font_size", 18)
+
+		_eyebrow_bar.position = Vector2(pad_x, text_y + 10.0)
+		_eyebrow_bar.size = Vector2(28.0, 2.0)
+		_eyebrow_label.position = Vector2(pad_x + 38.0, text_y)
+		_eyebrow_label.size = Vector2(content_w - 38.0, 22.0)
+
+		_title_label.position = Vector2(pad_x, text_y + 26.0)
+		_title_label.size = Vector2(content_w, float(title_fs) + 18.0)
+
+		var sub_y := text_y + 28.0 + float(title_fs) + 12.0
+		_subtitle_label.position = Vector2(pad_x + 2.0, sub_y)
+		_subtitle_label.size = Vector2(content_w, 22.0)
+
+		_divider_bar.position = Vector2(pad_x + 2.0, sub_y + 28.0)
+		_divider_bar.size = Vector2(44.0, 1.0)
+
+		_lead_label.position = Vector2(pad_x + 2.0, sub_y + 38.0)
+		_lead_label.size = Vector2(content_w, 26.0)
+
+		_tip_label.visible = (sub_y + 112.0) <= bot_clear
+		_tip_label.position = Vector2(pad_x + 2.0, sub_y + 68.0)
+		_tip_label.size = Vector2(content_w, 46.0)
+		_plate.configure_geometry(astro_center, astro_radius, bar_rect, Vector2(pad_x + 5.0, bar_y - 15.0))
+	elif is_short:
+		var top_clear := pad_y + 44.0
+		var bot_clear := bar_y - 32.0
+		var mid_h := maxf(120.0, bot_clear - top_clear)
+		var astro_radius := clampf(minf(content_w * 0.14, mid_h * 0.38), 54.0, 96.0)
+		var astro_center := Vector2(right_x - astro_radius - 16.0, top_clear + mid_h * 0.5)
+		var col_w := maxf(200.0, astro_center.x - astro_radius - pad_x - 24.0)
+		var title_fs := clampi(int(mid_h * 0.24), 32, 48)
+		_title_label.add_theme_font_size_override("font_size", title_fs)
+		_subtitle_label.add_theme_font_size_override("font_size", 13)
+		_lead_label.add_theme_font_size_override("font_size", 16)
+		var block_h := float(title_fs) + 108.0
+		var top_block_y := clampf(top_clear + (mid_h - block_h) * 0.5, top_clear, bot_clear - 90.0)
+
+		_eyebrow_bar.position = Vector2(pad_x, top_block_y + 9.0)
+		_eyebrow_bar.size = Vector2(26.0, 2.0)
+		_eyebrow_label.position = Vector2(pad_x + 36.0, top_block_y)
+		_eyebrow_label.size = Vector2(col_w - 36.0, 20.0)
+
+		_title_label.position = Vector2(pad_x - 2.0, top_block_y + 22.0)
+		_title_label.size = Vector2(col_w + 20.0, float(title_fs) + 14.0)
+
+		var sub_y := top_block_y + 24.0 + float(title_fs) + 8.0
+		_subtitle_label.position = Vector2(pad_x + 2.0, sub_y)
+		_subtitle_label.size = Vector2(col_w, 20.0)
+
+		_divider_bar.position = Vector2(pad_x + 2.0, sub_y + 22.0)
+		_divider_bar.size = Vector2(40.0, 1.0)
+
+		_lead_label.position = Vector2(pad_x + 2.0, sub_y + 30.0)
+		_lead_label.size = Vector2(col_w, 24.0)
+
+		_tip_label.visible = (sub_y + 92.0) <= bot_clear
+		_tip_label.position = Vector2(pad_x + 2.0, sub_y + 56.0)
+		_tip_label.size = Vector2(col_w, 38.0)
+		_plate.configure_geometry(astro_center, astro_radius, bar_rect, Vector2(pad_x + 5.0, bar_y - 15.0))
+	else:
+		# Desktop / large tablet editorial layout within SafeArea
+		_title_label.add_theme_font_size_override("font_size", 72)
+		_subtitle_label.add_theme_font_size_override("font_size", 18)
+		_lead_label.add_theme_font_size_override("font_size", 24)
+		_tip_label.visible = true
+		var center_y := sy + sh * 0.46
+		var astro_radius := clampf(minf(sw * 0.135, sh * 0.215), 96.0, 162.0)
+		var astro_center := Vector2(right_x - astro_radius - clampf(sw * 0.04, 12.0, 64.0), center_y + 4.0)
+		var col_w := minf(520.0, maxf(240.0, astro_center.x - astro_radius - pad_x - 28.0))
+		var top_block_y := maxf(pad_y + 48.0, center_y - 168.0)
+
+		_eyebrow_bar.position = Vector2(pad_x, top_block_y + 12.0)
+		_eyebrow_bar.size = Vector2(38.0, 2.0)
+		_eyebrow_label.position = Vector2(pad_x + 52.0, top_block_y)
+		_eyebrow_label.size = Vector2(col_w, 26.0)
+
+		_title_label.position = Vector2(pad_x - 4.0, top_block_y + 38.0)
+		_title_label.size = Vector2(col_w + 40.0, 96.0)
+
+		_subtitle_label.position = Vector2(pad_x + 4.0, top_block_y + 140.0)
+		_subtitle_label.size = Vector2(col_w, 30.0)
+
+		_divider_bar.position = Vector2(pad_x + 4.0, top_block_y + 190.0)
+		_divider_bar.size = Vector2(52.0, 1.0)
+
+		_lead_label.position = Vector2(pad_x + 2.0, top_block_y + 210.0)
+		_lead_label.size = Vector2(col_w, 36.0)
+
+		_tip_label.position = Vector2(pad_x + 4.0, top_block_y + 258.0)
+		_tip_label.size = Vector2(minf(450.0, col_w), 58.0)
+		_plate.configure_geometry(astro_center, astro_radius, bar_rect, Vector2(pad_x + 5.0, bar_y - 18.0))
 
 func _start_preload_queue() -> void:
 	_queue.clear()
@@ -364,15 +478,20 @@ func _request_next_resource() -> void:
 
 func _on_resource_loaded(path: String, res: Resource) -> void:
 	if res != null:
-		_held_resources.append(res)
 		if path == MAIN_SCENE_PATH and res is PackedScene:
 			_main_packed = res as PackedScene
+		elif not (OS.has_feature("android") or OS.has_feature("ios")) or _held_resources.size() < 4:
+			_held_resources.append(res)
 	_loaded_count += 1
 	_active_path = ""
 
 func _process(delta: float) -> void:
 	_clock += delta
 	_tip_timer += delta
+	if is_instance_valid(_root):
+		var cur_safe := SafeArea.get_safe_rect(get_viewport(), Vector2(20.0, 16.0), 8.0)
+		if not cur_safe.is_equal_approx(_last_safe_rect):
+			_layout_ui()
 	if _tip_timer >= 3.8 and is_instance_valid(_tip_label):
 		_tip_timer = 0.0
 		_tip_index = (_tip_index + 1) % EXPEDITION_TIPS.size()
@@ -381,6 +500,7 @@ func _process(delta: float) -> void:
 	match _stage:
 		"loading":
 			_poll_threaded_loader()
+			AudioGen.warmup_step(2)
 			var total := float(maxi(1, _queue.size()))
 			var raw_ratio := float(_loaded_count) / total
 			var time_gate := 1.0 if _skip_min_wait else clampf(_clock / MIN_DESKTOP_DISPLAY_TIME, 0.0, 1.0)
@@ -391,18 +511,20 @@ func _process(delta: float) -> void:
 		"instantiating":
 			_phase_label.text = "正在连接声呐罗盘与生命支持..."
 			if _display_progress >= 0.89:
+				_held_resources.clear()
 				if _main_packed == null:
 					_main_packed = load(MAIN_SCENE_PATH) as PackedScene
 				if _main_packed != null:
 					_main_instance = _main_packed.instantiate()
 					get_tree().root.add_child(_main_instance)
 					get_tree().current_scene = _main_instance
-				_held_resources.clear()
+				_main_packed = null
 				_target_progress = 1.0
 				_warmup_frames = 0
 				_stage = "warmup"
 		"warmup":
 			_phase_label.text = "航道已就绪  ·  即将潜入深海"
+			AudioGen.warmup_step(4)
 			_warmup_frames += 1
 			if _warmup_frames >= 3 and _display_progress >= 0.985:
 				_root.mouse_filter = Control.MOUSE_FILTER_IGNORE

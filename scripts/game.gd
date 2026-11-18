@@ -97,7 +97,24 @@ var voyage_save_path: String = VOYAGE_SAVE_PATH
 var voyage_persist_enabled: bool = true
 var voyage_started: bool = false
 var _js_page_hidden_cb: Variant = null
+var _js_page_visible_cb: Variant = null
 var _guide_payload_arg_count: int = -1
+var _perf_mode_active: bool = false
+var _base_3d_scale: float = 1.0
+var _drs_scale: float = 1.0
+var _drs_accum_time: float = 0.0
+var _drs_frame_count: int = 0
+var _last_touch_margins: Dictionary = {}
+
+const QUICK_STAY_OPEN_ACTIONS := [
+	"camera_closer", "camera_farther",
+	"character_switch", "character_angle", "char_angle_reset",
+	"char_rotate_left", "char_rotate_right",
+	"char_tilt_up", "char_tilt_down",
+	"char_roll_left", "char_roll_right",
+	"weapon_1", "weapon_2", "weapon_3", "weapon_4",
+	"lamp", "booster",
+]
 
 static func _build_landmarks() -> Dictionary:
 	var landmarks: Dictionary = LANDMARK_SPECS.duplicate(true)
@@ -112,6 +129,7 @@ static func _build_landmarks() -> Dictionary:
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	get_tree().set_quit_on_go_back(false)
 	var cmd_args := OS.get_cmdline_user_args()
 	if "--smoke-world" in cmd_args or "--capture" in cmd_args:
 		gameplay_guide.persist_enabled = false
@@ -119,6 +137,7 @@ func _ready() -> void:
 	_configure_input_window()
 	get_window().size_changed.connect(_configure_input_window)
 	get_viewport().size_changed.connect(_apply_graphics_quality)
+	get_viewport().size_changed.connect(_sync_touch_hud_margins)
 	_setup_input()
 	input_controller = GameInput.new()
 	input_controller.name = "InputController"
@@ -295,8 +314,22 @@ func _setup_touch_controls() -> void:
 		if screen == "play":
 			diver.apply_orbit_delta(relative, true)
 	)
+	if touch_controls.has_signal("zoom_pinched"):
+		touch_controls.zoom_pinched.connect(func(dist_delta: float):
+			if screen == "play" and is_instance_valid(diver) and not diver.scoped:
+				diver.adjust_camera_distance(-dist_delta * 0.012)
+		)
+	if touch_controls.has_signal("scope_requested"):
+		touch_controls.scope_requested.connect(func():
+			if screen == "play":
+				var scope_ev := InputEventAction.new()
+				scope_ev.action = "scope"
+				scope_ev.pressed = true
+				_handle_action_event(scope_ev)
+		)
 	touch_controls.quick_menu_requested.connect(func(): _on_hud_action_requested("quick_menu"))
 	touch_controls.touch_used.connect(func(): input_controller.notify_device("touch"))
+	touch_controls.resized.connect(_sync_touch_hud_margins)
 	_sync_input_presentation()
 
 func _configure_input_window() -> void:
@@ -305,7 +338,7 @@ func _configure_input_window() -> void:
 	if OS.has_feature("web") or OS.has_feature("android") or OS.has_feature("ios"):
 		var window := get_window()
 		if window == get_tree().root:
-			var display_scale := maxf(1.0, DisplayServer.screen_get_scale())
+			var display_scale := SafeArea.get_display_scale()
 			if window.content_scale_size != Vector2i.ZERO:
 				window.content_scale_size = Vector2i.ZERO
 			if not is_equal_approx(window.content_scale_factor, display_scale):
@@ -331,7 +364,9 @@ func _apply_graphics_quality() -> void:
 		return
 	var pref: String = str(input_controller.settings.get("graphics_quality", "auto")) if is_instance_valid(input_controller) else "auto"
 	var perf_mode: bool = (pref == "performance") or (pref == "auto" and SafeArea.is_default_touch_platform())
-	var display_scale := maxf(1.0, DisplayServer.screen_get_scale())
+	var mode_changed := (_perf_mode_active != perf_mode)
+	_perf_mode_active = perf_mode
+	var display_scale := SafeArea.get_display_scale()
 	if is_inside_tree():
 		var window := get_window()
 		if window != null and window == get_tree().root:
@@ -339,7 +374,19 @@ func _apply_graphics_quality() -> void:
 				if not is_equal_approx(window.content_scale_factor, display_scale):
 					window.content_scale_factor = display_scale
 			window.scaling_3d_mode = Window.SCALING_3D_MODE_BILINEAR
-			var target_3d_scale := clampf(1.65 / maxf(1.0, display_scale), 0.58, 0.85) if perf_mode else 1.0
+			var win_short := maxf(1.0, float(mini(window.size.x, window.size.y)))
+			var dpi_budget_scale := 1.65 / maxf(1.0, display_scale)
+			var px_budget_scale := 600.0 / win_short
+			_base_3d_scale = clampf(minf(dpi_budget_scale, px_budget_scale), 0.50, 0.85) if perf_mode else 1.0
+			if not perf_mode:
+				_drs_scale = 1.0
+				_drs_accum_time = 0.0
+				_drs_frame_count = 0
+			elif mode_changed or _drs_scale > _base_3d_scale or _drs_scale < 0.50:
+				_drs_scale = _base_3d_scale
+				_drs_accum_time = 0.0
+				_drs_frame_count = 0
+			var target_3d_scale := _drs_scale if perf_mode else 1.0
 			if not is_equal_approx(window.scaling_3d_scale, target_3d_scale):
 				window.scaling_3d_scale = target_3d_scale
 		var vp := get_viewport()
@@ -349,8 +396,16 @@ func _apply_graphics_quality() -> void:
 				vp.msaa_3d = target_msaa
 	if is_instance_valid(ocean) and ocean.has_method("set_mobile_performance_mode"):
 		ocean.set_mobile_performance_mode(perf_mode)
+	if is_instance_valid(ocean) and ocean.has_method("get_submarines"):
+		for sub_node in ocean.get_submarines():
+			if is_instance_valid(sub_node) and sub_node.has_method("set_mobile_performance_mode"):
+				sub_node.set_mobile_performance_mode(perf_mode)
+	if is_instance_valid(active_torpedo) and active_torpedo.has_method("set_mobile_performance_mode"):
+		active_torpedo.set_mobile_performance_mode(perf_mode)
 	if is_instance_valid(diver) and diver.has_method("set_mobile_performance_mode"):
 		diver.set_mobile_performance_mode(perf_mode)
+	if is_instance_valid(title_camera):
+		title_camera.far = 165.0 if perf_mode else 280.0
 
 func _on_input_device_changed(_device: String) -> void:
 	# Finish registering the new source before hiding/canceling the old touch
@@ -365,7 +420,41 @@ func _sync_input_presentation() -> void:
 		touch_controls.configure(input_controller.settings)
 		touch_controls.set_gameplay_enabled(screen == "play" and show_touch)
 		touch_controls.visible = screen == "play" and show_touch
+	if is_instance_valid(ocean) and ocean.has_method("refresh_interaction_prompts"):
+		ocean.refresh_interaction_prompts(show_touch)
+	_sync_touch_context_and_margins(true)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if screen == "play" and input_controller.active_device == "keyboard" and not show_touch and not SafeArea.is_default_touch_platform() else Input.MOUSE_MODE_VISIBLE
+
+func _sync_touch_hud_margins() -> void:
+	_sync_touch_context_and_margins(false)
+
+func _sync_touch_context_and_margins(force_hud_sync: bool = false) -> void:
+	if not is_instance_valid(touch_controls):
+		return
+	if touch_controls.has_method("set_vehicle_context"):
+		var in_sub := is_instance_valid(active_submarine)
+		var s_type: String = str(active_submarine.sub_type) if in_sub else ""
+		var has_torp: bool = is_instance_valid(active_torpedo) and not bool(active_torpedo.exploded)
+		var is_sc: bool = bool(diver.scoped) if is_instance_valid(diver) else false
+		touch_controls.set_vehicle_context(in_sub, s_type, has_torp, is_sc)
+	if is_instance_valid(hud) and hud.has_method("set_touch_margins") and touch_controls.has_method("get_hud_safe_margins"):
+		var margins: Dictionary = touch_controls.get_hud_safe_margins()
+		if force_hud_sync or margins != _last_touch_margins:
+			_last_touch_margins = margins.duplicate()
+			hud.set_touch_margins(margins)
+
+func _toggle_fullscreen_mode() -> void:
+	if OS.has_feature("web") and Engine.has_singleton("JavaScriptBridge"):
+		JavaScriptBridge.eval("if (window.__abyssalToggleFullscreen) { window.__abyssalToggleFullscreen(); } else if (document.fullscreenElement) { document.exitFullscreen(); } else if (document.documentElement && document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen(); }", true)
+		SafeArea.invalidate_web_cache()
+		return
+	if DisplayServer.get_name() == "headless":
+		return
+	var cur_mode := DisplayServer.window_get_mode()
+	if cur_mode in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 
 func _get_onboarding_hud_payload() -> Dictionary:
 	var show_touch := _is_touch_presentation_active()
@@ -453,11 +542,41 @@ func _on_hud_action_requested(action: String) -> void:
 		controls_return_screen = screen if screen in ["main", "pause", "quick", "guide", "play"] else "play"
 		_set_screen("controls")
 		return
+	if action == "toggle_fullscreen":
+		_toggle_fullscreen_mode()
+		return
+	if action == "recall_all_mounts":
+		if screen == "quick":
+			_set_screen("play")
+		_store_all_tamed_beasts()
+		return
+	if action.begins_with("ride_mount:"):
+		var idx_str := action.trim_prefix("ride_mount:")
+		if idx_str.is_valid_int():
+			var m_idx := int(idx_str)
+			if screen != "play":
+				_set_screen("play")
+			_mount_beast(m_idx)
+		return
+	if action == "mount_board":
+		_set_screen("play" if screen == "mount_board" else "mount_board")
+		return
 	if action == "quick_menu":
 		if screen in ["play", "quick"]:
 			_set_screen("play" if screen == "quick" else "quick")
 		return
-	if screen == "quick":
+	if screen == "quick" and action in ["char_rotate_left", "char_rotate_right", "char_tilt_up", "char_tilt_down", "char_roll_left", "char_roll_right"]:
+		if is_instance_valid(diver) and not is_instance_valid(active_submarine) and not diver.scoped:
+			match action:
+				"char_rotate_left": diver.rotate_character_yaw(-0.22)
+				"char_rotate_right": diver.rotate_character_yaw(0.22)
+				"char_tilt_up": diver.adjust_character_pitch(-0.16)
+				"char_tilt_down": diver.adjust_character_pitch(0.16)
+				"char_roll_left": diver.rotate_character_roll(-0.18)
+				"char_roll_right": diver.rotate_character_roll(0.18)
+			diver._update_third_person_camera(0.0)
+		return
+	if screen == "quick" and not (action in QUICK_STAY_OPEN_ACTIONS):
 		_set_screen("play")
 	input_controller.set_action("hud_shortcut", action, true)
 	input_controller.set_action("hud_shortcut", action, false)
@@ -474,8 +593,10 @@ func _on_input_action_changed(action: String, pressed: bool, cancelled: bool) ->
 	if pressed and action == "quick_menu":
 		_on_hud_action_requested(action)
 		return
-	if pressed and action in ["camera_closer", "camera_farther"] and screen == "play":
+	if pressed and action in ["camera_closer", "camera_farther"] and screen in ["play", "quick"]:
 		diver.adjust_camera_distance(-0.35 if action == "camera_closer" else 0.35)
+		if screen == "quick":
+			diver._update_third_person_camera(0.0)
 		return
 	var event := InputEventAction.new()
 	event.action = action
@@ -535,7 +656,7 @@ func _start(chosen_mode: String = "survival") -> void:
 	if gameplay_guide.is_onboarding_visible():
 		hud.toast("欢迎来到开放深蓝海域 · 请跟随左上角初航引导熟悉潜航（按 L 打开潜航指南）")
 	elif chosen_mode == "explore":
-		hud.toast("开放海域漫游已开启 · 按 M 打开全域海图与洋流跃迁 · 按 N 释放声呐勘测脉冲 · 3 装备蓝光枪")
+		hud.toast("开放海域漫游已开启 · 按 M 打开全域海图与洋流跃迁 · 按 N 释放声呐勘测脉冲 · 按 3 装备蓝光枪")
 	else:
 		hud.toast("欢迎来到开放深蓝海域 · 按 M 海图导航/跃迁 · N 声呐寻宝 · E 采集或激活科考前哨站 · Tab 制造台")
 
@@ -609,7 +730,7 @@ func _select_character(character_id: String, announce: bool = true) -> void:
 		elif screen == "play" and is_instance_valid(diver) and not is_instance_valid(active_submarine):
 			CombatVFX.spawn_tame_ring(self, diver.global_position + Vector3(0.0, -0.45, 0.0), 1.75)
 			CombatVFX.spawn_clam_bubbles(self, diver.global_position + Vector3(0.0, -0.55, 0.0))
-		if is_instance_valid(hud) and screen in ["play", "craft", "sushi", "mount_board", "map"]:
+		if is_instance_valid(hud) and screen in ["play", "craft", "sushi", "mount_board", "map", "quick"]:
 			hud.toast("【角色切换】%s · %s (按 P 随时切换)" % [str(profile.get("name", cid)), str(profile.get("subtitle", ""))])
 
 func _set_screen(value: String) -> void:
@@ -786,12 +907,16 @@ func _handle_action_event(event: InputEvent) -> void:
 		_handle_mount_board_key()
 	elif event.is_action_pressed("salvage_drone") and screen == "play":
 		_trigger_drone_salvage()
-	elif event.is_action_pressed("lamp") and screen == "play":
-		diver.toggle_lamp()
-		_apply_guide_result(gameplay_guide.notify_event("lamp_toggled"))
+	elif event.is_action_pressed("lamp") and screen in ["play", "quick"]:
+		if is_instance_valid(active_submarine):
+			var lights_on: bool = active_submarine.toggle_headlights()
+			hud.toast("潜艇探照灯" + (" [已开启]" if lights_on else " [已收起]"))
+		else:
+			diver.toggle_lamp()
+			_apply_guide_result(gameplay_guide.notify_event("lamp_toggled"))
 	elif event.is_action_pressed("interact") and screen == "play":
 		_interact()
-	elif event.is_action_pressed("booster") and screen == "play":
+	elif event.is_action_pressed("booster") and screen in ["play", "quick"]:
 		if is_instance_valid(active_submarine):
 			hud.toast("驾驶潜水艇期间无法使用手持助推器")
 		else:
@@ -804,6 +929,12 @@ func _handle_action_event(event: InputEvent) -> void:
 				UnderwaterAudio.play_sound(get_tree(), "booster_stop", -4.0, 0.9)
 	elif event.is_action_pressed("attack") and screen == "play":
 		if is_instance_valid(active_submarine):
+			if is_instance_valid(active_torpedo) and not active_torpedo.exploded and active_torpedo.lifetime > 0.12:
+				active_torpedo.manual_detonate()
+				active_torpedo = null
+				_sync_touch_context_and_margins(false)
+				hud.toast("【车载鱼雷引爆】鱼雷已在当前位置起爆！")
+				return
 			_fire_submarine_weapon()
 			return
 		if diver.current_weapon == "sonic":
@@ -818,26 +949,33 @@ func _handle_action_event(event: InputEvent) -> void:
 			diver.damage_bonus = state.weapon_attack_bonus
 			_dispatch_attack(diver.release_gun_charge())
 	elif event.is_action_pressed("aim") and screen == "play":
-		if is_instance_valid(active_submarine) and active_submarine.sub_type == "mini":
-			active_submarine.toggle_scope()
-			diver.scoped = active_submarine.is_scoped
-			hud.toast("微型潜艇电磁脉冲瞄准镜" + (" [已开启]" if active_submarine.is_scoped else " [已退出]"))
+		if is_instance_valid(active_submarine):
+			if active_submarine.sub_type == "mini":
+				active_submarine.toggle_scope()
+				diver.scoped = active_submarine.is_scoped
+				_sync_touch_context_and_margins(false)
+				hud.toast("微型潜艇电磁脉冲瞄准镜" + (" [已开启]" if active_submarine.is_scoped else " [已退出]"))
 			return
 		if diver.current_weapon == "sonic":
 			diver.toggle_aim()
 		else:
 			hud.toast("按 3 装备蓝光静滞枪后，可用 T 瞄准")
 	elif event.is_action_pressed("scope") and screen == "play":
-		if is_instance_valid(active_submarine) and active_submarine.sub_type == "mini":
-			active_submarine.toggle_scope()
-			diver.scoped = active_submarine.is_scoped
-			hud.toast("微型潜艇电磁脉冲瞄准镜" + (" [已开启]" if active_submarine.is_scoped else " [已退出]"))
+		if is_instance_valid(active_submarine):
+			if active_submarine.sub_type == "mini":
+				active_submarine.toggle_scope()
+				diver.scoped = active_submarine.is_scoped
+				_sync_touch_context_and_margins(false)
+				hud.toast("微型潜艇电磁脉冲瞄准镜" + (" [已开启]" if active_submarine.is_scoped else " [已退出]"))
 			return
 		if diver.current_weapon == "sonic":
 			diver.toggle_scope()
+			_sync_touch_context_and_margins(false)
 		else:
 			hud.toast("按 3 装备蓝光静滞枪后，可用 Y 打开远距瞄准镜")
 	elif event.is_action_pressed("dash") and screen == "play":
+		if is_instance_valid(active_submarine):
+			return
 		_perform_dash()
 	elif event.is_action_pressed("mount_toggle") and screen == "play":
 		if active_mount_idx >= 0:
@@ -845,7 +983,7 @@ func _handle_action_event(event: InputEvent) -> void:
 		elif not tamed_beasts.is_empty():
 			_mount_beast(0)
 		else:
-			hud.toast("尚未契约坐骑！用声波枪静滞近血巨兽后按 E 契约驯服 (最多10只)")
+			hud.toast("尚未契约坐骑！用声波枪静滞近血巨兽后按 E 契约驯服 (最多20只)")
 	elif event.is_action_pressed("mount_slot_1") and screen == "play":
 		if tamed_beasts.size() >= 1: _mount_beast(0)
 	elif event.is_action_pressed("mount_slot_2") and screen == "play":
@@ -858,17 +996,24 @@ func _handle_action_event(event: InputEvent) -> void:
 		if tamed_beasts.size() >= 5: _mount_beast(4)
 	elif event.is_action_pressed("mount_slot_6") and screen == "play":
 		if tamed_beasts.size() >= 6: _mount_beast(5)
-	elif event.is_action_pressed("weapon_1") and screen == "play":
+	elif event.is_action_pressed("weapon_1") and screen in ["play", "quick"]:
+		if is_instance_valid(active_submarine): return
 		_switch_weapon("knife")
-	elif event.is_action_pressed("weapon_2") and screen == "play":
+	elif event.is_action_pressed("weapon_2") and screen in ["play", "quick"]:
+		if is_instance_valid(active_submarine): return
 		_switch_weapon("axe")
-	elif event.is_action_pressed("weapon_3") and screen == "play":
+	elif event.is_action_pressed("weapon_3") and screen in ["play", "quick"]:
+		if is_instance_valid(active_submarine): return
 		_switch_weapon("sonic")
-	elif event.is_action_pressed("weapon_4") and screen == "play":
+	elif event.is_action_pressed("weapon_4") and screen in ["play", "quick"]:
+		if is_instance_valid(active_submarine): return
 		_switch_weapon("marker_gun")
-	elif event.is_action_pressed("weapon_cycle") and screen == "play":
+	elif event.is_action_pressed("weapon_cycle") and screen in ["play", "quick"]:
+		if is_instance_valid(active_submarine): return
 		_cycle_weapon()
 	elif event.is_action_pressed("toggle_shield") and screen == "play":
+		if is_instance_valid(active_submarine):
+			return
 		var active: bool = diver.toggle_shield()
 		if active:
 			UnderwaterAudio.play_sound(get_tree(), "shield_deploy", -3.0, 1.0)
@@ -879,22 +1024,29 @@ func _handle_action_event(event: InputEvent) -> void:
 			hud.toast("【单手能量盾已收起】")
 	elif event.is_action_pressed("recall_pets") and screen == "play":
 		_recall_pets()
-	elif event.is_action_pressed("character_switch") and screen in ["play", "main", "pause"]:
+	elif event.is_action_pressed("character_switch") and screen in ["play", "main", "pause", "quick"]:
 		_cycle_character(1)
 	elif event.is_action_pressed("character_angle"):
-		if screen == "play":
+		if screen in ["play", "quick"]:
 			if is_instance_valid(active_submarine):
 				hud.toast("驾驶潜水艇期间固定舱外潜航视角")
 			elif diver.scoped:
 				hud.toast("请先退出远距瞄准镜后再切换角色视角")
 			else:
 				var preset: Dictionary = diver.cycle_view_angle_preset(1)
-				hud.toast("【角色视角】%s · 按住右键或方向键自由旋转角度 (K 切换 / 中键回正)" % str(preset.get("name", "自由视角")))
+				if screen == "quick":
+					diver._update_third_person_camera(0.0)
+				if _is_touch_presentation_active():
+					hud.toast("【角色视角】%s · 双指滑动自由环绕观察 (快捷面板可切换或回正)" % str(preset.get("name", "自由视角")))
+				else:
+					hud.toast("【角色视角】%s · 按住鼠标右键或方向键自由旋转角度 (K 切换 / Home 回正)" % str(preset.get("name", "自由视角")))
 		elif screen == "main":
 			rotate_title_showcase(PI * 0.25)
 	elif event.is_action_pressed("char_angle_reset"):
-		if screen == "play" and is_instance_valid(diver) and not is_instance_valid(active_submarine):
+		if screen in ["play", "quick"] and is_instance_valid(diver) and not is_instance_valid(active_submarine):
 			diver.reset_character_angles(false)
+			if screen == "quick":
+				diver._update_third_person_camera(0.0)
 			hud.toast("【角色视角】已恢复背后跟随与标准姿态")
 		elif screen == "main":
 			reset_title_showcase_angles()
@@ -1048,6 +1200,8 @@ func _fire_submarine_weapon() -> void:
 		return
 
 	var torp := SubmarineTorpedoCls.new()
+	if torp.has_method("set_mobile_performance_mode"):
+		torp.set_mobile_performance_mode(_perf_mode_active)
 	torp.direction = torp_data["direction"]
 	torp.speed = float(torp_data["speed"])
 	torp.damage = float(torp_data["damage"])
@@ -1060,6 +1214,7 @@ func _fire_submarine_weapon() -> void:
 	add_child(torp)
 	torp.global_position = torp_data["from"]
 	active_torpedo = torp
+	_sync_touch_context_and_margins(false)
 	UnderwaterAudio.play_sound(get_tree(), "sub_torpedo_launch", -4.0, 1.0)
 	hud.toast("【车载鱼雷已射出】正在沿瞄准线飞向目标！")
 
@@ -1235,10 +1390,28 @@ func _notification(what: int) -> void:
 			input_controller.cancel_all()
 		if is_instance_valid(touch_controls):
 			touch_controls.cancel_all()
+		if what == NOTIFICATION_APPLICATION_PAUSED or (what == NOTIFICATION_APPLICATION_FOCUS_OUT and (SafeArea.is_default_touch_platform() or OS.has_feature("web"))):
+			if DisplayServer.get_name() != "headless":
+				AudioServer.set_bus_mute(0, true)
 		if screen == "play" and is_instance_valid(hud):
 			_set_screen("pause")
 		elif voyage_started:
 			save_voyage()
+	elif what in [NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN, NOTIFICATION_WM_WINDOW_FOCUS_IN]:
+		if DisplayServer.get_name() != "headless":
+			AudioServer.set_bus_mute(0, false)
+		SafeArea.invalidate_web_cache()
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if screen == "play":
+			_set_screen("pause")
+		elif screen == "win":
+			_restart()
+		elif screen != "main":
+			_close_input_screen()
+		else:
+			if voyage_started:
+				save_voyage()
+			get_tree().quit()
 	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
 		if voyage_started:
 			save_voyage()
@@ -1248,6 +1421,24 @@ func _process(delta: float) -> void:
 		_update_title_camera(delta)
 	if not is_instance_valid(hud):
 		return
+	if _perf_mode_active and screen == "play" and DisplayServer.get_name() != "headless" and not ("--capture" in OS.get_cmdline_user_args()):
+		_drs_accum_time += delta
+		_drs_frame_count += 1
+		if _drs_accum_time >= 1.5:
+			var avg_dt := _drs_accum_time / float(maxi(_drs_frame_count, 1))
+			_drs_accum_time = 0.0
+			_drs_frame_count = 0
+			var next_drs := _drs_scale
+			if avg_dt > 0.023:
+				next_drs = maxf(0.50, _drs_scale - 0.05)
+			elif avg_dt < 0.0175 and _drs_scale < _base_3d_scale:
+				next_drs = minf(_base_3d_scale, _drs_scale + 0.04)
+			if not is_equal_approx(next_drs, _drs_scale):
+				_drs_scale = next_drs
+				var win := get_window()
+				if win != null and win == get_tree().root:
+					win.scaling_3d_scale = _drs_scale
+	_sync_touch_context_and_margins(false)
 	if screen == "play" and is_instance_valid(active_submarine):
 		diver.global_position = active_submarine.get_camera_anchor_position()
 		diver._update_third_person_camera(delta)
@@ -1303,7 +1494,10 @@ func _process(delta: float) -> void:
 		if state.mode != "explore":
 			if state.oxygen < 25.0 and not low_oxygen_warned:
 				low_oxygen_warned = true
-				hud.toast("氧气不足 25 秒！按住空格上浮，或返回逃生舱补氧。")
+				if _is_touch_presentation_active():
+					hud.toast("氧气不足 25 秒！按住上浮按钮上升，或返回逃生舱补氧。")
+				else:
+					hud.toast("氧气不足 25 秒！按住 空格 上浮，或返回逃生舱补氧。")
 			if state.oxygen > 30.0:
 				low_oxygen_warned = false
 
@@ -1823,8 +2017,13 @@ func _board_submarine(sub: Node3D) -> void:
 	diver._update_third_person_camera(0.0)
 	if is_instance_valid(diver.weapon_mount):
 		diver.weapon_mount.visible = false
+	_sync_touch_context_and_margins(false)
 	UnderwaterAudio.play_sound(get_tree(), "sub_enter", -3.5, 1.0)
-	hud.toast("【已登舰驾驶】" + active_submarine.sub_name + " · WASD 航行 / 空格 Ctrl 升降 / R 鱼雷 / E 离舰")
+	if _is_touch_presentation_active():
+		var sub_wpn_hint := "脉冲攻击" if active_submarine.sub_type == "mini" else "发射鱼雷"
+		hud.toast("【已登舰驾驶】%s · 左摇杆航行 / 上浮下潜升降 / %s / 离舰退出" % [active_submarine.sub_name, sub_wpn_hint])
+	else:
+		hud.toast("【已登舰驾驶】" + active_submarine.sub_name + " · WASD 航行 / 空格 Ctrl 升降 / R 鱼雷 / E 离舰")
 
 func _disembark_submarine() -> void:
 	if not is_instance_valid(active_submarine):
@@ -1841,6 +2040,7 @@ func _disembark_submarine() -> void:
 		diver.weapon_mount.visible = true
 	var sub_name_left := active_submarine.sub_name
 	active_submarine = null
+	_sync_touch_context_and_margins(false)
 	UnderwaterAudio.play_sound(get_tree(), "sub_exit", -4.0, 1.0)
 	hud.toast("已离开【%s】，恢复自由潜水游动" % sub_name_left)
 
@@ -1867,7 +2067,7 @@ func _craft(recipe: String) -> void:
 			"axe":
 				hud.toast("破拆战斧已制造 · 按 2 装备")
 			"sonic":
-				hud.toast("蓝光静滞枪已制造 · 3 装备 / Y 远距镜 / 蓄力 R 3 秒松手发射静滞球")
+				hud.toast("蓝光静滞枪已制造 · 按 3 装备 / Y 远距镜 / 蓄力 R 3 秒松手发射静滞球")
 			"reinforce_sharp":
 				hud.toast("【制造台深铸】锋锐度精研完成！全武器攻击力额外 +20！")
 			"reinforce_sonic":
@@ -1893,19 +2093,31 @@ func _setup_audio() -> void:
 	if not headless:
 		ambience.stream = load("res://assets/audio/ocean.wav")
 		ambience.finished.connect(ambience.play)
-		ambience.play()
+		_start_ambience_deferred.call_deferred()
 	effect = AudioStreamPlayer.new()
 	if not headless:
 		effect.stream = load("res://assets/audio/collect.wav")
 	effect.volume_db = -13
 	add_child(effect)
 
+func _start_ambience_deferred() -> void:
+	if not is_inside_tree() or DisplayServer.get_name() == "headless":
+		return
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if is_inside_tree() and is_instance_valid(ambience) and ambience.stream != null and not ambience.playing:
+		ambience.play()
+
 func _exit_tree() -> void:
 	if OS.has_feature("web") and Engine.has_singleton("JavaScriptBridge"):
 		var win: Variant = JavaScriptBridge.get_interface("window")
 		if win != null:
 			win.__abyssalOnPageHidden = null
+			win.__abyssalOnPageVisible = null
 	_js_page_hidden_cb = null
+	_js_page_visible_cb = null
+	if DisplayServer.get_name() != "headless":
+		AudioServer.set_bus_mute(0, false)
 	if is_instance_valid(ambience):
 		ambience.stop()
 		ambience.stream = null
@@ -1948,15 +2160,29 @@ func _update_home_marker(distance: float) -> void:
 	if not home_arrow.visible:
 		return
 	var camera: Camera3D = diver.camera
-	var viewport_size := get_viewport().get_visible_rect().size
+	var vp := get_viewport()
+	var viewport_size := vp.get_visible_rect().size
+	var safe := SafeArea.get_safe_rect(vp, Vector2(20.0, 16.0), 6.0)
+	var min_x := safe.position.x + 8.0
+	var max_x := maxf(min_x, safe.end.x - 168.0)
+	var min_y := safe.position.y + 112.0
+	var max_y := maxf(min_y, safe.end.y - 164.0)
+	var use_touch := _is_touch_presentation_active() and is_instance_valid(touch_controls)
+	if use_touch and touch_controls.has_method("get_hud_safe_margins"):
+		var margins: Dictionary = touch_controls.get_hud_safe_margins()
+		min_y = maxf(safe.position.y + 62.0, float(margins.get("top_bar_bottom", min_y)) + 10.0)
+		max_y = maxf(min_y, float(margins.get("quick_slots_top", safe.end.y)) - 32.0)
 	var home: Vector3 = Ocean.HOME + Vector3(0, 1, 0)
 	var p := camera.unproject_position(home)
 	if camera.is_position_behind(home):
-		p = Vector2(viewport_size.x - 190, viewport_size.y * 0.5)
+		p = Vector2(max_x + 65.0, viewport_size.y * 0.46)
 		home_arrow.text = "逃生舱 ↷  %dm" % int(distance)
 	else:
 		home_arrow.text = "◇  逃生舱  %dm" % int(distance)
-	home_arrow.position = Vector2(clampf(p.x - 65, 24, viewport_size.x - 180), clampf(p.y, 130, viewport_size.y - 180))
+	var candidate := Vector2(clampf(p.x - 65.0, min_x, max_x), clampf(p.y, min_y, max_y))
+	if use_touch:
+		candidate = _avoid_touch_clusters_for_marker(candidate, Vector2(160.0, 26.0), min_x, max_x, min_y, max_y)
+	home_arrow.position = candidate
 
 func _update_waypoint_marker() -> void:
 	if not is_instance_valid(waypoint_arrow):
@@ -1965,16 +2191,56 @@ func _update_waypoint_marker() -> void:
 	if not waypoint_arrow.visible:
 		return
 	var camera: Camera3D = diver.camera
-	var viewport_size := get_viewport().get_visible_rect().size
+	var vp := get_viewport()
+	var viewport_size := vp.get_visible_rect().size
+	var safe := SafeArea.get_safe_rect(vp, Vector2(20.0, 16.0), 6.0)
+	var min_x := safe.position.x + 8.0
+	var max_x := maxf(min_x, safe.end.x - 176.0)
+	var min_y := safe.position.y + 96.0
+	var max_y := maxf(min_y, safe.end.y - 172.0)
+	var use_touch := _is_touch_presentation_active() and is_instance_valid(touch_controls)
+	if use_touch and touch_controls.has_method("get_hud_safe_margins"):
+		var margins: Dictionary = touch_controls.get_hud_safe_margins()
+		min_y = maxf(safe.position.y + 62.0, float(margins.get("top_bar_bottom", min_y)) + 10.0)
+		max_y = maxf(min_y, float(margins.get("quick_slots_top", safe.end.y)) - 32.0)
 	var wp: Vector3 = state.custom_waypoint
 	var dist_wp: float = diver.global_position.distance_to(wp)
 	var p := camera.unproject_position(wp)
 	if camera.is_position_behind(wp):
-		p = Vector2(36.0, viewport_size.y * 0.5)
+		p = Vector2(min_x + 65.0, viewport_size.y * 0.46)
 		waypoint_arrow.text = "✦ 标点 ↶  %dm" % roundi(dist_wp)
 	else:
 		waypoint_arrow.text = "✦ 导航标点  %dm" % roundi(dist_wp)
-	waypoint_arrow.position = Vector2(clampf(p.x - 65, 24, viewport_size.x - 190), clampf(p.y - 26, 110, viewport_size.y - 190))
+	var candidate := Vector2(clampf(p.x - 65.0, min_x, max_x), clampf(p.y - 26.0, min_y, max_y))
+	if use_touch:
+		candidate = _avoid_touch_clusters_for_marker(candidate, Vector2(168.0, 26.0), min_x, max_x, min_y, max_y)
+	waypoint_arrow.position = candidate
+
+func _avoid_touch_clusters_for_marker(pos: Vector2, marker_size: Vector2, min_x: float, max_x: float, min_y: float, max_y: float) -> Vector2:
+	if not is_instance_valid(touch_controls) or not touch_controls.has_method("get_hud_safe_margins"):
+		return pos
+	var margins: Dictionary = touch_controls.get_hud_safe_margins()
+	var joy_rect: Rect2 = margins.get("joystick_rect", Rect2())
+	var sprint_rect: Rect2 = touch_controls.get_control_rect("sprint") if touch_controls.has_method("get_control_rect") else Rect2()
+	var left_rect := joy_rect.merge(sprint_rect) if (joy_rect.size.x > 0.0 and sprint_rect.size.x > 0.0) else joy_rect
+	var right_rect: Rect2 = margins.get("right_cluster_rect", Rect2())
+	var out := pos
+	var box := Rect2(out, marker_size)
+	var center_min_x := maxf(min_x, left_rect.end.x + 8.0) if left_rect.size.x > 0.0 else min_x
+	var center_max_x := minf(max_x, right_rect.position.x - marker_size.x - 8.0) if right_rect.size.x > 0.0 else max_x
+	var has_center_corridor := center_max_x >= center_min_x
+	if left_rect.size.x > 0.0 and box.intersects(left_rect.grow(6.0)):
+		if has_center_corridor:
+			out.x = clampf(center_min_x, min_x, max_x)
+		else:
+			out.y = clampf(minf(out.y, float(margins.get("left_cluster_top", max_y)) - marker_size.y - 8.0), min_y, max_y)
+		box = Rect2(out, marker_size)
+	if right_rect.size.x > 0.0 and box.intersects(right_rect.grow(6.0)):
+		if has_center_corridor:
+			out.x = clampf(center_max_x, min_x, max_x)
+		else:
+			out.y = clampf(minf(out.y, float(margins.get("right_cluster_top", max_y)) - marker_size.y - 8.0), min_y, max_y)
+	return Vector2(clampf(out.x, min_x, max_x), clampf(out.y, min_y, max_y))
 
 func _check_explorer_rank_up() -> void:
 	var new_lv: int = state.get_explorer_rank_level(LANDMARKS.size(), Ocean.OUTPOST_SPECS.size(), Ocean.RELIC_SPECS.size())
@@ -2837,11 +3103,15 @@ func _setup_web_lifecycle_hooks() -> void:
 	if not OS.has_feature("web") or not Engine.has_singleton("JavaScriptBridge"):
 		return
 	_js_page_hidden_cb = JavaScriptBridge.create_callback(_on_web_page_hidden)
+	_js_page_visible_cb = JavaScriptBridge.create_callback(_on_web_page_visible)
 	var win: Variant = JavaScriptBridge.get_interface("window")
 	if win != null:
 		win.__abyssalOnPageHidden = _js_page_hidden_cb
+		win.__abyssalOnPageVisible = _js_page_visible_cb
 
 func _on_web_page_hidden(_args: Array = []) -> void:
+	if DisplayServer.get_name() != "headless":
+		AudioServer.set_bus_mute(0, true)
 	if is_instance_valid(input_controller):
 		input_controller.cancel_all()
 	if is_instance_valid(touch_controls):
@@ -2850,6 +3120,12 @@ func _on_web_page_hidden(_args: Array = []) -> void:
 		_set_screen("pause")
 	elif voyage_started:
 		save_voyage()
+
+func _on_web_page_visible(_args: Array = []) -> void:
+	if DisplayServer.get_name() != "headless":
+		AudioServer.set_bus_mute(0, false)
+	SafeArea.invalidate_web_cache()
+	_sync_touch_context_and_margins(true)
 
 func _read_voyage_save_dict() -> Dictionary:
 	if not voyage_persist_enabled and voyage_save_path == VOYAGE_SAVE_PATH:
@@ -3203,10 +3479,26 @@ func _update_title_camera(delta: float) -> void:
 	at.y = minf(-2.0, maxf(at.y, ocean.floor_height(at.x, at.z) + 2.8))
 	title_camera.position = at
 	title_camera.look_at(Vector3(-4.5, -8.6, -34.0))
+	var vp := get_viewport()
+	var vp_size := vp.get_visible_rect().size if vp != null else Vector2(1280.0, 800.0)
+	var aspect := (vp_size.x / vp_size.y) if (vp_size.x > 1.0 and vp_size.y > 1.0) else 1.6
+	var target_title_fov := 62.0
+	if aspect < 1.25:
+		var narrow_mult := minf(1.35 / maxf(aspect, 0.38), 1.48)
+		target_title_fov = clampf(rad_to_deg(2.0 * atan(tan(deg_to_rad(62.0) * 0.5) * narrow_mult)), 62.0, 82.0)
+	elif aspect > 1.90:
+		var max_title_hfov := deg_to_rad(104.0)
+		var cur_title_hfov := 2.0 * atan(tan(deg_to_rad(62.0) * 0.5) * aspect)
+		if cur_title_hfov > max_title_hfov:
+			target_title_fov = rad_to_deg(2.0 * atan(tan(max_title_hfov * 0.5) / aspect))
+	title_camera.fov = target_title_fov
 	if is_instance_valid(title_showcase_diver) and title_showcase_diver.visible:
 		var bob := sin(_title_clock * 1.35) * 0.035
 		var cam_xf := title_camera.global_transform
-		var local_pos := Vector3(0.20, 0.63 + bob, -2.54)
+		var desktop_pos := Vector3(0.20, 0.63 + bob, -2.54)
+		var portrait_pos := Vector3(0.0, 0.72 + bob, -3.25)
+		var portrait_blend := 1.0 if aspect < 1.0 else (clampf((1.22 - aspect) / 0.22, 0.0, 1.0) if aspect < 1.22 else 0.0)
+		var local_pos := desktop_pos.lerp(portrait_pos, portrait_blend)
 		var local_basis := Basis(Vector3.UP, deg_to_rad(156.0 + sin(_title_clock * 0.65) * 5.0) + title_showcase_yaw) * Basis(Vector3.RIGHT, title_showcase_pitch)
 		title_showcase_diver.global_transform = Transform3D(cam_xf.basis * local_basis, cam_xf * local_pos)
 		title_showcase_diver.apply_showcase_pose(delta)

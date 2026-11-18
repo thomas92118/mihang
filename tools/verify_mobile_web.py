@@ -7,6 +7,7 @@ import http.server
 import io
 import json
 from pathlib import Path
+import re
 import threading
 import time
 
@@ -70,16 +71,46 @@ def local_server(directory: Path):
 def verify_pwa_artifacts() -> None:
     manifest_path = WEB_DIR / "index.manifest.json"
     sw_path = WEB_DIR / "index.service.worker.js"
+    chunks_path = WEB_DIR / "chunks.json"
+    html_path = WEB_DIR / "index.html"
     assert manifest_path.is_file(), "Missing index.manifest.json"
     assert sw_path.is_file(), "Missing index.service.worker.js"
+    assert chunks_path.is_file(), "Missing chunks.json"
+    assert html_path.is_file(), "Missing index.html"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest.get("display") in ("standalone", "fullscreen"), f"Unexpected PWA display: {manifest.get('display')}"
     assert manifest.get("orientation") == "any", f"Unexpected PWA orientation: {manifest.get('orientation')}"
-    sw_text = sw_path.read_text(encoding="utf-8")
-    assert "index.wasm.gz.part0" in sw_text and "index.pck.gz.part0" in sw_text, (
-        "Service worker CACHEABLE_FILES must include chunked .gz.part* files"
+    icons = manifest.get("icons") or []
+    assert isinstance(icons, list) and len(icons) >= 2, f"PWA manifest must include icons: {icons}"
+    icon_sizes = {str(item.get("sizes", "")) for item in icons if isinstance(item, dict)}
+    assert "144x144" in icon_sizes and "512x512" in icon_sizes, f"PWA manifest missing expected icon sizes: {icon_sizes}"
+    for item in icons:
+        src = str(item.get("src", "")).lstrip("/")
+        assert src and (WEB_DIR / src).is_file(), f"Missing exported PWA icon file: {src}"
+    if (WEB_DIR / "index.apple-touch-icon.png").is_file():
+        html_text = html_path.read_text(encoding="utf-8")
+        assert 'rel="apple-touch-icon"' in html_text, "index.html must link apple-touch-icon when exported"
+
+    chunks = json.loads(chunks_path.read_text(encoding="utf-8"))
+    wasm_parts = (chunks.get("index.wasm") or {}).get("parts") or []
+    pck_parts = (chunks.get("index.pck") or {}).get("parts") or []
+    assert wasm_parts and re.match(r"^index\.wasm\.gz\.part0\.[0-9a-f]{8}$", wasm_parts[0]), (
+        f"Expected content-hashed index.wasm.gz.part0.<hash8>, got: {wasm_parts[:1]}"
     )
-    print("[verify_mobile_web] PWA manifest & chunked service worker verified.")
+    assert pck_parts and re.match(r"^index\.pck\.gz\.part0\.[0-9a-f]{8}$", pck_parts[0]), (
+        f"Expected content-hashed index.pck.gz.part0.<hash8>, got: {pck_parts[:1]}"
+    )
+    assert (WEB_DIR / wasm_parts[0]).is_file() and (WEB_DIR / pck_parts[0]).is_file(), (
+        "Hashed .gz.part0.* chunk files missing on disk"
+    )
+    sw_text = sw_path.read_text(encoding="utf-8")
+    assert "index.wasm.gz.part0." in sw_text and "index.pck.gz.part0." in sw_text, (
+        "Service worker CACHEABLE_FILES must include content-hashed .gz.part0.<hash> files"
+    )
+    assert wasm_parts[0] in sw_text and pck_parts[0] in sw_text, (
+        "Service worker CACHEABLE_FILES out of sync with chunks.json hashes"
+    )
+    print("[verify_mobile_web] PWA manifest, icons & content-hashed chunked service worker verified.")
 
 
 def verify_shell_matrix(browser, base_url: str) -> None:
@@ -120,7 +151,7 @@ def verify_shell_matrix(browser, base_url: str) -> None:
             hold.wait(timeout=2.0)
             route.continue_()
 
-        page.route("**/index.pck.gz.part0", slow_part)
+        page.route("**/index.pck.gz.part0*", slow_part)
         page.goto(base_url, wait_until="domcontentloaded")
         page.wait_for_selector("#status", timeout=5000)
         metrics = page.evaluate(
@@ -139,7 +170,30 @@ def verify_shell_matrix(browser, base_url: str) -> None:
                         boxes.push({ sel, left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height });
                     }
                 }
-                return { safe, fsRect, statusHtml, boxes, vw: window.innerWidth, vh: window.innerHeight };
+                const canvas = document.getElementById('canvas');
+                const ctxLostOverlay = document.getElementById('abyssal-context-lost');
+                let ctxLostPrevented = false;
+                let ctxLostShown = false;
+                let ctxLostRestored = false;
+                if (canvas && ctxLostOverlay) {
+                    const lostEv = new Event('webglcontextlost', { cancelable: true });
+                    canvas.dispatchEvent(lostEv);
+                    ctxLostPrevented = lostEv.defaultPrevented;
+                    ctxLostShown = ctxLostOverlay.classList.contains('is-visible');
+                    canvas.dispatchEvent(new Event('webglcontextrestored'));
+                    ctxLostRestored = !ctxLostOverlay.classList.contains('is-visible');
+                }
+                return {
+                    safe,
+                    fsRect,
+                    statusHtml,
+                    boxes,
+                    vw: window.innerWidth,
+                    vh: window.innerHeight,
+                    ctxLostPrevented,
+                    ctxLostShown,
+                    ctxLostRestored,
+                };
             }"""
         )
         hold.set()
@@ -147,6 +201,15 @@ def verify_shell_matrix(browser, base_url: str) -> None:
         safe = metrics["safe"]
         assert safe["coarsePointer"] is True, f"[{label}] coarsePointer should be True"
         assert safe["top"] == insets["top"] and safe["left"] == insets["left"], f"[{label}] Safe insets mismatch: {safe}"
+        assert isinstance(safe.get("canvasWidth"), (int, float)) and safe["canvasWidth"] > 0, (
+            f"[{label}] __abyssalGetSafeInsetsJson missing valid canvasWidth: {safe}"
+        )
+        assert isinstance(safe.get("canvasHeight"), (int, float)) and safe["canvasHeight"] > 0, (
+            f"[{label}] __abyssalGetSafeInsetsJson missing valid canvasHeight: {safe}"
+        )
+        assert metrics["ctxLostPrevented"] is True and metrics["ctxLostShown"] is True and metrics["ctxLostRestored"] is True, (
+            f"[{label}] #canvas webglcontextlost recovery overlay check failed: {metrics}"
+        )
         assert "N 键" not in metrics["statusHtml"], f"[{label}] Keyboard-only N-key copy leaked onto touch loading screen"
         if metrics["fsRect"] and metrics["fsRect"]["width"] > 0:
             assert metrics["fsRect"]["width"] >= 43.5 and metrics["fsRect"]["height"] >= 43.5, (

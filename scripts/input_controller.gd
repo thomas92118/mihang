@@ -9,6 +9,10 @@ signal device_changed(device: String)
 signal settings_changed
 
 const SETTINGS_PATH := "user://input_settings.cfg"
+const TOUCH_SCALE_MIN := 0.70
+const TOUCH_SCALE_MAX := 1.50
+const TOUCH_OPACITY_MIN := 0.20
+const TOUCH_OPACITY_MAX := 1.00
 const DEFAULT_SETTINGS := {
 	"gamepad_sensitivity": 1.0,
 	"touch_sensitivity": 1.0,
@@ -59,11 +63,11 @@ const KEY_HINTS := {
 const ACTION_LABELS := {
 	"forward": "左摇杆", "backward": "左摇杆", "left": "左摇杆", "right": "左摇杆",
 	"attack": "攻击", "aim": "瞄准", "scope": "远镜", "interact": "交互",
-	"ascend": "上升", "descend": "下降", "sprint": "加速", "dash": "突进",
+	"ascend": "上浮", "descend": "下潜", "sprint": "加速", "dash": "突进",
 	"toggle_shield": "护盾", "world_map": "海图", "pause_game": "暂停",
 	"craft_menu": "制造", "sushi_menu": "料理 / 图鉴", "mount_board": "契约板",
 	"mount_toggle": "骑乘 / 离鞍", "recall_pets": "召回", "salvage_drone": "无人机",
-	"sonar_ping": "声呐", "booster": "助推器", "lamp": "灯", "quick_menu": "快捷操作",
+	"sonar_ping": "声呐", "booster": "助推器", "lamp": "头灯", "quick_menu": "快捷",
 	"gameplay_guide": "潜航指南",
 	"character_switch": "切换角色",
 	"character_angle": "切换视角", "char_angle_reset": "角度回正",
@@ -71,7 +75,7 @@ const ACTION_LABELS := {
 	"char_tilt_up": "角色上仰", "char_tilt_down": "角色下俯",
 	"char_roll_left": "左倾横滚", "char_roll_right": "右倾横滚",
 	"weapon_1": "战术刀", "weapon_2": "战斧", "weapon_3": "蓝光枪", "weapon_4": "指示枪",
-	"weapon_cycle": "切换武器",
+	"weapon_cycle": "武器",
 	"mount_slot_1": "伙伴 1", "mount_slot_2": "伙伴 2", "mount_slot_3": "伙伴 3",
 	"mount_slot_4": "伙伴 4", "mount_slot_5": "伙伴 5", "mount_slot_6": "伙伴 6",
 	"camera_closer": "拉近视角", "camera_farther": "拉远视角", "ui_cancel": "返回",
@@ -96,6 +100,16 @@ var _blocked_sources: Dictionary = {}
 var _blocked_actions: Dictionary = {}
 var _look_axes: Dictionary = {}
 var _loaded_settings: bool = false
+var _last_screen_touch_msec: int = -10000
+
+func _is_synthetic_touch_mouse(event: InputEvent) -> bool:
+	if not (event is InputEventMouse):
+		return false
+	if event.device == InputEvent.DEVICE_ID_EMULATION:
+		return true
+	if active_device == "touch" and _last_screen_touch_msec >= 0 and (Time.get_ticks_msec() - _last_screen_touch_msec) < 120:
+		return true
+	return false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -187,7 +201,7 @@ func handle_event(event: InputEvent) -> bool:
 	if event is InputEventKey and event.echo:
 		return false
 	_observe_event(event)
-	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
+	if _is_synthetic_touch_mouse(event):
 		return false
 	if event is InputEventScreenTouch or event is InputEventScreenDrag:
 		return false
@@ -219,18 +233,21 @@ func handle_event(event: InputEvent) -> bool:
 func _observe_event(event: InputEvent) -> void:
 	if event is InputEventKey and event.echo:
 		return
-	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
+	if event is InputEventMouse and _is_synthetic_touch_mouse(event):
 		return
 	if event is InputEventScreenTouch:
+		_last_screen_touch_msec = Time.get_ticks_msec()
 		if event.pressed:
 			notify_device("touch")
 		return
 	if event is InputEventScreenDrag:
+		_last_screen_touch_msec = Time.get_ticks_msec()
 		if event.relative.length_squared() > 1.0:
 			notify_device("touch")
 		return
 	if event is InputEventMouseMotion:
-		if not SafeArea.is_default_touch_platform() and event.relative.length_squared() > 4.0:
+		var allow_mouse_switch := (not SafeArea.is_default_touch_platform()) or str(settings.get("touch_mode", "auto")) == "off"
+		if allow_mouse_switch and event.device != InputEvent.DEVICE_ID_EMULATION and event.relative.length_squared() > 4.0:
 			notify_device("keyboard")
 		return
 	var source: String = _event_source(event)
@@ -262,7 +279,8 @@ func _observe_event(event: InputEvent) -> void:
 		_raw_sources.erase(source)
 	else:
 		_raw_sources[source] = values
-	if meaningful and not (event is InputEventMouse and SafeArea.is_default_touch_platform()):
+	var block_mouse_dev := (event is InputEventMouse) and SafeArea.is_default_touch_platform() and str(settings.get("touch_mode", "auto")) != "off"
+	if meaningful and not block_mouse_dev:
 		notify_device("gamepad" if event is InputEventJoypadButton or event is InputEventJoypadMotion else "keyboard")
 
 func _release_event(event: InputEvent) -> void:
@@ -513,8 +531,8 @@ func apply_settings(values: Dictionary, persist: bool = true) -> void:
 	settings["gamepad_sensitivity"] = clampf(float(settings["gamepad_sensitivity"]), 0.2, 3.0)
 	settings["touch_sensitivity"] = clampf(float(settings["touch_sensitivity"]), 0.2, 3.0)
 	settings["deadzone"] = clampf(float(settings["deadzone"]), 0.05, 0.6)
-	settings["touch_scale"] = clampf(float(settings["touch_scale"]), 0.7, 1.5)
-	settings["touch_opacity"] = clampf(float(settings["touch_opacity"]), 0.2, 1.0)
+	settings["touch_scale"] = clampf(float(settings["touch_scale"]), TOUCH_SCALE_MIN, TOUCH_SCALE_MAX)
+	settings["touch_opacity"] = clampf(float(settings["touch_opacity"]), TOUCH_OPACITY_MIN, TOUCH_OPACITY_MAX)
 	settings["invert_y"] = bool(settings["invert_y"])
 	if str(settings["touch_mode"]) not in ["auto", "on", "off"]:
 		settings["touch_mode"] = "auto"

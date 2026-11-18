@@ -4,6 +4,30 @@ class_name UnderwaterAudio
 
 static var _cache: Dictionary = {}
 static var _poly_player: AudioStreamPlayer = null
+static var _warmup_cursor: int = 0
+
+const WARMUP_SOUNDS: Array[String] = [
+	"knife_slash", "knife_hit", "axe_swing", "axe_hit",
+	"sonic_blast", "sonic_hit", "laser", "hit_confirm",
+	"kill_sound", "weapon_equip", "booster_start", "booster_stop",
+	"sub_torpedo_launch", "sub_torpedo_hit", "sub_enter", "sub_exit",
+	"tame_success", "mount_ride", "shield_deploy", "shield_block",
+	"clam_bubble"
+]
+
+static func warmup_step(batch_size: int = 4) -> bool:
+	if DisplayServer.get_name() == "headless":
+		_warmup_cursor = WARMUP_SOUNDS.size()
+		return true
+	var limit := maxi(1, batch_size)
+	var generated := 0
+	while _warmup_cursor < WARMUP_SOUNDS.size() and generated < limit:
+		var sound_name := WARMUP_SOUNDS[_warmup_cursor]
+		_warmup_cursor += 1
+		if not _cache.has(sound_name):
+			get_stream(sound_name)
+			generated += 1
+	return _warmup_cursor >= WARMUP_SOUNDS.size()
 
 static func get_stream(sound_name: String) -> AudioStreamWAV:
 	if _cache.has(sound_name):
@@ -102,6 +126,7 @@ static func shutdown() -> void:
 		_poly_player.stop()
 		_poly_player.stream = null
 	_poly_player = null
+	_warmup_cursor = 0
 	_cache.clear()
 
 static func _create_wav(samples: PackedFloat32Array, mix_rate: int = 22050) -> AudioStreamWAV:

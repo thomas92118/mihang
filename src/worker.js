@@ -29,13 +29,17 @@ function streamPartsFromAssets(parts, request, env) {
 				return;
 			}
 			const partUrl = new URL("/" + parts[idx++], origin);
-			const res = await env.ASSETS.fetch(
-				new Request(partUrl.toString(), {
-					method: "GET",
-					headers: { "Accept-Encoding": "identity" },
-				})
-			);
-			if (!res.ok) {
+			let res = null;
+			for (let attempt = 0; attempt < 3; attempt++) {
+				res = await env.ASSETS.fetch(
+					new Request(partUrl.toString(), {
+						method: "GET",
+						headers: { "Accept-Encoding": "identity" },
+					})
+				);
+				if (res.ok) break;
+			}
+			if (!res || !res.ok) {
 				controller.error(new Error(`Missing asset chunk: ${partUrl.pathname}`));
 				return;
 			}
@@ -44,6 +48,15 @@ function streamPartsFromAssets(parts, request, env) {
 		},
 	});
 }
+
+const NO_CACHE_SUFFIXES = [
+	"/",
+	"/index.html",
+	"/index.js",
+	"/chunks.json",
+	"/index.service.worker.js",
+	"/index.manifest.json",
+];
 
 export default {
 	async fetch(request, env) {
@@ -56,11 +69,21 @@ export default {
 				const manifest = await manifestRes.json();
 				const entry = manifest[key];
 				if (entry && Array.isArray(entry.parts)) {
+					const etag = entry.hash ? `"${entry.hash}"` : null;
+					if (etag && request.headers.get("If-None-Match") === etag) {
+						const notModHeaders = new Headers(ISOLATION_HEADERS);
+						notModHeaders.set("ETag", etag);
+						notModHeaders.set("Cache-Control", "public, max-age=0, must-revalidate");
+						return new Response(null, { status: 304, headers: notModHeaders });
+					}
 					const body = streamPartsFromAssets(entry.parts, request, env);
 					const headers = new Headers(ISOLATION_HEADERS);
 					headers.set("Content-Type", key.endsWith(".wasm") ? "application/wasm" : "application/octet-stream");
 					headers.set("Content-Encoding", "gzip");
-					headers.set("Cache-Control", "public, max-age=31536000, immutable");
+					headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+					if (etag) {
+						headers.set("ETag", etag);
+					}
 					return new Response(body, {
 						status: 200,
 						headers,
@@ -71,6 +94,12 @@ export default {
 		}
 
 		const assetRes = await env.ASSETS.fetch(request);
-		return withIsolationHeaders(assetRes);
+		const extraHeaders = {};
+		if (url.pathname.includes(".part")) {
+			extraHeaders["Cache-Control"] = "public, max-age=31536000, immutable";
+		} else if (NO_CACHE_SUFFIXES.some((suffix) => url.pathname === suffix || url.pathname.endsWith(suffix))) {
+			extraHeaders["Cache-Control"] = "no-cache";
+		}
+		return withIsolationHeaders(assetRes, extraHeaders);
 	},
 };

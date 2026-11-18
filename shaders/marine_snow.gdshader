@@ -7,14 +7,14 @@ render_mode blend_mix, cull_disabled, depth_draw_never, shadows_disabled, world_
 varying vec3 particle_world_pos;
 
 void vertex() {
-	// Each MultiMesh instance has its own world origin. World-space phases keep
-	// the slow suspension independent of camera rotation and camera movement.
-	vec3 origin = MODEL_MATRIX[3].xyz;
-	float phase = dot(origin, vec3(0.71, 1.37, 0.93));
+	// INSTANCE_CUSTOM.x provides independent per-particle phases even under world_vertex_coords.
+	float custom_phase = INSTANCE_CUSTOM.x * 6.2831853;
+	float phase = custom_phase > 0.0001 ? custom_phase : dot(VERTEX, vec3(0.71, 1.37, 0.93));
+	float clock = review_time >= 0.0 ? review_time : mod(TIME, 3600.0);
 	VERTEX += vec3(
-		sin((review_time >= 0.0 ? review_time : TIME) * 0.16 + phase) * 0.24,
-		sin((review_time >= 0.0 ? review_time : TIME) * 0.085 + phase * 1.23) * 0.30,
-		cos((review_time >= 0.0 ? review_time : TIME) * 0.13 + phase * 0.79) * 0.18
+		sin(clock * 0.16 + phase) * 0.24,
+		sin(clock * 0.085 + phase * 1.23) * 0.30,
+		cos(clock * 0.13 + phase * 0.79) * 0.18
 	);
 	particle_world_pos = VERTEX;
 }

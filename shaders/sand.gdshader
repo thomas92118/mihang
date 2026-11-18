@@ -6,6 +6,7 @@ uniform float review_time = -1.0;
 uniform sampler2D sediment_noise : repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D region_palette : source_color, filter_nearest, repeat_disable;
 uniform bool use_region_palette = false;
+uniform bool mobile_fast_mode = false;
 varying vec3 world_pos;
 varying vec3 v_regional_sand;
 varying vec3 v_regional_rock;
@@ -39,19 +40,25 @@ void vertex() {
 	}
 }
 
-float sediment(vec3 position, vec3 weights) {
+float sediment_grad(vec3 base_pos, vec3 dpos_dx, vec3 dpos_dy, float scale, vec3 weights) {
+	vec3 position = base_pos * scale;
+	vec3 gx = dpos_dx * scale;
+	vec3 gy = dpos_dy * scale;
 	// Project onto all three axes so cliff faces retain the same texture scale.
 	// Slopes gentler than ~36 deg have <20% UV foreshortening, so XZ-only saves 66% anisotropic bandwidth.
+	float xz_val = textureGrad(sediment_noise, position.xz, gx.xz, gy.xz).r;
 	if (weights.y > 0.65) {
-		return texture(sediment_noise, position.xz).r;
+		return xz_val;
 	}
-	return texture(sediment_noise, position.yz).r * weights.x
-		+ texture(sediment_noise, position.xz).r * weights.y
-		+ texture(sediment_noise, position.xy).r * weights.z;
+	return textureGrad(sediment_noise, position.yz, gx.yz, gy.yz).r * weights.x
+		+ xz_val * weights.y
+		+ textureGrad(sediment_noise, position.xy, gx.xy, gy.xy).r * weights.z;
 }
 
 vec2 caustic_hash2(vec2 p) {
-	return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453123);
+	vec3 p3 = fract(vec3(mod(p, 289.0).xyx) * vec3(0.1031, 0.1030, 0.0973));
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.xx + p3.yz) * p3.zy);
 }
 
 // Cellular Voronoi ridge distance (f2 - f1) yields natural interconnected sunlit caustic webs.
@@ -83,11 +90,13 @@ void fragment() {
 	vec3 weights = pow(abs(world_normal), vec3(4.0));
 	weights /= dot(weights, vec3(1.0));
 	float distance_to_camera = length(VERTEX);
+	vec3 dwp_dx = dFdx(world_pos);
+	vec3 dwp_dy = dFdy(world_pos);
 	float grain_fade = 1.0 - smoothstep(1.5, 9.0, distance_to_camera);
-	vec3 sample_weights = distance_to_camera < 84.0 ? weights : vec3(0.0, 1.0, 0.0);
-	float patch = sediment(world_pos * 0.004, sample_weights);
-	float meso = sediment(world_pos * 0.018, sample_weights);
-	float detail = sediment(world_pos * 0.07, sample_weights);
+	vec3 sample_weights = (!mobile_fast_mode && distance_to_camera < 84.0) ? weights : vec3(0.0, 1.0, 0.0);
+	float patch = sediment_grad(world_pos, dwp_dx, dwp_dy, 0.004, sample_weights);
+	float meso = sediment_grad(world_pos, dwp_dx, dwp_dy, 0.018, sample_weights);
+	float detail = sediment_grad(world_pos, dwp_dx, dwp_dy, 0.07, sample_weights);
 	float depth = max(-world_pos.y, 0.0);
 	// Geological transitions use actual seabed depth, not the diver's depth.
 	// A little patch variation avoids ruler-straight boundaries at each contour.
@@ -96,9 +105,11 @@ void fragment() {
 	float slope = smoothstep(78.0, 104.0, substrate_depth);
 	float basin = smoothstep(184.0, 224.0, substrate_depth);
 	float hadal = smoothstep(340.0, 390.0, substrate_depth);
-	float gravel = (basin < 0.95 && distance_to_camera < 56.0) ? sediment(world_pos * 0.45, sample_weights) : 0.5;
+	float gravel = (!mobile_fast_mode && basin < 0.95 && distance_to_camera < 56.0)
+		? sediment_grad(world_pos, dwp_dx, dwp_dy, 0.45, sample_weights) : 0.5;
 	// Skip high-frequency grain sampling beyond its fade distance (9m)
-	float grain = grain_fade > 0.005 ? sediment(world_pos * 6.0, weights) : 0.5;
+	float grain = (!mobile_fast_mode && grain_fade > 0.005)
+		? sediment_grad(world_pos, dwp_dx, dwp_dy, 6.0, weights) : 0.5;
 	float shelf_band = shelf * (1.0 - slope);
 	float slope_band = slope * (1.0 - basin);
 	float steep = smoothstep(0.12, 0.46, 1.0 - abs(world_normal.y));
@@ -112,18 +123,18 @@ void fragment() {
 	float nodule_shape = 0.0;
 	float nodule_patch = 0.0;
 	float nodules = 0.0;
-	if (hadal > 0.005 && distance_to_camera < 52.0) {
+	float fw_xz = length(abs(dwp_dx.xz) + abs(dwp_dy.xz));
+	if (!mobile_fast_mode && hadal > 0.005 && distance_to_camera < 52.0) {
 		vec2 nodule_warp = vec2(meso - 0.5, patch - 0.5) * 2.8 + vec2(detail - 0.5, gravel - 0.5) * 0.85;
 		vec2 nodule_grid = world_pos.xz * 1.45 + nodule_warp;
 		vec2 nodule_cell = floor(nodule_grid);
-		vec2 nodule_seed = fract(sin(vec2(dot(nodule_cell, vec2(127.1, 311.7)),
-			dot(nodule_cell, vec2(269.5, 183.3)))) * 43758.5453);
+		vec2 nodule_seed = caustic_hash2(nodule_cell);
 		vec2 nodule_offset = fract(nodule_grid) - mix(vec2(0.16), vec2(0.84), nodule_seed);
 		float nodule_radius = mix(0.10, 0.22, nodule_seed.x);
 		nodule_shape = max(1.0 - dot(nodule_offset, nodule_offset) / (nodule_radius * nodule_radius), 0.0);
 		nodule_patch = hadal * (1.0 - steep) * step(0.68, nodule_seed.y)
 			* smoothstep(0.42, 0.72, meso) * (1.0 - smoothstep(20.0, 52.0, distance_to_camera));
-		nodules = smoothstep(0.0, 0.16 + fwidth(nodule_shape), nodule_shape) * nodule_patch;
+		nodules = smoothstep(0.0, 0.16 + fw_xz * 16.0, nodule_shape) * nodule_patch;
 	}
 
 	// Weathered sedimentary layers follow elevation, including on cliff faces.
@@ -135,11 +146,12 @@ void fragment() {
 	// Half-meter sand ridges stay fixed on the seabed; only the light moves.
 	float ripple_fade = 0.0;
 	float ridge = 0.5;
+	float phase_fw = (abs(dot(dwp_dx.xz, vec2(0.92, 0.39))) + abs(dot(dwp_dy.xz, vec2(0.92, 0.39)))) * 6.8;
 	if (sand > 0.05 && distance_to_camera < 72.0) {
 		float bend = sin(dot(world_pos.xz, vec2(-0.34, 0.94)) * 0.42 + patch * 4.2) * 1.35;
 		float phase = dot(world_pos.xz, vec2(0.92, 0.39)) * 6.8 + bend + patch * 4.5 + detail * 0.75;
 		ripple_fade = (1.0 - smoothstep(22.0, 72.0, distance_to_camera))
-			* (1.0 - smoothstep(0.4, 2.0, fwidth(phase))) * sand;
+			* (1.0 - smoothstep(0.4, 2.0, phase_fw)) * sand;
 		ridge = pow(0.5 + 0.5 * sin(phase), 1.65);
 	}
 	float exposed_rock = max(steep, slope_band * smoothstep(0.28, 0.64, meso));
@@ -149,14 +161,15 @@ void fragment() {
 		+ pow(nodule_shape, 1.5) * nodule_patch * 0.018;
 
 	// Surface-gradient bump mapping needs no mesh UVs or extra collision geometry.
-	if (distance_to_camera < 96.0) {
+	if (!mobile_fast_mode) {
+		float bump_fade = 1.0 - smoothstep(78.0, 96.0, distance_to_camera);
 		vec3 dpdx = dFdx(VERTEX);
 		vec3 dpdy = dFdy(VERTEX);
 		vec3 r1 = cross(dpdy, NORMAL);
 		vec3 r2 = cross(NORMAL, dpdx);
 		float determinant = dot(dpdx, r1);
 		NORMAL = normalize(abs(determinant) * NORMAL
-			- sign(determinant) * (dFdx(height) * r1 + dFdy(height) * r2));
+			- sign(determinant) * bump_fade * (dFdx(height) * r1 + dFdy(height) * r2));
 	}
 
 	// Keep the sediment's actual pigment neutral. Blue-green water comes from
@@ -203,18 +216,26 @@ void fragment() {
 	float caustic_lit = 0.0;
 	float caustic_nodes = 0.0;
 	if (depth < 52.0 && world_normal.y > 0.0 && distance_to_camera < 95.0) {
-		float clock = review_time >= 0.0 ? review_time : TIME;
-		float fw_xz = length(fwidth(world_pos.xz));
-		vec2 warp = vec2(sin(world_pos.z * 0.42 + clock * 0.35), cos(world_pos.x * 0.38 - clock * 0.28)) * 0.28;
-		float d1 = voronoi_caustic(world_pos.xz * 0.42 + warp + vec2(patch * 0.8), clock * 0.85);
-		float d2 = voronoi_caustic(world_pos.xz * 0.78 - warp * 0.7 + vec2(meso * 1.1, 3.7), -clock * 0.62 + 1.9);
-		float web1 = 1.0 - smoothstep(0.006, 0.058 + fw_xz * 0.55, d1);
-		float web2 = 1.0 - smoothstep(0.008, 0.072 + fw_xz * 0.80, d2);
-		caustic_nodes = pow(max(web1, 0.0), 2.6) * 0.72 + web1 * web2 * 0.92;
+		float clock = review_time >= 0.0 ? review_time : mod(TIME, 3600.0);
 		float dist_fade = 1.0 - smoothstep(48.0, 95.0, distance_to_camera);
 		float caustic_fade = exp(-depth * 0.052) * (1.0 - smoothstep(26.0, 52.0, depth))
 			* clamp(world_normal.y, 0.0, 1.0) * dist_fade;
-		caustic_lit = (web1 * 0.82 + web2 * 0.38 + caustic_nodes * 0.62) * caustic_fade;
+		if (mobile_fast_mode) {
+			vec2 c_uv1 = world_pos.xz * 0.055 + vec2(clock * 0.022, -clock * 0.017);
+			vec2 c_uv2 = world_pos.zx * 0.072 - vec2(clock * 0.019, clock * 0.024);
+			float n1 = textureLod(sediment_noise, c_uv1, 0.0).r;
+			float n2 = textureLod(sediment_noise, c_uv2, 0.0).r;
+			float fast_web = smoothstep(0.56, 0.88, (n1 + n2) * 0.56) + pow(max(n1 * n2 * 1.45, 0.0), 3.0) * 0.65;
+			caustic_lit = fast_web * caustic_fade;
+		} else {
+			vec2 warp = vec2(sin(world_pos.z * 0.42 + clock * 0.35), cos(world_pos.x * 0.38 - clock * 0.28)) * 0.28;
+			float d1 = voronoi_caustic(world_pos.xz * 0.42 + warp + vec2(patch * 0.8), clock * 0.85);
+			float d2 = voronoi_caustic(world_pos.xz * 0.78 - warp * 0.7 + vec2(meso * 1.1, 3.7), -clock * 0.62 + 1.9);
+			float web1 = 1.0 - smoothstep(0.006, 0.058 + fw_xz * 0.55, d1);
+			float web2 = 1.0 - smoothstep(0.008, 0.072 + fw_xz * 0.80, d2);
+			caustic_nodes = pow(max(web1, 0.0), 2.6) * 0.72 + web1 * web2 * 0.92;
+			caustic_lit = (web1 * 0.82 + web2 * 0.38 + caustic_nodes * 0.62) * caustic_fade;
+		}
 	}
 	vec3 golden_caustic = vec3(1.0, 0.84, 0.46) * caustic_lit;
 	ALBEDO = clamp(base_color * 0.76 + golden_caustic * 0.34, vec3(0.0), vec3(1.0));

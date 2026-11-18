@@ -4,7 +4,9 @@ class_name CombatVFX
 
 const COMBAT_FONT = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 const ArtDirection = preload("res://scripts/art_direction.gd")
+const SafeArea = preload("res://scripts/presentation/safe_area.gd")
 
+static var mobile_performance_mode := false
 static var _stasis_shell_mesh: SphereMesh = null
 static var _blood_particle_meshes: Dictionary = {}
 static var _hit_bubble_mesh: SphereMesh = null
@@ -13,6 +15,9 @@ static var _slash_box_knife: BoxMesh = null
 static var _red_dot_sphere_mesh: SphereMesh = null
 static var _salvage_bag_sphere_mesh: SphereMesh = null
 static var _clam_bubble_mesh: SphereMesh = null
+
+static func _particle_budget_scale() -> float:
+	return 0.55 if (mobile_performance_mode or SafeArea.is_default_touch_platform()) else 1.0
 
 static func _get_stasis_shell_mesh() -> SphereMesh:
 	if _stasis_shell_mesh == null:
@@ -252,6 +257,7 @@ static func spawn_stasis_burst(root_node: Node, at: Vector3, radius: float, dura
 static func spawn_hit_burst(root_node: Node, pos: Vector3, normal: Vector3, weapon_type: String, is_predator: bool = false, is_kill: bool = false) -> void:
 	if not root_node or not root_node.is_inside_tree():
 		return
+	var p_scale := _particle_budget_scale()
 
 	# 1. 生物荧光体液 / 撞击爆裂微粒
 	var blood_particles := CPUParticles3D.new()
@@ -262,7 +268,7 @@ static func spawn_hit_burst(root_node: Node, pos: Vector3, normal: Vector3, weap
 	blood_particles.one_shot = true
 	blood_particles.explosiveness = 0.92
 	blood_particles.lifetime = 0.55
-	blood_particles.amount = 32 if (weapon_type == "axe" or is_kill) else 18
+	blood_particles.amount = maxi(6, roundi(float(32 if (weapon_type == "axe" or is_kill) else 18) * p_scale))
 	blood_particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
 	blood_particles.emission_sphere_radius = 0.2
 	blood_particles.direction = normal if normal.length_squared() > 0.01 else Vector3.UP
@@ -286,7 +292,7 @@ static func spawn_hit_burst(root_node: Node, pos: Vector3, normal: Vector3, weap
 	bubbles.one_shot = true
 	bubbles.explosiveness = 0.88
 	bubbles.lifetime = 0.85
-	bubbles.amount = 28 if weapon_type == "axe" else 16
+	bubbles.amount = maxi(6, roundi(float(28 if weapon_type == "axe" else 16) * p_scale))
 	bubbles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
 	bubbles.emission_sphere_radius = 0.15
 	bubbles.direction = Vector3.UP
@@ -654,7 +660,7 @@ static func spawn_clam_bubbles(root_node: Node, pos: Vector3) -> void:
 	particles.emitting = true
 	particles.one_shot = true
 	particles.explosiveness = 0.45
-	particles.amount = 22
+	particles.amount = maxi(8, roundi(22.0 * _particle_budget_scale()))
 	particles.lifetime = 1.35
 	particles.mesh = _get_clam_bubble_mesh()
 	particles.direction = Vector3.UP

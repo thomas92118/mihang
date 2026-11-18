@@ -11,6 +11,7 @@ var _materials: Dictionary = {}
 var _rib_meshes: Dictionary = {}
 var _arch_meshes: Dictionary = {}
 var _pillar_meshes: Dictionary = {}
+var _convex_shape_cache: Dictionary = {}
 var _terrace_mesh: ArrayMesh
 var _spire_mesh: ArrayMesh
 var _sun_compass_mesh: ArrayMesh
@@ -98,9 +99,14 @@ func _record(key: String, mesh: Mesh, material: Material, at: Vector3, scale_val
 	_batches[key].transforms.append(transform_value)
 	_batches[key].colors.append(tint)
 	if solid:
+		var mesh_id := mesh.get_instance_id()
+		var cached_shape: Shape3D = _convex_shape_cache.get(mesh_id, null)
+		if cached_shape == null:
+			cached_shape = mesh.create_convex_shape(true, true)
+			_convex_shape_cache[mesh_id] = cached_shape
 		var body := StaticBody3D.new()
 		var shape := CollisionShape3D.new()
-		shape.shape = mesh.create_convex_shape(true, true)
+		shape.shape = cached_shape
 		body.transform = transform_value
 		body.add_child(shape)
 		add_child(body)
@@ -789,21 +795,25 @@ func _fish_mesh() -> ArrayMesh:
 	for ring in range(profiles.size() - 1):
 		for side in range(8):
 			var points: Array[Vector3] = []
-			for offset: Vector2i in [Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(1, 0)]:
+			for offset: Vector2i in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(0, 1), Vector2i(1, 0), Vector2i(1, 1)]:
 				var profile: Vector3 = profiles[ring + offset.x]
 				var angle := float((side + offset.y) % 8) / 8.0 * TAU
 				points.append(Vector3(cos(angle) * profile.y, sin(angle) * profile.z, profile.x))
 			for point: Vector3 in points:
 				surface.add_vertex(point)
 	# Forked tail, dorsal and pectoral fins keep the small silhouette readable.
-	for point: Vector3 in [
-		Vector3(0, 0, -0.35), Vector3(0, 0.24, -0.64), Vector3(0, 0.02, -0.53),
-		Vector3(0, 0, -0.35), Vector3(0, -0.02, -0.53), Vector3(0, -0.20, -0.64),
-		Vector3(0, 0.13, 0.12), Vector3(0, 0.25, -0.10), Vector3(0, 0.11, -0.24)
-	]:
-		surface.add_vertex(point)
+	var fin_tris: Array = [
+		[Vector3(0, 0, -0.35), Vector3(0, 0.24, -0.64), Vector3(0, 0.02, -0.53)],
+		[Vector3(0, 0, -0.35), Vector3(0, -0.02, -0.53), Vector3(0, -0.20, -0.64)],
+		[Vector3(0, 0.13, 0.12), Vector3(0, 0.25, -0.10), Vector3(0, 0.11, -0.24)],
+	]
 	for side: float in [-1.0, 1.0]:
-		for point: Vector3 in [Vector3(side * 0.08, -0.025, 0.13), Vector3(side * 0.25, -0.055, -0.12), Vector3(side * 0.08, -0.045, -0.06)]:
-			surface.add_vertex(point)
+		fin_tris.append([Vector3(side * 0.08, -0.025, 0.13), Vector3(side * 0.25, -0.055, -0.12), Vector3(side * 0.08, -0.045, -0.06)])
+	for tri in fin_tris:
+		var a: Vector3 = tri[0]
+		var b: Vector3 = tri[1]
+		var c: Vector3 = tri[2]
+		surface.add_vertex(a); surface.add_vertex(b); surface.add_vertex(c)
+		surface.add_vertex(a); surface.add_vertex(c); surface.add_vertex(b)
 	surface.generate_normals()
 	return surface.commit()

@@ -31,6 +31,7 @@ static func build(menu_root: Control, chapters: Array, callbacks: Dictionary = {
 		"chapters": safe_chapters,
 		"avail_size": Vector2(960.0, 700.0),
 		"vertical_mode": false,
+		"touch_mode": false,
 	}
 
 	var card := Panel.new()
@@ -108,6 +109,8 @@ static func build(menu_root: Control, chapters: Array, callbacks: Dictionary = {
 	var body_scroll := ScrollContainer.new()
 	body_scroll.name = "GuideBodyScroll"
 	_place(body_scroll, card, Rect2(286, 104, 646, 514))
+	body_scroll.follow_focus = true
+	body_scroll.scroll_deadzone = 10
 	body_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	body_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	body_scroll.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -211,9 +214,9 @@ static func build(menu_root: Control, chapters: Array, callbacks: Dictionary = {
 			_set_rect(chapter_title_label, Rect2(0, cur_y, body_w, 26))
 			chapter_title_label.add_theme_font_size_override("font_size", 18)
 			cur_y += 26.0
-			_set_rect(chapter_subtitle_label, Rect2(0, cur_y, body_w, 20))
+			_set_rect(chapter_subtitle_label, Rect2(0, cur_y, body_w, 22))
 			chapter_subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-			cur_y += 22.0
+			cur_y += 24.0
 		else:
 			var title_w := floorf(body_w * 0.56)
 			_set_rect(chapter_title_label, Rect2(0, cur_y, title_w, 28))
@@ -222,9 +225,7 @@ static func build(menu_root: Control, chapters: Array, callbacks: Dictionary = {
 			chapter_subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 			cur_y += 30.0
 
-		var chars_per_line := maxf(12.0, floorf(body_w / 14.5))
-		var sum_lines := maxi(1, ceili(float(chapter_summary_label.text.length()) / chars_per_line))
-		var sum_h := maxf(26.0, float(sum_lines) * 20.0 + 4.0)
+		var sum_h := _measure_multiline_height(chapter_summary_label, chapter_summary_label.text, body_w, 14, 26.0, 6.0)
 		_set_rect(chapter_summary_label, Rect2(0, cur_y, body_w, sum_h))
 		cur_y += sum_h + 8.0
 
@@ -245,19 +246,19 @@ static func build(menu_root: Control, chapters: Array, callbacks: Dictionary = {
 				var inner_item_w := maxf(180.0, body_w - 24.0)
 				var body_top := 32.0
 				if stack_head:
-					_set_rect(heading_lbl, Rect2(12, 6, inner_item_w, 20))
-					_set_rect(keys_lbl, Rect2(12, 26, inner_item_w, 18))
+					_set_rect(heading_lbl, Rect2(12, 6, inner_item_w, 22))
+					_set_rect(keys_lbl, Rect2(12, 28, inner_item_w, 22))
 					keys_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-					body_top = 46.0
+					body_top = 52.0
 				else:
 					var h_w := floorf(inner_item_w * 0.56)
 					_set_rect(heading_lbl, Rect2(14, 7, h_w, 22))
 					_set_rect(keys_lbl, Rect2(14 + h_w + 6.0, 7, maxf(80.0, inner_item_w - h_w - 6.0), 22))
 					keys_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-					body_top = 31.0
-				var item_chars_per_line := maxf(10.0, floorf(inner_item_w / 14.5))
-				var body_lines := maxi(2, ceili(float(body_lbl.text.length()) / item_chars_per_line))
-				var card_h := fixed_card_h if desktop_fit else maxf(body_top + 44.0, body_top + float(body_lines) * 20.0 + 10.0)
+					body_top = 32.0
+				var body_text_h := _measure_multiline_height(body_lbl, body_lbl.text, inner_item_w, 14, 42.0, 8.0)
+				var needed_card_h := body_top + body_text_h + 8.0
+				var card_h := maxf(fixed_card_h, needed_card_h) if desktop_fit else needed_card_h
 				_set_rect(p, Rect2(0, cur_y, body_w, card_h))
 				_set_rect(body_lbl, Rect2(12 if stack_head else 14, body_top, inner_item_w, maxf(36.0, card_h - body_top - 6.0)))
 				cur_y += card_h + gap
@@ -265,8 +266,7 @@ static func build(menu_root: Control, chapters: Array, callbacks: Dictionary = {
 			else:
 				p.visible = false
 
-		var tip_lines := maxi(1, ceili(float(tip_note_label.text.length()) / chars_per_line))
-		var tip_h := maxf(24.0, float(tip_lines) * 19.0 + 4.0)
+		var tip_h := _measure_multiline_height(tip_note_label, tip_note_label.text, body_w, 14, 24.0, 6.0)
 		_set_rect(tip_note_label, Rect2(0, cur_y + 2.0, body_w, tip_h))
 		cur_y += tip_h + 8.0
 		body_content.custom_minimum_size = Vector2(0.0, cur_y)
@@ -458,6 +458,13 @@ static func build(menu_root: Control, chapters: Array, callbacks: Dictionary = {
 
 	state["responsive_fn"] = apply_responsive
 
+	var set_touch_mode := func(touch_enabled: bool) -> void:
+		state["touch_mode"] = touch_enabled
+		chapter_scroll.follow_focus = not touch_enabled
+		body_scroll.follow_focus = not touch_enabled
+
+	state["set_touch_mode_fn"] = set_touch_mode
+
 	var sync_onboarding_status := func(onboarding: Dictionary) -> void:
 		var completed := bool(onboarding.get("onboarding_completed", false))
 		var skipped := bool(onboarding.get("onboarding_skipped", false))
@@ -486,6 +493,8 @@ static func build(menu_root: Control, chapters: Array, callbacks: Dictionary = {
 	return {
 		"card": card,
 		"chapter_buttons": chapter_buttons,
+		"chapter_scroll": chapter_scroll,
+		"body_scroll": body_scroll,
 		"restart_btn": restart_btn,
 		"skip_btn": skip_btn,
 		"controls_btn": controls_btn,
@@ -494,12 +503,52 @@ static func build(menu_root: Control, chapters: Array, callbacks: Dictionary = {
 		"select_chapter": select_chapter,
 		"sync_onboarding_status": sync_onboarding_status,
 		"set_responsive_layout": apply_responsive,
+		"set_touch_mode": set_touch_mode,
+		"refresh_layout": layout_body_items,
 	}
 
 static func set_responsive_layout(view: Dictionary, avail_size: Vector2) -> void:
 	var fn = view.get("set_responsive_layout")
 	if fn is Callable and fn.is_valid():
 		fn.call(avail_size)
+
+static func set_touch_mode(view: Dictionary, touch_enabled: bool) -> void:
+	var fn = view.get("set_touch_mode")
+	if fn is Callable and fn.is_valid():
+		fn.call(touch_enabled)
+
+static func refresh_layout(view: Dictionary) -> void:
+	var fn = view.get("refresh_layout")
+	if fn is Callable and fn.is_valid():
+		fn.call()
+
+static func _measure_multiline_height(label: Label, text: String, width: float, font_size: int, min_h: float, extra_pad: float = 6.0) -> float:
+	if text.is_empty():
+		return min_h
+	var font: Font = label.get_theme_font("font") if is_instance_valid(label) else null
+	if font == null:
+		font = ThemeDB.fallback_font
+	var safe_w := maxf(48.0, width - 6.0)
+	if font != null:
+		var brk_flags := TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE | TextServer.BREAK_GRAPHEME_BOUND
+		var total_h := 0.0
+		var paragraphs := text.split("\n", true)
+		var line_h := maxf(float(font_size) + 5.0, font.get_height(font_size) + 2.0)
+		for i in range(paragraphs.size()):
+			var para := paragraphs[i]
+			if para.is_empty():
+				total_h += line_h * 0.75
+			else:
+				var sz := font.get_multiline_string_size(para, HORIZONTAL_ALIGNMENT_LEFT, safe_w, font_size, -1, brk_flags)
+				total_h += maxf(line_h, sz.y)
+			if i + 1 < paragraphs.size():
+				total_h += 2.0
+		return maxf(min_h, ceilf(total_h + extra_pad))
+	var approx_chars := maxf(8.0, floorf(safe_w / maxf(12.0, float(font_size) * 0.98)))
+	var approx_lines := 0
+	for para in text.split("\n", true):
+		approx_lines += maxi(1, ceili(float(para.length()) / approx_chars))
+	return maxf(min_h, float(approx_lines) * (float(font_size) + 6.0) + extra_pad)
 
 static func _set_hintable_text(label: Label, raw_text: String, callbacks: Dictionary) -> void:
 	label.set_meta("_hint_source", raw_text)

@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled;
+render_mode cull_back;
 uniform vec3 back_color : source_color = vec3(0.06, 0.35, 0.52);
 uniform vec3 belly_color : source_color = vec3(0.92, 0.80, 0.44);
 uniform float radius = 16.0;
@@ -12,7 +12,7 @@ uniform float review_time = -1.0;
 varying vec3 body;
 void vertex() {
 	body = VERTEX;
-	float clock = review_time >= 0.0 ? review_time : TIME;
+	float clock = review_time >= 0.0 ? review_time : mod(TIME, 3600.0);
 	float phase = INSTANCE_CUSTOM.x * 6.283185 + clock * swim_speed * (0.97 + INSTANCE_CUSTOM.w * 0.06);
 	float tail = 1.0 - smoothstep(-0.55, -0.12, VERTEX.z);
 	VERTEX.x += sin(clock * (4.6 + INSTANCE_CUSTOM.w) + INSTANCE_CUSTOM.z * 6.283185 + VERTEX.z * 4.0) * tail * 0.065;

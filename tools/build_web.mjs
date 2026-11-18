@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import zlib from "node:zlib";
 
 const ROOT = process.cwd();
@@ -200,9 +201,10 @@ function ensureLossyModelTextures(stageDir) {
 		const isSmallProp = SMALL_PROP_TEXTURE_PREFIXES.some((prefix) => name.startsWith(prefix));
 		const targetLimit = isSmallProp ? "256" : "512";
 		let next = content;
-		next = upsertImportParam(next, "compress/mode", "1");
+		next = upsertImportParam(next, "compress/mode", "2");
 		next = upsertImportParam(next, "mipmaps/generate", "true");
 		next = upsertImportParam(next, "process/size_limit", targetLimit);
+		next = upsertImportParam(next, "detect_3d/compress_to", "1");
 		if (next !== content) {
 			fs.writeFileSync(fullPath, next, "utf8");
 			updated++;
@@ -210,7 +212,7 @@ function ensureLossyModelTextures(stageDir) {
 	}
 	if (updated > 0) {
 		console.log(
-			`[build_web] Optimized ${updated} staged model texture imports in ${modelsDir} (lossy WebP + mipmaps, tiered 256/512px)`
+			`[build_web] Optimized ${updated} staged model texture imports in ${modelsDir} (VRAM ETC2/ASTC/S3TC + mipmaps, tiered 256/512px)`
 		);
 	}
 	return updated;
@@ -251,21 +253,23 @@ function compressAndChunkFile(fileName) {
 	const raw = fs.readFileSync(filePath);
 	console.log(`[build_web] Gzipping ${fileName} (${(raw.length / 1048576).toFixed(2)} MB)...`);
 	const gz = zlib.gzipSync(raw, { level: 9 });
+	const hash8 = crypto.createHash("sha256").update(gz).digest("hex").slice(0, 8);
 	fs.unlinkSync(filePath);
 
 	const parts = [];
 	for (let offset = 0, idx = 0; offset < gz.length; offset += CHUNK_SIZE_BYTES, idx++) {
 		const chunk = gz.subarray(offset, Math.min(offset + CHUNK_SIZE_BYTES, gz.length));
-		const partName = `${fileName}.gz.part${idx}`;
+		const partName = `${fileName}.gz.part${idx}.${hash8}`;
 		fs.writeFileSync(path.join(WEB_DIR, partName), chunk);
 		parts.push(partName);
 	}
 	console.log(
-		`[build_web] Split ${fileName}.gz (${(gz.length / 1048576).toFixed(2)} MB) into ${parts.length} chunks (<= 512 KiB each)`
+		`[build_web] Split ${fileName}.gz (${(gz.length / 1048576).toFixed(2)} MB, hash=${hash8}) into ${parts.length} chunks (<= 512 KiB each)`
 	);
 	return {
 		rawSize: raw.length,
 		gzSize: gz.length,
+		hash: hash8,
 		parts,
 	};
 }
@@ -281,6 +285,7 @@ function postProcessWebBuild() {
 		"index.wasm": compressAndChunkFile("index.wasm"),
 		"index.pck": compressAndChunkFile("index.pck"),
 	};
+	const buildHash = `${manifest["index.wasm"].hash}-${manifest["index.pck"].hash}`;
 	fs.writeFileSync(path.join(WEB_DIR, "chunks.json"), JSON.stringify(manifest, null, 2), "utf8");
 
 	const swPath = path.join(WEB_DIR, "index.service.worker.js");
@@ -296,11 +301,21 @@ function postProcessWebBuild() {
 			/const CACHEABLE_FILES = \[[^\]]*\];/,
 			`const CACHEABLE_FILES = ${JSON.stringify(chunkFiles)};`
 		);
+		sw = sw.replace(
+			/const CACHE_VERSION = "([^"]*)";/,
+			`const CACHE_VERSION = "$1-${buildHash}";`
+		);
 		fs.writeFileSync(swPath, sw, "utf8");
 	}
 
 	const htmlPath = path.join(WEB_DIR, "index.html");
 	let html = fs.readFileSync(htmlPath, "utf8");
+	if (!html.includes('rel="apple-touch-icon"') && fs.existsSync(path.join(WEB_DIR, "index.apple-touch-icon.png"))) {
+		html = html.replace(
+			"</head>",
+			'\t\t<link rel="apple-touch-icon" sizes="180x180" href="index.apple-touch-icon.png">\n\t</head>'
+		);
+	}
 	const fetchShim = `<script>
 (function () {
 	const CHUNK_MANIFEST = ${JSON.stringify(manifest)};
@@ -322,6 +337,30 @@ function postProcessWebBuild() {
 		} catch (_err) {}
 	}
 
+	function sleepMs(ms) {
+		return new Promise(function (resolve) { setTimeout(resolve, ms); });
+	}
+
+	async function fetchChunkWithRetry(partUrl, init) {
+		const delays = [300, 800, 1800];
+		let lastErr = null;
+		for (let attempt = 0; attempt <= delays.length; attempt++) {
+			try {
+				const res = await origFetch(partUrl, init);
+				if (!res.ok) {
+					throw new Error('Failed loading chunk ' + partUrl + ' (' + res.status + ')');
+				}
+				return new Uint8Array(await res.arrayBuffer());
+			} catch (err) {
+				lastErr = err;
+				if (attempt < delays.length) {
+					await sleepMs(delays[attempt]);
+				}
+			}
+		}
+		throw lastErr || new Error('Failed loading chunk ' + partUrl);
+	}
+
 	function createChunkedGzStream(assetKey, parts, init) {
 		let nextFetch = 0;
 		let nextEmit = 0;
@@ -332,11 +371,7 @@ function postProcessWebBuild() {
 			while (nextFetch < parts.length && inflight.size < CONCURRENCY) {
 				const idx = nextFetch++;
 				const partUrl = parts[idx];
-				const p = origFetch(partUrl, init).then(async function (res) {
-					if (!res.ok) {
-						throw new Error('Failed loading chunk ' + partUrl + ' (' + res.status + ')');
-					}
-					const bytes = new Uint8Array(await res.arrayBuffer());
+				const p = fetchChunkWithRetry(partUrl, init).then(function (bytes) {
 					loadedGzBytes += bytes.byteLength;
 					emitChunkProgress(assetKey);
 					return bytes;
@@ -363,6 +398,9 @@ function postProcessWebBuild() {
 	}
 
 	window.fetch = async function (input, init) {
+		if (typeof DecompressionStream !== 'function' || typeof ReadableStream !== 'function') {
+			return origFetch(input, init);
+		}
 		const url = typeof input === 'string' ? input : (input && input.url) || '';
 		for (const key of Object.keys(CHUNK_MANIFEST)) {
 			if (url === key || url.endsWith('/' + key)) {
@@ -396,9 +434,24 @@ function postProcessWebBuild() {
 		"  Cross-Origin-Embedder-Policy: require-corp",
 		"  Cross-Origin-Resource-Policy: same-origin",
 		"",
+		"/index.html",
+		"  Cache-Control: no-cache",
+		"",
+		"/index.js",
+		"  Cache-Control: no-cache",
+		"",
+		"/chunks.json",
+		"  Cache-Control: no-cache",
+		"",
+		"/index.service.worker.js",
+		"  Cache-Control: no-cache",
+		"",
+		"/index.manifest.json",
+		"  Cache-Control: no-cache",
+		"",
 		"/*.wasm",
 		"  Content-Type: application/wasm",
-		"  Cache-Control: public, max-age=31536000, immutable",
+		"  Cache-Control: public, max-age=0, must-revalidate",
 		"",
 		"/*.part*",
 		"  Content-Type: application/octet-stream",
@@ -406,7 +459,7 @@ function postProcessWebBuild() {
 		"",
 		"/*.pck",
 		"  Content-Type: application/octet-stream",
-		"  Cache-Control: public, max-age=31536000, immutable",
+		"  Cache-Control: public, max-age=0, must-revalidate",
 		"",
 	].join("\n");
 	fs.writeFileSync(path.join(WEB_DIR, "_headers"), headersContent, "utf8");

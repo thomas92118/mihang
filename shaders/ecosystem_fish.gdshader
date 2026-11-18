@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled;
+render_mode cull_back;
 
 // 0: silverside, 1: lanternfish, 2: squid, 3: jellyfish, 4: abyssal jelly.
 uniform int creature_kind = 0;
@@ -9,7 +9,7 @@ varying float world_depth;
 
 void vertex() {
 	body_position = VERTEX;
-	float clock = review_time >= 0.0 ? review_time : TIME;
+	float clock = review_time >= 0.0 ? review_time : mod(TIME, 3600.0);
 	float phase_offset = INSTANCE_CUSTOM.x * 6.283185;
 	if (creature_kind <= 2) {
 		float speed = creature_kind == 2 ? 0.13 : (creature_kind == 1 ? 0.22 : 0.32);

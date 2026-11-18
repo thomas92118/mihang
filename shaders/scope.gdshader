@@ -2,7 +2,12 @@ shader_type canvas_item;
 
 void fragment() {
 	vec2 p = SCREEN_UV - vec2(0.5);
-	p.x *= SCREEN_PIXEL_SIZE.y / SCREEN_PIXEL_SIZE.x;
+	float aspect = SCREEN_PIXEL_SIZE.y / SCREEN_PIXEL_SIZE.x;
+	if (aspect >= 1.0) {
+		p.x *= aspect;
+	} else {
+		p.y /= aspect;
+	}
 	float distance_to_center = length(p);
 
 	vec3 ink_col = vec3(0.0627, 0.1529, 0.2078);

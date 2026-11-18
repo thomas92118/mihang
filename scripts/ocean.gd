@@ -12,6 +12,8 @@ const OceanDepths = preload("res://scripts/ocean_depths.gd")
 const ArtDirection = preload("res://scripts/art_direction.gd")
 const OceanComposition = preload("res://scripts/presentation/ocean_composition.gd")
 const ModelFinish = preload("res://scripts/presentation/model_finish.gd")
+const SafeArea = preload("res://scripts/presentation/safe_area.gd")
+const CombatVFX = preload("res://scripts/combat_vfx.gd")
 const LABEL_FONT = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 const LABEL_FONT_SIZE := 40
 const BOSS_ARENA_CENTER := Vector3(-50, -76, -170)
@@ -74,12 +76,15 @@ var water_atmosphere: ShaderMaterial
 var _atmosphere_color := Color(-1, -1, -1)
 var _atmosphere_energy := -1.0
 var _atmosphere_sunlit := -1.0
+var _atmosphere_depth := -1000.0
 var art_depth := 0.0
 var mobile_performance_mode := false
 var sun: DirectionalLight3D
 var water_surface: MeshInstance3D = null
 var water_surface_mat: ShaderMaterial = null
 var water_underwater_mat: ShaderMaterial = null
+var seabed_material: ShaderMaterial = null
+var light_shafts: Array[MeshInstance3D] = []
 var resources: Array[Node3D] = []
 var fragments: Array[Node3D] = []
 var fish: Array[Node3D] = []
@@ -137,9 +142,11 @@ var sea_wolves: Array[Node3D] = []
 var schooling_fish: Array[Node3D] = []
 var fish_schools: Array[Dictionary] = []
 var escape_console: Node3D = null
+var black_box_terminal: Node3D = null
 var outposts: Array[Node3D] = []
 var explorer_relics: Array[Node3D] = []
 var outer_seabed_chunks: Array[MeshInstance3D] = []
+var inner_seabed_chunks: Array[MeshInstance3D] = []
 var mother_tree_marker: Label3D = null
 var seabed_ecology: Node3D
 var marine_snow: MultiMeshInstance3D
@@ -149,6 +156,11 @@ var _creatures_dirty: bool = true
 var _stasis_aura_mat: StandardMaterial3D = null
 var _stasis_sphere_small: SphereMesh = null
 var _stasis_sphere_boss: SphereMesh = null
+var _touch_prompts_enabled: bool = false
+var _ai_frame_counter: int = 0
+var _ai_slice_deltas: Array[float] = [0.0, 0.0, 0.0, 0.0]
+var _spider_frame_counter: int = 0
+var _spider_slice_deltas: Array[float] = [0.0, 0.0, 0.0, 0.0]
 
 var plant_shader: Shader = preload("res://shaders/plant_sway.gdshader")
 
@@ -458,6 +470,7 @@ static func _build_seabed_grid_mesh(x0: int, x1: int, z0: int, z1: int, step: in
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
+	_touch_prompts_enabled = SafeArea.is_default_touch_platform()
 	rng.seed = 240913
 	_create_environment()
 	_create_terrain()
@@ -466,7 +479,11 @@ func _ready() -> void:
 	seabed_ecology = SeabedEcology.new()
 	seabed_ecology.name = "SeabedEcology"
 	add_child(seabed_ecology)
+	if mobile_performance_mode:
+		seabed_ecology.set_mobile_performance_mode(true)
 	seabed_ecology.configure(self)
+	if mobile_performance_mode:
+		set_mobile_performance_mode(true)
 	set_depth(maxf(0.0, -last_diver_pos.y))
 	_sync_animation_lod(last_diver_pos)
 
@@ -486,9 +503,9 @@ func _create_environment() -> void:
 	water_atmosphere.shader = load("res://shaders/ocean_atmosphere.gdshader")
 	water_sky = Sky.new()
 	water_sky.radiance_size = Sky.RADIANCE_SIZE_32
-	water_sky.process_mode = Sky.PROCESS_MODE_QUALITY
+	water_sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
 	water_sky.sky_material = water_atmosphere
-	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	environment.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED if mobile_performance_mode else Environment.REFLECTION_SOURCE_SKY
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_sky_contribution = 0.0
 	environment.ambient_light_color = Color(0.68, 0.80, 0.81)
@@ -544,12 +561,14 @@ func _create_environment() -> void:
 	var sun_dir := sun.transform.basis.z
 	water_surface_mat.set_shader_parameter("ripple_normal", ripples)
 	water_surface_mat.set_shader_parameter("sun_direction", sun_dir)
+	water_surface_mat.set_shader_parameter("mobile_fast_mode", mobile_performance_mode)
 	water_underwater_mat.set_shader_parameter("ripple_normal", ripples)
 	water_underwater_mat.set_shader_parameter("sun_direction", sun_dir)
 	surface.material_override = water_surface_mat
 	surface.extra_cull_margin = 1.2
 	add_child(surface)
 
+	light_shafts.clear()
 	var shaft_material := ShaderMaterial.new()
 	shaft_material.shader = load("res://shaders/shaft.gdshader")
 	for i in range(16):
@@ -560,7 +579,9 @@ func _create_environment() -> void:
 		shaft.material_override = shaft_material
 		shaft.position = Vector3(rng.randf_range(-60, 60), -17, rng.randf_range(-45, 25))
 		shaft.rotation_degrees = Vector3(0, -20, -18)
+		shaft.visible = (not mobile_performance_mode) or (light_shafts.size() % 2 == 0)
 		add_child(shaft)
+		light_shafts.append(shaft)
 
 	# Broad curtains alternate with thin shafts; their shared shader fades gently
 	# at the surface and at depth instead of filling the whole sea with glow.
@@ -584,16 +605,15 @@ func _create_environment() -> void:
 		beam.material_override = shaft_material
 		beam.position = spec["pos"]
 		beam.rotation_degrees = spec["rot"]
+		beam.visible = (not mobile_performance_mode) or (light_shafts.size() % 2 == 0)
 		add_child(beam)
+		light_shafts.append(beam)
 
 func _create_terrain() -> void:
 	var ix0 := SEABED_INNER_X0
 	var ix1 := SEABED_INNER_X1
 	var iz0 := SEABED_INNER_Z0
 	var iz1 := SEABED_INNER_Z1
-	var terrain := MeshInstance3D.new()
-	terrain.name = "Seabed"
-	terrain.mesh = _build_seabed_grid_mesh(ix0, ix1, iz0, iz1, SEABED_INNER_STEP)
 	var material := ShaderMaterial.new()
 	material.shader = load("res://shaders/sand.gdshader")
 	var noise := FastNoiseLite.new()
@@ -608,10 +628,40 @@ func _create_terrain() -> void:
 	material.set_shader_parameter("sediment_noise", sediment)
 	material.set_shader_parameter("region_palette", OceanDepths.region_palette_texture())
 	material.set_shader_parameter("use_region_palette", true)
+	material.set_shader_parameter("mobile_fast_mode", mobile_performance_mode)
+	seabed_material = material
+
+	# Split 576m x 528m inner basin into 4x4 (144m x 132m) chunks to enable frustum
+	# culling and avoid exceeding the 8-OmniLight per-mesh cap under gl_compatibility.
+	inner_seabed_chunks.clear()
+	@warning_ignore("integer_division")
+	var chunk_span_x: int = (ix1 - ix0) / 4
+	@warning_ignore("integer_division")
+	var chunk_span_z: int = (iz1 - iz0) / 4
+	var terrain := MeshInstance3D.new()
+	terrain.name = "Seabed"
+	terrain.mesh = _build_seabed_grid_mesh(ix0, ix0 + chunk_span_x, iz0, iz0 + chunk_span_z, SEABED_INNER_STEP)
 	terrain.material_override = material
 	terrain.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(terrain)
 	terrain.create_trimesh_collision()
+	inner_seabed_chunks.append(terrain)
+	for gx in range(4):
+		var sub_x0: int = ix0 + gx * chunk_span_x
+		var sub_x1: int = ix1 if gx == 3 else (sub_x0 + chunk_span_x)
+		for gz in range(4):
+			if gx == 0 and gz == 0:
+				continue
+			var sub_z0: int = iz0 + gz * chunk_span_z
+			var sub_z1: int = iz1 if gz == 3 else (sub_z0 + chunk_span_z)
+			var inner_chunk := MeshInstance3D.new()
+			inner_chunk.name = "SeabedChunk_%d_%d" % [gx, gz]
+			inner_chunk.mesh = _build_seabed_grid_mesh(sub_x0, sub_x1, sub_z0, sub_z1, SEABED_INNER_STEP)
+			inner_chunk.material_override = material
+			inner_chunk.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			terrain.add_child(inner_chunk)
+			inner_chunk.create_trimesh_collision()
+			inner_seabed_chunks.append(inner_chunk)
 
 	# Conforming Outer Open-World Seabed Chunks (12m grid with 6m midpoint seam stitching)
 	var chunk_defs := [
@@ -667,6 +717,28 @@ func model(asset: String, at: Vector3, size: float = 1.0, visibility_range: floa
 		player.play(base_clip)
 		player.seek(rng.randf() * player.get_animation(base_clip).length, true)
 	return instance
+
+func _register_visibility_lod(root_node: Node, vis_range: float, disable_shadows: bool = false) -> void:
+	if not is_instance_valid(root_node):
+		return
+	var vis_scale := 0.80 if mobile_performance_mode else 1.0
+	var nodes := root_node.find_children("*", "GeometryInstance3D", true, false)
+	if root_node is GeometryInstance3D:
+		nodes.push_front(root_node)
+	for child in nodes:
+		var gi := child as GeometryInstance3D
+		if gi == null or gi is Label3D:
+			continue
+		var base_r := float(gi.get_meta("base_visibility_range", vis_range))
+		if base_r <= 0.0:
+			base_r = vis_range
+		gi.set_meta("base_visibility_range", base_r)
+		gi.visibility_range_end = maxf(300.0, base_r) if scope_view_enabled else base_r * vis_scale
+		gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+		if disable_shadows:
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if not scope_meshes.has(gi):
+			scope_meshes.append(gi)
 
 func _asset_emission_scale(asset_key: String) -> float:
 	# Keep living lights and artificial beacons legible without making every
@@ -915,13 +987,17 @@ func _populate() -> void:
 	c_light.omni_range = 8.0
 	escape_console.add_child(c_light)
 	var c_label := Label3D.new()
+	c_label.name = "ConsoleLabel"
 	c_label.text = "⬡  ESCAPE CONSOLE  /  逃生控制台"
 	c_label.position = Vector3(0, 1.6, 0)
 	c_label.modulate = Color(0.3, 0.95, 1.0)
 	_configure_label_3d(c_label, 32, 0.007)
+	if _touch_prompts_enabled:
+		c_label.text = "逃生控制台\n[点击交互]"
 	c_label.visibility_range_end = 9.5
 	escape_console.add_child(c_label)
 	add_child(escape_console)
+	_register_visibility_lod(escape_console, 65.0, true)
 
 	# 2. 浅海与海沟古代遗迹拱门
 	var arch := model("ruins", Vector3(2, floor_height(2, -25), -25), 1.4, 95.0)
@@ -983,6 +1059,7 @@ func _populate() -> void:
 	black_box.collision_layer = 2
 	black_box.set_meta("kind", "black_box")
 	black_box.set_meta("name", "失事科考潜艇黑匣子")
+	black_box_terminal = black_box
 	var bb_box := CollisionShape3D.new()
 	var bb_shape := BoxShape3D.new()
 	bb_shape.size = Vector3(1.1, 0.9, 1.1)
@@ -994,10 +1071,13 @@ func _populate() -> void:
 	bb_light.omni_range = 8.0
 	black_box.add_child(bb_light)
 	var bb_label := Label3D.new()
+	bb_label.name = "BlackBoxLabel"
 	bb_label.text = "◈  BLACK BOX  /  失事科考日志"
 	bb_label.position = Vector3(0, 0.85, 0)
 	bb_label.modulate = Color(0.35, 0.95, 1.0)
 	_configure_label_3d(bb_label, 32, 0.007)
+	if _touch_prompts_enabled:
+		bb_label.text = "失事科考日志\n[点击交互]"
 	bb_label.visibility_range_end = 9.5
 	black_box.add_child(bb_label)
 	add_child(black_box)
@@ -1446,7 +1526,7 @@ func _configure_label_3d(lbl: Label3D, orig_font_size: int, orig_pixel_size: flo
 	lbl.pixel_size = orig_pixel_size * float(orig_font_size) / float(LABEL_FONT_SIZE)
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	lbl.no_depth_test = false
-	lbl.visibility_range_end = 10.5 if "[E]" in lbl.text else 28.0
+	lbl.visibility_range_end = 10.5 if ("[E]" in lbl.text or "[点击交互]" in lbl.text) else 28.0
 	var is_warm := lbl.modulate.r > lbl.modulate.b * 1.2
 	lbl.modulate = ArtDirection.AMBER if is_warm else ArtDirection.PAPER.lerp(ArtDirection.CYAN, 0.42)
 	lbl.outline_modulate = Color(ArtDirection.INK.r, ArtDirection.INK.g, ArtDirection.INK.b, 0.88)
@@ -1565,6 +1645,7 @@ func _create_hydrothermal_vent(at: Vector3) -> void:
 		mm.set_instance_transform(i, Transform3D(Basis(), offset))
 	plume.multimesh = mm
 	vent_root.add_child(plume)
+	_register_visibility_lod(vent_root, 110.0, true)
 
 func _spawn_small_fish(center: Vector3, size: float) -> void:
 	var body := StaticBody3D.new()
@@ -2061,6 +2142,8 @@ func _register_creature_hitbox(creature: Node3D) -> void:
 	if not creature.has_meta("motion_clock"):
 		creature.set_meta("motion_clock", 0.0)
 	creature.set_meta("is_creature", true)
+	if not creature.has_meta("visual_asset"):
+		_register_visibility_lod(creature, 75.0, false)
 	if creature is CollisionObject3D or creature.has_node("CreatureHitbox"):
 		return
 	var kind: String = str(creature.get_meta("kind", "fish"))
@@ -2356,14 +2439,26 @@ func _spawn_extra_creatures() -> void:
 
 func _tick_sea_spiders(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 	var attacks: Array[Dictionary] = []
-	for spider in sea_spiders:
+	var sp_slot: int = _spider_frame_counter & 3
+	_spider_frame_counter += 1
+	for s_i in range(4):
+		_spider_slice_deltas[s_i] += delta
+	var sp_slice_delta: float = _spider_slice_deltas[sp_slot]
+	_spider_slice_deltas[sp_slot] = 0.0
+	const FAR_SPIDER_SQ := 85.0 * 85.0
+	for sp_idx in range(sea_spiders.size()):
+		var spider: Node3D = sea_spiders[sp_idx]
 		if not is_instance_valid(spider) or _is_immobile(spider):
 			continue
 		if bool(spider.get_meta("tamed", false)):
 			continue
-		var cooldown: float = maxf(0.0, float(spider.get_meta("bite_cooldown", 0.0)) - delta)
-		spider.set_meta("bite_cooldown", cooldown)
 		var dist_sq: float = spider.global_position.distance_squared_to(diver_pos)
+		var is_far_spider: bool = (not scope_view_enabled) and (dist_sq > FAR_SPIDER_SQ)
+		if is_far_spider and ((sp_idx & 3) != sp_slot):
+			continue
+		var step_dt: float = sp_slice_delta if is_far_spider else delta
+		var cooldown: float = maxf(0.0, float(spider.get_meta("bite_cooldown", 0.0)) - step_dt)
+		spider.set_meta("bite_cooldown", cooldown)
 		var target_pos: Vector3
 		if dist_sq < 10.0 * 10.0 and diver_pos.y < floor_height(diver_pos.x, diver_pos.z) + 4.5:
 			target_pos = diver_pos
@@ -2371,11 +2466,14 @@ func _tick_sea_spiders(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 			var center: Vector3 = spider.get_meta("center")
 			var t: float = float(spider.get_meta("motion_clock", clock)) * 0.35 + float(spider.get_meta("phase"))
 			target_pos = center + Vector3(sin(t) * 4.0, 0, cos(t) * 3.0)
-		var next: Vector3 = spider.position.move_toward(target_pos, delta * 2.6)
-		next.y = floor_height(next.x, next.z) + 0.15
-		var forward := Vector3(next.x - spider.position.x, 0, next.z - spider.position.z)
-		if forward.length_squared() > 0.0001:
-			spider.look_at(spider.position + forward, Vector3.UP, true)
+		var next: Vector3 = spider.position.move_toward(target_pos, step_dt * 2.6)
+		if not is_far_spider:
+			next.y = floor_height(next.x, next.z) + 0.15
+			var forward := Vector3(next.x - spider.position.x, 0, next.z - spider.position.z)
+			if forward.length_squared() > 0.0001:
+				spider.look_at(spider.position + forward, Vector3.UP, true)
+		else:
+			next.y = spider.position.y
 		spider.position = next
 		if dist_sq < 2.6 * 2.6 and cooldown <= 0.0:
 			spider.set_meta("bite_cooldown", 2.0)
@@ -2501,8 +2599,7 @@ func _tick_boss(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 			if to_diver.length() < 18.0:
 				b.set_meta("has_attacked_player", true)
 				attacks.append({"name": "巨兽震荡狂涛", "damage": 32.0 if enraged else 22.0, "pos": b.global_position, "attacker": b})
-			var vfx = load("res://scripts/combat_vfx.gd")
-			vfx.spawn_stasis_burst(self, b.global_position, 18.0, 0.7, Color(1.0, 0.3, 0.12))
+			CombatVFX.spawn_stasis_burst(self, b.global_position, 18.0, 0.7, Color(1.0, 0.3, 0.12))
 			boss_action = "circle"
 			boss_action_timer = 3.0
 	if to_diver.length_squared() > 0.001:
@@ -2591,6 +2688,7 @@ func _create_particles() -> void:
 	marine_snow.name = "MarineSnow"
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
 	var sphere := SphereMesh.new()
 	sphere.radius = 0.018
 	sphere.height = 0.036
@@ -2604,6 +2702,8 @@ func _create_particles() -> void:
 		var at := Vector3(snow_rng.randf_range(-42.0, 42.0), snow_rng.randf_range(-42.0, 42.0), snow_rng.randf_range(-42.0, 42.0))
 		var size_scale := snow_rng.randf_range(0.5, 1.4)
 		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * size_scale), at))
+	for i in range(mm.instance_count):
+		mm.set_instance_custom_data(i, Color(snow_rng.randf(), 0.0, 0.0, 1.0))
 	marine_snow.multimesh = mm
 	var snow_material := ShaderMaterial.new()
 	snow_material.shader = load("res://shaders/marine_snow.gdshader")
@@ -2628,31 +2728,46 @@ func _process(delta: float) -> void:
 	if is_instance_valid(marine_snow):
 		marine_snow.position = (last_diver_pos / 32.0).floor() * 32.0
 
+	var ai_slot: int = _ai_frame_counter & 3
+	_ai_frame_counter += 1
+	for s_i in range(4):
+		_ai_slice_deltas[s_i] += delta
+	var slice_delta: float = _ai_slice_deltas[ai_slot]
+	_ai_slice_deltas[ai_slot] = 0.0
+	const FAR_AI_DIST_SQ := 85.0 * 85.0
+
 	for creature in fish:
 		_tick_status(creature, delta)
-	for jelly in jellies:
-		_tick_status(jelly, delta)
-	for ray in rays:
-		_tick_status(ray, delta)
-	for turtle in turtles:
-		_tick_status(turtle, delta)
-	for squid in squids:
-		_tick_status(squid, delta)
-	for crab in crabs:
-		_tick_status(crab, delta)
-	for spider in sea_spiders:
+	for sp_idx in range(sea_spiders.size()):
+		var spider: Node3D = sea_spiders[sp_idx]
+		if not is_instance_valid(spider):
+			continue
+		var sp_far: bool = (not scope_view_enabled) and (not _is_immobile(spider)) and (spider.global_position.distance_squared_to(last_diver_pos) > FAR_AI_DIST_SQ)
+		if sp_far:
+			if (sp_idx & 3) == ai_slot:
+				_tick_status(spider, slice_delta)
+			continue
 		if not _tick_status(spider, delta):
 			spider.animate(delta)
-	for seal in seals:
-		if _tick_status(seal, delta):
+	for sl_idx in range(seals.size()):
+		var seal: Node3D = seals[sl_idx]
+		if not is_instance_valid(seal):
 			continue
-		seal.animate(delta)
+		var sl_far: bool = (not scope_view_enabled) and (not _is_immobile(seal)) and (seal.global_position.distance_squared_to(last_diver_pos) > FAR_AI_DIST_SQ)
+		if sl_far and ((sl_idx & 3) != ai_slot):
+			continue
+		var sl_dt: float = slice_delta if sl_far else delta
+		if _tick_status(seal, sl_dt):
+			continue
+		if not sl_far:
+			seal.animate(sl_dt)
 		var center: Vector3 = seal.get_meta("center")
 		var t: float = float(seal.get_meta("motion_clock")) * 0.35 + float(seal.get_meta("phase"))
 		var next := center + Vector3(sin(t) * 9.0, sin(t * 1.6) * 1.5, cos(t) * 7.0)
-		var direction := next - seal.position
-		if direction.length_squared() > 0.0001:
-			seal.look_at(seal.position + direction, Vector3.UP, true)
+		if not sl_far:
+			var direction := next - seal.position
+			if direction.length_squared() > 0.0001:
+				seal.look_at(seal.position + direction, Vector3.UP, true)
 		seal.position = next
 	for b_id in boss_nodes:
 		var b_node: Node3D = boss_nodes[b_id]
@@ -2744,8 +2859,14 @@ func _process(delta: float) -> void:
 		sfish.position = next
 
 	# 3. 巨型鬼蝠鲼：大范围开阔海域巡游与翼展倾角
-	for ray in rays:
-		if not is_instance_valid(ray) or _is_immobile(ray):
+	for r_idx in range(rays.size()):
+		var ray: Node3D = rays[r_idx]
+		if not is_instance_valid(ray):
+			continue
+		var ray_far: bool = (not scope_view_enabled) and (not _is_immobile(ray)) and (ray.global_position.distance_squared_to(last_diver_pos) > FAR_AI_DIST_SQ)
+		if ray_far and ((r_idx & 3) != ai_slot):
+			continue
+		if _tick_status(ray, slice_delta if ray_far else delta):
 			continue
 		var center: Vector3 = ray.get_meta("center")
 		var phase: float = float(ray.get_meta("phase"))
@@ -2754,17 +2875,24 @@ func _process(delta: float) -> void:
 		var t: float = float(ray.get_meta("motion_clock", clock)) * spd * 0.18 + phase
 		# 双纽线/大椭圆滑翔轨迹
 		var next := center + Vector3(sin(t) * rad, sin(t * 1.8) * 1.8, cos(t * 0.8) * (rad * 0.75))
-		var dir := next - ray.position
-		if dir.length_squared() > 0.0001:
-			var up := Vector3.UP if absf(dir.normalized().y) < 0.95 else Vector3.FORWARD
-			ray.look_at(ray.position + dir, up, true)
-			# 优雅大翼倾斜
-			ray.rotate_object_local(Vector3.FORWARD, -sin(t * 0.8) * 0.38)
+		if not ray_far:
+			var dir := next - ray.position
+			if dir.length_squared() > 0.0001:
+				var up := Vector3.UP if absf(dir.normalized().y) < 0.95 else Vector3.FORWARD
+				ray.look_at(ray.position + dir, up, true)
+				# 优雅大翼倾斜
+				ray.rotate_object_local(Vector3.FORWARD, -sin(t * 0.8) * 0.38)
 		ray.position = next
 
 	# 4. 深海绿海龟：浅海珊瑚礁漫游与起伏换气游姿
-	for turtle in turtles:
-		if not is_instance_valid(turtle) or _is_immobile(turtle):
+	for t_idx in range(turtles.size()):
+		var turtle: Node3D = turtles[t_idx]
+		if not is_instance_valid(turtle):
+			continue
+		var tur_far: bool = (not scope_view_enabled) and (not _is_immobile(turtle)) and (turtle.global_position.distance_squared_to(last_diver_pos) > FAR_AI_DIST_SQ)
+		if tur_far and ((t_idx & 3) != ai_slot):
+			continue
+		if _tick_status(turtle, slice_delta if tur_far else delta):
 			continue
 		var center: Vector3 = turtle.get_meta("center")
 		var phase: float = float(turtle.get_meta("phase"))
@@ -2772,16 +2900,23 @@ func _process(delta: float) -> void:
 		var rad: float = float(turtle.get_meta("radius"))
 		var t: float = float(turtle.get_meta("motion_clock", clock)) * spd * 0.22 + phase
 		var next := center + Vector3(sin(t) * rad, sin(t * 1.4) * 1.6, cos(t) * (rad * 0.8))
-		var dir := next - turtle.position
-		if dir.length_squared() > 0.0001:
-			var up := Vector3.UP if absf(dir.normalized().y) < 0.95 else Vector3.FORWARD
-			turtle.look_at(turtle.position + dir, up, true)
-			turtle.rotate_object_local(Vector3.FORWARD, -sin(t) * 0.18)
+		if not tur_far:
+			var dir := next - turtle.position
+			if dir.length_squared() > 0.0001:
+				var up := Vector3.UP if absf(dir.normalized().y) < 0.95 else Vector3.FORWARD
+				turtle.look_at(turtle.position + dir, up, true)
+				turtle.rotate_object_local(Vector3.FORWARD, -sin(t) * 0.18)
 		turtle.position = next
 
 	# 5. 深渊发光巨乌贼：脉冲喷射加速与拖曳滑翔
-	for squid in squids:
-		if not is_instance_valid(squid) or _is_immobile(squid):
+	for sq_idx in range(squids.size()):
+		var squid: Node3D = squids[sq_idx]
+		if not is_instance_valid(squid):
+			continue
+		var sq_far: bool = (not scope_view_enabled) and (not _is_immobile(squid)) and (squid.global_position.distance_squared_to(last_diver_pos) > FAR_AI_DIST_SQ)
+		if sq_far and ((sq_idx & 3) != ai_slot):
+			continue
+		if _tick_status(squid, slice_delta if sq_far else delta):
 			continue
 		var center: Vector3 = squid.get_meta("center")
 		var phase: float = float(squid.get_meta("phase"))
@@ -2789,22 +2924,29 @@ func _process(delta: float) -> void:
 		var rad: float = float(squid.get_meta("radius"))
 		var t: float = float(squid.get_meta("motion_clock", clock)) * spd * 0.18 + phase
 		var next := center + Vector3(sin(t) * rad, sin(t * 1.6) * 2.2, cos(t) * rad)
-		var dir := next - squid.position
-		if dir.length_squared() > 0.0001:
-			var up := Vector3.UP if absf(dir.normalized().y) < 0.95 else Vector3.FORWARD
-			squid.look_at(squid.position + dir, up, true)
+		if not sq_far:
+			var dir := next - squid.position
+			if dir.length_squared() > 0.0001:
+				var up := Vector3.UP if absf(dir.normalized().y) < 0.95 else Vector3.FORWARD
+				squid.look_at(squid.position + dir, up, true)
 		squid.position = next
 
 	# 6. 底栖巨螯蟹：海床爬行与潜水员接近时的举螯防卫姿态
-	for crab in crabs:
-		if not is_instance_valid(crab) or _is_immobile(crab):
+	for cr_idx in range(crabs.size()):
+		var crab: Node3D = crabs[cr_idx]
+		if not is_instance_valid(crab):
+			continue
+		var dist_sq_diver: float = crab.global_position.distance_squared_to(last_diver_pos)
+		var crab_far: bool = (not scope_view_enabled) and (not _is_immobile(crab)) and (dist_sq_diver > FAR_AI_DIST_SQ)
+		if crab_far and ((cr_idx & 3) != ai_slot):
+			continue
+		if _tick_status(crab, slice_delta if crab_far else delta):
 			continue
 		var ox: float = float(crab.get_meta("origin_x"))
 		var oz: float = float(crab.get_meta("origin_z"))
 		var phase: float = float(crab.get_meta("phase"))
 		var patrol_r: float = float(crab.get_meta("patrol_radius"))
 
-		var dist_sq_diver: float = crab.global_position.distance_squared_to(last_diver_pos)
 		if dist_sq_diver < 4.8 * 4.8:
 			# 潜水员近身防御警戒状态：转向玩家，微幅抬起前身
 			crab.set_meta("defensive", true)
@@ -2818,12 +2960,13 @@ func _process(delta: float) -> void:
 			var t: float = float(crab.get_meta("motion_clock", clock)) * 0.35 + phase
 			var cx: float = ox + sin(t) * patrol_r
 			var cz: float = oz + cos(t * 0.8) * (patrol_r * 0.75)
-			var cy: float = terrain_height(cx, cz)
-			var move_dir := Vector3(cx, cy, cz) - crab.position
-			if move_dir.length_squared() > 0.0001:
-				var flat_dir := Vector3(move_dir.x, 0, move_dir.z).normalized()
-				if flat_dir.length_squared() > 0.001:
-					crab.look_at(crab.position + flat_dir, Vector3.UP, true)
+			var cy: float = crab.position.y if crab_far else terrain_height(cx, cz)
+			if not crab_far:
+				var move_dir := Vector3(cx, cy, cz) - crab.position
+				if move_dir.length_squared() > 0.0001:
+					var flat_dir := Vector3(move_dir.x, 0, move_dir.z).normalized()
+					if flat_dir.length_squared() > 0.001:
+						crab.look_at(crab.position + flat_dir, Vector3.UP, true)
 			crab.position = Vector3(cx, cy, cz)
 
 	# 7. 热泉巨管虫群落受惊收缩与触碰交互 (使用缓存材质引用，避免逐帧 find_children 搜索)
@@ -2868,8 +3011,14 @@ func _process(delta: float) -> void:
 		light.light_energy = 5.2 + sin(clock * 4.5 + light.position.x) * 0.55
 
 	# 9. 水母生物节律脉动
-	for jelly in jellies:
-		if not is_instance_valid(jelly) or _is_immobile(jelly):
+	for j_idx in range(jellies.size()):
+		var jelly: Node3D = jellies[j_idx]
+		if not is_instance_valid(jelly):
+			continue
+		var jelly_far: bool = (not scope_view_enabled) and (not _is_immobile(jelly)) and (jelly.global_position.distance_squared_to(last_diver_pos) > FAR_AI_DIST_SQ)
+		if jelly_far and ((j_idx & 3) != ai_slot):
+			continue
+		if _tick_status(jelly, slice_delta if jelly_far else delta):
 			continue
 		var center: Vector3 = jelly.get_meta("center")
 		var phase: float = float(jelly.get_meta("phase"))
@@ -2890,7 +3039,7 @@ func _process(delta: float) -> void:
 		else:
 			frag.position.y = sin(clock * 1.8 + bphase) * 0.15
 		frag.rotate_y(delta * 1.5)
-	_tick_schooling_fish(last_diver_pos, delta)
+	_tick_schooling_fish(last_diver_pos, delta, ai_slot, slice_delta)
 	for relic in explorer_relics:
 		if is_instance_valid(relic) and relic.visible and relic.has_node("RelicCore"):
 			var core_node: Node3D = relic.get_node("RelicCore")
@@ -2929,7 +3078,8 @@ func set_depth(depth: float, scoped: bool = false) -> void:
 		var vis_scale := 0.80 if mobile_performance_mode else 1.0
 		for mesh in scope_meshes:
 			if is_instance_valid(mesh):
-				mesh.visibility_range_end = 300.0 if scoped else float(mesh.get_meta("base_visibility_range", mesh.visibility_range_end)) * vis_scale
+				var base_r := float(mesh.get_meta("base_visibility_range", mesh.visibility_range_end))
+				mesh.visibility_range_end = maxf(300.0, base_r) if scoped else base_r * vis_scale
 	_update_water_surface_state(scoped)
 	var profile := sample_depth_profile(depth)
 	environment.fog_density = float(profile["fog_density"])
@@ -2961,6 +3111,19 @@ func set_depth(depth: float, scoped: bool = false) -> void:
 
 func set_mobile_performance_mode(enabled: bool) -> void:
 	mobile_performance_mode = enabled
+	CombatVFX.mobile_performance_mode = enabled
+	if environment != null:
+		environment.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED if enabled else Environment.REFLECTION_SOURCE_SKY
+	if water_surface_mat != null:
+		water_surface_mat.set_shader_parameter("mobile_fast_mode", enabled)
+	if seabed_material != null:
+		seabed_material.set_shader_parameter("mobile_fast_mode", enabled)
+	for i in range(light_shafts.size()):
+		var shaft := light_shafts[i]
+		if is_instance_valid(shaft):
+			shaft.visible = (not enabled) or (i % 2 == 0)
+	if is_instance_valid(seabed_ecology) and seabed_ecology.has_method("set_mobile_performance_mode"):
+		seabed_ecology.set_mobile_performance_mode(enabled)
 	var dir_lights: Array[DirectionalLight3D] = []
 	if is_instance_valid(sun):
 		dir_lights.append(sun)
@@ -3110,11 +3273,17 @@ func _spawn_schooling_fish() -> void:
 		})
 	_creatures_dirty = true
 
-func _tick_schooling_fish(diver_pos: Vector3, delta: float) -> void:
+func _tick_schooling_fish(diver_pos: Vector3, delta: float, ai_slot: int = 0, slice_delta: float = -1.0) -> void:
+	const FAR_SCHOOL_SQ := 85.0 * 85.0
 	for s_idx in range(fish_schools.size()):
 		var school: Dictionary = fish_schools[s_idx]
 		var s_center: Vector3 = school["center"]
-		var ang: float = float(school["orbit_angle"]) + delta * 0.35
+		var prev_lead: Vector3 = school.get("current_pos", s_center)
+		var school_far: bool = (not scope_view_enabled) and (prev_lead.distance_squared_to(diver_pos) > FAR_SCHOOL_SQ)
+		if school_far and slice_delta >= 0.0 and ((s_idx & 3) != ai_slot):
+			continue
+		var step_dt: float = slice_delta if (school_far and slice_delta >= 0.0) else delta
+		var ang: float = float(school["orbit_angle"]) + step_dt * 0.35
 		school["orbit_angle"] = ang
 		var school_lead: Vector3 = s_center + Vector3(sin(ang) * 22.0, sin(ang * 1.8) * 3.5, cos(ang) * 18.0)
 		school["current_pos"] = school_lead
@@ -3131,15 +3300,16 @@ func _tick_schooling_fish(diver_pos: Vector3, delta: float) -> void:
 		for f: Node3D in fish_list:
 			if not is_instance_valid(f):
 				continue
-			if _tick_status(f, delta):
+			if _tick_status(f, step_dt):
 				continue
-			f.animate(delta)
+			if not school_far:
+				f.animate(step_dt)
 
 			var vel: Vector3 = f.get_meta("velocity", Vector3.FORWARD)
-			var scatter_t: float = maxf(0.0, float(f.get_meta("scatter_timer", 0.0)) - delta)
+			var scatter_t: float = maxf(0.0, float(f.get_meta("scatter_timer", 0.0)) - step_dt)
 			f.set_meta("scatter_timer", scatter_t)
 
-			var d_dist_sq: float = f.global_position.distance_squared_to(diver_pos)
+			var d_dist_sq: float = INF if school_far else f.global_position.distance_squared_to(diver_pos)
 			if d_dist_sq < 6.0 * 6.0:
 				var away: Vector3 = (f.global_position - diver_pos).normalized()
 				vel += away * 16.0
@@ -3149,19 +3319,20 @@ func _tick_schooling_fish(diver_pos: Vector3, delta: float) -> void:
 				var to_com := (center_of_mass - f.position) * 0.8
 				var to_lead := (school_lead - f.position) * 0.6
 				var separation := Vector3.ZERO
-				for other: Node3D in fish_list:
-					if other != f and is_instance_valid(other):
-						var diff := f.position - other.position
-						var d_sq := diff.length_squared()
-						if d_sq < 3.2 and d_sq > 0.0001:
-							separation += diff.normalized() * (3.2 - sqrt(d_sq)) * 2.2
-				vel += (to_com + to_lead + separation) * delta * 4.0
+				if not school_far:
+					for other: Node3D in fish_list:
+						if other != f and is_instance_valid(other):
+							var diff := f.position - other.position
+							var d_sq := diff.length_squared()
+							if d_sq < 3.2 and d_sq > 0.0001:
+								separation += diff.normalized() * (3.2 - sqrt(d_sq)) * 2.2
+				vel += (to_com + to_lead + separation) * step_dt * 4.0
 			var target_spd: float = float(school["speed"]) * (2.2 if scatter_t > 0.0 else 1.0)
 			vel = vel.limit_length(target_spd)
 			f.set_meta("velocity", vel)
-			f.position += vel * delta
+			f.position += vel * step_dt
 
-			if vel.length_squared() > 0.01:
+			if not school_far and vel.length_squared() > 0.01:
 				var up_v := Vector3.UP if absf(vel.normalized().y) < 0.95 else Vector3.FORWARD
 				f.look_at(f.position + vel, up_v, true)
 
@@ -3304,6 +3475,13 @@ func _build_mother_tree_structure(awakened: bool) -> Node3D:
 	mat_vein.emission_energy_multiplier = 1.05 if awakened else 0.55
 	mother_tree.set_meta("vein_material", mat_vein)
 
+	var st_bark := SurfaceTool.new()
+	st_bark.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var st_canopy := SurfaceTool.new()
+	st_canopy.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var st_vein := SurfaceTool.new()
+	st_vein.begin(Mesh.PRIMITIVE_TRIANGLES)
+
 	# 1. Colossal Twisting Fluted Ancient Trunk (Rising organically up 68 meters)
 	var trunk_pts: Array[Vector3] = []
 	var trunk_radii: Array[float] = []
@@ -3314,10 +3492,7 @@ func _build_mother_tree_structure(awakened: bool) -> Node3D:
 		var flare := pow(maxf(0.0, 1.0 - t * 2.6), 2.0) * 4.8
 		trunk_pts.append(Vector3(sway_x, t * 67.0, sway_z))
 		trunk_radii.append(lerpf(8.2, 3.4, pow(t, 0.75)) + flare)
-	var trunk := MeshInstance3D.new()
-	trunk.mesh = _make_organic_limb_mesh(trunk_pts, trunk_radii, 24, 9, 0.16, 1.25)
-	trunk.material_override = mat_bark
-	mother_tree.add_child(trunk)
+	st_bark.append_from(_make_organic_limb_mesh(trunk_pts, trunk_radii, 24, 9, 0.16, 1.25), 0, Transform3D.IDENTITY)
 
 	# Helical bioluminescent sap veins climbing the fluted trunk
 	for v_idx in range(4):
@@ -3331,10 +3506,7 @@ func _build_mother_tree_structure(awakened: bool) -> Node3D:
 			var ang := base_a + t * TAU * 1.15
 			v_pts.append(center + Vector3(cos(ang) * (r_trunk * 0.96), 0.0, sin(ang) * (r_trunk * 0.96)))
 			v_rad.append(lerpf(0.55, 0.22, t))
-		var vein := MeshInstance3D.new()
-		vein.mesh = _make_organic_limb_mesh(v_pts, v_rad, 8, 3, 0.05, 0.5)
-		vein.material_override = mat_vein
-		mother_tree.add_child(vein)
+		st_vein.append_from(_make_organic_limb_mesh(v_pts, v_rad, 8, 3, 0.05, 0.5), 0, Transform3D.IDENTITY)
 
 	# 10 Cathedral Buttress Roots arching out into the seabed
 	for i in range(10):
@@ -3349,18 +3521,11 @@ func _build_mother_tree_structure(awakened: bool) -> Node3D:
 			var arch_h := lerpf(19.5, -1.2, pow(t, 0.72)) + sin(t * PI) * 5.8
 			r_pts.append(Vector3(cos(curve_ang) * dist, arch_h, sin(curve_ang) * dist))
 			r_rad.append(lerpf(3.4, 0.65, pow(t, 0.82)))
-		var root_limb := MeshInstance3D.new()
-		root_limb.mesh = _make_organic_limb_mesh(r_pts, r_rad, 12, 5, 0.14, 0.8)
-		root_limb.material_override = mat_bark
-		mother_tree.add_child(root_limb)
+		st_bark.append_from(_make_organic_limb_mesh(r_pts, r_rad, 12, 5, 0.14, 0.8), 0, Transform3D.IDENTITY)
 
 	# 2. Sweeping Primary & Crown Boughs + Multi-Tiered Scalloped Bioluminescent Sea-Canopy Domes
 	var top_center := trunk_pts[-1]
-	var crown_dome := MeshInstance3D.new()
-	crown_dome.mesh = _make_scalloped_canopy_dome(22.0, 9.5, 16)
-	crown_dome.position = top_center + Vector3(0, 3.5, 0)
-	crown_dome.material_override = mat_canopy
-	mother_tree.add_child(crown_dome)
+	st_canopy.append_from(_make_scalloped_canopy_dome(22.0, 9.5, 16), 0, Transform3D(Basis.IDENTITY, top_center + Vector3(0, 3.5, 0)))
 
 	for i in range(12):
 		var c_ang: float = float(i) * TAU / 12.0 + (0.18 if i % 2 == 1 else 0.0)
@@ -3378,18 +3543,11 @@ func _build_mother_tree_structure(awakened: bool) -> Node3D:
 			var y := lerpf(trunk_anchor.y, end_y, pow(t, 0.76)) + sin(t * PI) * 3.6
 			b_pts.append(Vector3(trunk_anchor.x * (1.0 - t) + cos(b_ang) * dist, y, trunk_anchor.z * (1.0 - t) + sin(b_ang) * dist))
 			b_rad.append(lerpf(2.3, 0.58, t))
-		var bough := MeshInstance3D.new()
-		bough.mesh = _make_organic_limb_mesh(b_pts, b_rad, 10, 5, 0.11, 0.6)
-		bough.material_override = mat_bark
-		mother_tree.add_child(bough)
+		st_bark.append_from(_make_organic_limb_mesh(b_pts, b_rad, 10, 5, 0.11, 0.6), 0, Transform3D.IDENTITY)
 
-		var foliage := MeshInstance3D.new()
 		var dome_r := (12.5 if upper_tier else 15.0) + float(i % 3) * 2.2
-		foliage.mesh = _make_scalloped_canopy_dome(dome_r, dome_r * 0.42, 12)
-		foliage.position = b_pts[-1] + Vector3(0, 0.6, 0)
-		foliage.rotation = Vector3(sin(c_ang) * 0.08, c_ang, -cos(c_ang) * 0.08)
-		foliage.material_override = mat_canopy
-		mother_tree.add_child(foliage)
+		var foliage_xform := Transform3D(Basis.from_euler(Vector3(sin(c_ang) * 0.08, c_ang, -cos(c_ang) * 0.08)), b_pts[-1] + Vector3(0, 0.6, 0))
+		st_canopy.append_from(_make_scalloped_canopy_dome(dome_r, dome_r * 0.42, 12), 0, foliage_xform)
 
 		# Hanging luminous curtain tendrils under each canopy bell
 		for tendril_k in range(2):
@@ -3402,10 +3560,25 @@ func _build_mother_tree_structure(awakened: bool) -> Node3D:
 				var u := float(ts) / 5.0
 				t_pts.append(t_origin + Vector3(sin(u * PI * 1.5 + float(i)) * 1.1 * u, -u * drop_len, cos(u * PI * 1.3 + float(tendril_k)) * 1.1 * u))
 				t_rad.append(lerpf(0.24, 0.04, u))
-			var tendril := MeshInstance3D.new()
-			tendril.mesh = _make_organic_limb_mesh(t_pts, t_rad, 6, 3, 0.04, 0.4)
-			tendril.material_override = mat_vein
-			mother_tree.add_child(tendril)
+			st_vein.append_from(_make_organic_limb_mesh(t_pts, t_rad, 6, 3, 0.04, 0.4), 0, Transform3D.IDENTITY)
+
+	var merged_bark := MeshInstance3D.new()
+	merged_bark.name = "MotherTreeBark"
+	merged_bark.mesh = st_bark.commit()
+	merged_bark.material_override = mat_bark
+	mother_tree.add_child(merged_bark)
+
+	var merged_canopy := MeshInstance3D.new()
+	merged_canopy.name = "MotherTreeCanopy"
+	merged_canopy.mesh = st_canopy.commit()
+	merged_canopy.material_override = mat_canopy
+	mother_tree.add_child(merged_canopy)
+
+	var merged_veins := MeshInstance3D.new()
+	merged_veins.name = "MotherTreeVeins"
+	merged_veins.mesh = st_vein.commit()
+	merged_veins.material_override = mat_vein
+	mother_tree.add_child(merged_veins)
 
 	# 3. Skyward Ascending Luminous Beacon Light Pillar
 	var beacon := OmniLight3D.new()
@@ -3434,7 +3607,9 @@ func _build_mother_tree_structure(awakened: bool) -> Node3D:
 	p_mat.albedo_color = Color(0.62, 0.84, 0.88, 0.65)
 	particles.material_override = p_mat
 	particles.position = Vector3(0, 45.0, 0)
+	particles.set_meta("base_visibility_range", 220.0)
 	mother_tree.add_child(particles)
+	_register_visibility_lod(mother_tree, 260.0, true)
 
 	# 5. Sanctuary Entrance Marker & 3 Sacred Collectable Items
 	var m_text := "◈ 远古深海母树 · 觉醒圣所\n游入内部收集生命核心" if awakened else "◈ 远古深海母树 · 沉眠圣所\n平息四大深海领主可唤醒圣物"
@@ -3492,12 +3667,14 @@ func _spawn_mother_item(kind: String, item_name: String, at: Vector3, color: Col
 	light.omni_range = 8.0
 	item.add_child(light)
 	var lbl := Label3D.new()
-	lbl.text = "✦  [E] 采摘 " + item_name
+	lbl.name = "ItemLabel"
+	lbl.text = _format_mother_item_label(item_name, _touch_prompts_enabled)
 	lbl.position = Vector3(0, 1.4, 0)
 	lbl.modulate = color
 	_configure_label_3d(lbl, 28, 0.007)
 	item.add_child(lbl)
 	add_child(item)
+	_register_visibility_lod(item, 85.0, true)
 	mother_tree_items.append(item)
 	return item
 
@@ -3740,11 +3917,12 @@ func _spawn_research_outpost(spec: Dictionary) -> Node3D:
 
 	var lbl := Label3D.new()
 	lbl.name = "OutpostLabel"
-	lbl.text = "⬡  %s\n[E 激活声呐塔与跃迁网 · 补氧制造]" % str(spec["name"])
+	lbl.text = _format_outpost_label(str(spec["name"]), false, _touch_prompts_enabled)
 	lbl.position = Vector3(0, 12.6, 0)
 	lbl.modulate = Color(1.0, 0.84, 0.36)
 	_configure_label_3d(lbl, 38, 0.009)
 	root_node.add_child(lbl)
+	_register_visibility_lod(root_node, 160.0, true)
 
 	outposts.append(root_node)
 	return root_node
@@ -3766,7 +3944,7 @@ func set_outpost_activated_visual(outpost: Node3D) -> void:
 		lgt.light_energy = 2.2
 	if outpost.has_node("OutpostLabel"):
 		var lbl: Label3D = outpost.get_node("OutpostLabel")
-		lbl.text = "⬡  %s  [已联网]\n[E 打开海图跃迁 · Tab 制造 · 自动补氧]" % str(outpost.get_meta("name", "科考前哨站"))
+		lbl.text = _format_outpost_label(str(outpost.get_meta("name", "科考前哨站")), true, _touch_prompts_enabled)
 		lbl.modulate = ArtDirection.CYAN
 
 func find_nearby_outpost(pos: Vector3, max_dist: float = 9.5) -> Node3D:
@@ -3871,14 +4049,62 @@ func _spawn_explorer_relic(spec: Dictionary) -> Node3D:
 	body.add_child(core)
 
 	var lbl := Label3D.new()
-	lbl.text = "◆  [E] 收集遗珍：" + str(spec["name"])
+	lbl.name = "RelicLabel"
+	lbl.text = _format_relic_label(str(spec["name"]), _touch_prompts_enabled)
 	lbl.position = Vector3(0, 2.65, 0)
 	lbl.modulate = ArtDirection.AMBER
 	_configure_label_3d(lbl, 30, 0.008)
 	body.add_child(lbl)
+	_register_visibility_lod(body, 65.0, true)
 
 	explorer_relics.append(body)
 	return body
+
+func _format_mother_item_label(item_name: String, is_touch: bool) -> String:
+	return ("✦  [点击交互] 采摘 " if is_touch else "✦  [E] 采摘 ") + item_name
+
+func _format_outpost_label(outpost_name: String, activated: bool, is_touch: bool) -> String:
+	if activated:
+		if is_touch:
+			return "⬡  %s  [已联网]\n[点击交互 · 海图与制造 · 自动补氧]" % outpost_name
+		return "⬡  %s  [已联网]\n[E 打开海图跃迁 · Tab 制造 · 自动补氧]" % outpost_name
+	if is_touch:
+		return "⬡  %s\n[点击交互 · 激活声呐塔与跃迁网 · 补氧制造]" % outpost_name
+	return "⬡  %s\n[E 激活声呐塔与跃迁网 · 补氧制造]" % outpost_name
+
+func _format_relic_label(relic_name: String, is_touch: bool) -> String:
+	return ("◆  [点击交互] 收集遗珍：" if is_touch else "◆  [E] 收集遗珍：") + relic_name
+
+func refresh_interaction_prompts(is_touch: bool) -> void:
+	_touch_prompts_enabled = is_touch
+	for item in mother_tree_items:
+		if not is_instance_valid(item):
+			continue
+		var item_lbl := item.get_node_or_null("ItemLabel") as Label3D
+		if item_lbl != null:
+			item_lbl.text = _format_mother_item_label(str(item.get_meta("name", "生命核心")), is_touch)
+	for outpost in outposts:
+		if not is_instance_valid(outpost):
+			continue
+		var out_lbl := outpost.get_node_or_null("OutpostLabel") as Label3D
+		if out_lbl != null:
+			var out_name := str(outpost.get_meta("name", "科考前哨站"))
+			var is_act := bool(outpost.get_meta("activated", false))
+			out_lbl.text = _format_outpost_label(out_name, is_act, is_touch)
+	for relic in explorer_relics:
+		if not is_instance_valid(relic):
+			continue
+		var rel_lbl := relic.get_node_or_null("RelicLabel") as Label3D
+		if rel_lbl != null:
+			rel_lbl.text = _format_relic_label(str(relic.get_meta("name", "远古遗珍")), is_touch)
+	if is_instance_valid(escape_console):
+		var con_lbl := escape_console.get_node_or_null("ConsoleLabel") as Label3D
+		if con_lbl != null:
+			con_lbl.text = "逃生控制台\n[点击交互]" if is_touch else "逃生控制台"
+	if is_instance_valid(black_box_terminal):
+		var bb_lbl := black_box_terminal.get_node_or_null("BlackBoxLabel") as Label3D
+		if bb_lbl != null:
+			bb_lbl.text = "失事科考日志\n[点击交互]" if is_touch else "失事科考日志"
 
 func find_nearby_relic(pos: Vector3, max_dist: float = 4.6) -> Node3D:
 	var best: Node3D = null
@@ -4036,10 +4262,15 @@ func set_art_observer(at: Vector3, depth_override: float = -1.0) -> void:
 func _update_water_atmosphere(water: Color, energy: float, depth: float) -> void:
 	if water_atmosphere == null:
 		return
+	var depth_deadband := 1.4 if mobile_performance_mode else 0.65
+	var color_sq := Vector3(water.r, water.g, water.b).distance_squared_to(Vector3(_atmosphere_color.r, _atmosphere_color.g, _atmosphere_color.b))
+	if _atmosphere_depth >= -500.0 and absf(depth - _atmosphere_depth) < depth_deadband and color_sq <= 0.00018 and absf(energy - _atmosphere_energy) <= 0.008:
+		return
+	_atmosphere_depth = depth
 	var sunlit := 1.0 - smoothstep(40.0, 190.0, depth)
 	# Avoid invalidating reflection cubemaps when an observer is stationary or
 	# crosses a tiny fraction of a regional blend; the visible fog stays smooth.
-	if Vector3(water.r, water.g, water.b).distance_squared_to(Vector3(_atmosphere_color.r, _atmosphere_color.g, _atmosphere_color.b)) > 0.000009:
+	if color_sq > 0.000009:
 		water_atmosphere.set_shader_parameter("water_color", water)
 		_atmosphere_color = water
 	if absf(energy - _atmosphere_energy) > 0.003:

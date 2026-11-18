@@ -11,22 +11,24 @@ varying vec3 world_pos;
 varying vec2 swell_slope;
 
 void vertex() {
+	float anim_time = review_time >= 0.0 ? review_time : mod(TIME, 3600.0);
 	vec3 phase = vec3(dot(VERTEX.xz, vec2(0.16, 0.06)),
 		dot(VERTEX.xz, vec2(-0.09, 0.24)), dot(VERTEX.xz, vec2(0.31, 0.19)))
-		- (review_time >= 0.0 ? review_time : TIME) * vec3(0.72, 0.91, 1.17);
+		- anim_time * vec3(0.72, 0.91, 1.17);
 	VERTEX.y += dot(sin(phase), vec3(0.28, 0.16, 0.08));
 	vec3 slope = cos(phase) * vec3(0.28, 0.16, 0.08);
 	swell_slope = vec2(dot(slope, vec3(0.16, -0.09, 0.31)), dot(slope, vec3(0.06, 0.24, 0.19)));
 	// Keep the same authored swell above and below the air-water interface.
 	float long_phase = dot(VERTEX.xz, vec2(0.045, -0.025))
-		- (review_time >= 0.0 ? review_time : TIME) * 0.42;
+		- anim_time * 0.42;
 	VERTEX.y += sin(long_phase) * 0.36;
 	swell_slope += cos(long_phase) * vec2(0.045, -0.025) * 0.36;
 	world_pos = VERTEX;
 }
 
 void fragment() {
-	vec2 drift = (review_time >= 0.0 ? review_time : TIME) * vec2(0.014, -0.009);
+	float anim_time = review_time >= 0.0 ? review_time : mod(TIME, 3600.0);
+	vec2 drift = anim_time * vec2(0.014, -0.009);
 	vec2 broad = texture(ripple_normal, world_pos.xz * 0.035 + drift).rg * 2.0 - 1.0;
 	vec2 fine = texture(ripple_normal, world_pos.zx * 0.083 - drift * 1.31).gr * 2.0 - 1.0;
 	float distance_to_camera = length(CAMERA_POSITION_WORLD - world_pos);

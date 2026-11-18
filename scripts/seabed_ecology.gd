@@ -8,6 +8,7 @@ const MAX_CHUNKS := 25
 const WORLD_HALF_EXTENT := 900.0
 const WORLD_SEED := 381193
 const MAX_INSTANCES_PER_CHUNK := 128
+const MOBILE_MAX_INSTANCES_PER_CHUNK := 70
 const MAX_FISH_PER_CHUNK := 8
 const OceanDepths := preload("res://scripts/ocean_depths.gd")
 const ArtDirection := preload("res://scripts/art_direction.gd")
@@ -29,6 +30,25 @@ var _material_cache: Dictionary = {}
 var _pending_ambient: Array[Vector2i] = []
 var _observer_depth_band := 0
 var _observer_water_zone := "sunlit_reef"
+var mobile_performance_mode := false
+
+func _max_instances_per_chunk() -> int:
+	return MOBILE_MAX_INSTANCES_PER_CHUNK if mobile_performance_mode else MAX_INSTANCES_PER_CHUNK
+
+func set_mobile_performance_mode(enabled: bool) -> void:
+	if mobile_performance_mode == enabled:
+		return
+	mobile_performance_mode = enabled
+	if not _chunks.is_empty() and is_instance_valid(_ocean):
+		for cell: Vector2i in _chunks.keys():
+			var old: Node3D = _chunks[cell]
+			remove_child(old)
+			old.queue_free()
+		_chunks.clear()
+		_pending_ambient.clear()
+		_request_neighborhood(_observer)
+		for _idx in range(mini(9, _pending.size())):
+			_build_chunk(_pending.pop_front())
 
 func configure(ocean: Node3D) -> void:
 	_ocean = ocean
@@ -118,7 +138,7 @@ func _is_reserved(x: float, z: float, clearance: float = 0.0) -> bool:
 # Sample the actual rendered triangle, including the coarser outer seabed.
 # Merely sampling the analytic floor leaves small decorations floating above it.
 func sample_floor_height(x: float, z: float) -> float:
-	return float(_ocean.call("terrain_height", x, z))
+	return _ocean.terrain_height(x, z)
 
 func _floor_normal(x: float, z: float) -> Vector3:
 	var left := sample_floor_height(x - 0.4, z)
@@ -127,9 +147,9 @@ func _floor_normal(x: float, z: float) -> Vector3:
 	var front := sample_floor_height(x, z + 0.4)
 	return Vector3(left - right, 0.8, back - front).normalized()
 
-func sample_habitat(x: float, z: float) -> Dictionary:
-	var depth := maxf(0.0, -sample_floor_height(x, z))
-	var slope := 1.0 - _floor_normal(x, z).y
+func _sample_habitat_from_floor(x: float, z: float, floor_y: float, normal: Vector3) -> Dictionary:
+	var depth := maxf(0.0, -floor_y)
+	var slope := 1.0 - normal.y
 	var depth_zone := OceanDepths.zone_id(depth)
 	var biome: String = depth_zone
 	var patch := _patch_noise.get_noise_2d(x, z)
@@ -139,7 +159,20 @@ func sample_habitat(x: float, z: float) -> Dictionary:
 		biome = "vent_field"
 	elif depth <= 55.0 and (kelp_distance < 190.0 or patch > 0.34):
 		biome = "kelp_forest"
-	return {"biome": biome, "depth_zone": depth_zone, "depth": depth, "slope": slope, "region": ArtDirection.region_id_at(x, z)}
+	return {
+		"biome": biome,
+		"depth_zone": depth_zone,
+		"depth": depth,
+		"slope": slope,
+		"region": ArtDirection.region_id_at(x, z),
+		"floor_y": floor_y,
+		"normal": normal,
+	}
+
+func sample_habitat(x: float, z: float) -> Dictionary:
+	var floor_y := sample_floor_height(x, z)
+	var normal := _floor_normal(x, z)
+	return _sample_habitat_from_floor(x, z, floor_y, normal)
 
 # A broad, world-continuous sand channel creates negative space across chunk
 # seams. It is scenery only: neither terrain nor gameplay collision is changed.
@@ -184,7 +217,7 @@ func build_chunk_plan(cell: Vector2i) -> Array[Dictionary]:
 			rock_kind = "vent_chimney" if cluster == 0 else "basalt_boulder"
 			rock_scale = Vector3(size * 0.65, size * 0.85, size * 0.65)
 		if not _is_sand_channel(center):
-			_add_to_plan(plan, rock_kind, center, rock_scale, yaw)
+			_add_to_plan(plan, rock_kind, center, rock_scale, yaw, center_habitat)
 		var satellite := center + direction * size * 1.6
 		if not _is_sand_channel(satellite):
 			_add_to_plan(plan, "limestone_boulder" if depth < 90.0 else "silt_boulder", satellite, rock_scale * Vector3(0.42, 0.45, 0.65), yaw + 0.35)
@@ -217,7 +250,7 @@ func build_chunk_plan(cell: Vector2i) -> Array[Dictionary]:
 				shape = Vector3(colony_size * 1.08, colony_size * local_rng.randf_range(1.75, 2.55), colony_size * 1.08)
 				# Kelp never pierces the water surface.
 				shape.y = minf(shape.y, (float(habitat["depth"]) - 1.5) / 5.2)
-			_add_to_plan(plan, asset, p, shape, yaw + local_rng.randf_range(-0.5, 0.5))
+			_add_to_plan(plan, asset, p, shape, yaw + local_rng.randf_range(-0.5, 0.5), habitat)
 		# Low-cost blades form the understory only where photosynthesis is possible.
 		for index in range(7):
 			# Understory follows the colony's shoulder as one crescent-shaped patch;
@@ -225,11 +258,17 @@ func build_chunk_plan(cell: Vector2i) -> Array[Dictionary]:
 			var angle := yaw - 1.1 + float(index) * 0.34
 			var drift_radius := size * 2.3 + local_rng.randf_range(-1.1, 1.1)
 			var p := center + Vector2(cos(angle), sin(angle)) * drift_radius
-			var habitat := sample_habitat(p.x, p.y)
-			if float(habitat["depth"]) > 35.0 or float(habitat["slope"]) > 0.32 or _is_sand_channel(p):
+			if _is_sand_channel(p):
 				continue
+			var floor_y := sample_floor_height(p.x, p.y)
+			if maxf(0.0, -floor_y) > 35.0:
+				continue
+			var normal := _floor_normal(p.x, p.y)
+			if 1.0 - normal.y > 0.32:
+				continue
+			var habitat := _sample_habitat_from_floor(p.x, p.y, floor_y, normal)
 			var blade_scale := local_rng.randf_range(0.8, 1.45)
-			_add_to_plan(plan, "seagrass", p, Vector3(blade_scale, blade_scale * local_rng.randf_range(0.85, 1.3), blade_scale), local_rng.randf() * TAU)
+			_add_to_plan(plan, "seagrass", p, Vector3(blade_scale, blade_scale * local_rng.randf_range(0.85, 1.3), blade_scale), local_rng.randf() * TAU, habitat)
 	# Pebble drifts and shell hash remain visible across all depth bands, including
 	# map edges. Drift noise leaves rippled sand exposed between the patches.
 	for index in range(18):
@@ -265,16 +304,18 @@ func _choose_colony(biome: String, local_rng: RandomNumberGenerator) -> String:
 			options = ["glass_sponge", "sea_pen", "silt_boulder", "sea_lily"]
 	return str(options[local_rng.randi_range(0, options.size() - 1)])
 
-func _add_to_plan(plan: Array[Dictionary], asset: String, xz: Vector2, size: Vector3, yaw: float) -> void:
-	if plan.size() >= MAX_INSTANCES_PER_CHUNK or absf(xz.x) > WORLD_HALF_EXTENT or absf(xz.y) > WORLD_HALF_EXTENT:
+func _add_to_plan(plan: Array[Dictionary], asset: String, xz: Vector2, size: Vector3, yaw: float, precomputed_habitat: Dictionary = {}) -> void:
+	if plan.size() >= _max_instances_per_chunk() or absf(xz.x) > WORLD_HALF_EXTENT or absf(xz.y) > WORLD_HALF_EXTENT:
 		return
 	var clearance := maxf(size.x, size.z) * 1.15 if asset.ends_with("_boulder") or asset == "vent_chimney" else 0.0
 	if _is_reserved(xz.x, xz.y, clearance):
 		return
-	var habitat := sample_habitat(xz.x, xz.y)
+	var habitat := precomputed_habitat if not precomputed_habitat.is_empty() else sample_habitat(xz.x, xz.y)
+	var floor_y: float = float(habitat["floor_y"]) if habitat.has("floor_y") else sample_floor_height(xz.x, xz.y)
+	var normal: Vector3 = habitat["normal"] if habitat.has("normal") else _floor_normal(xz.x, xz.y)
 	plan.append({
-		"asset": asset, "position": Vector3(xz.x, sample_floor_height(xz.x, xz.y), xz.y),
-		"scale": size, "yaw": yaw, "normal": _floor_normal(xz.x, xz.y), "biome": str(habitat["biome"]), "depth_zone": str(habitat["depth_zone"]), "region": str(habitat["region"])
+		"asset": asset, "position": Vector3(xz.x, floor_y, xz.y),
+		"scale": size, "yaw": yaw, "normal": normal, "biome": str(habitat["biome"]), "depth_zone": str(habitat["depth_zone"]), "region": str(habitat["region"])
 	})
 
 func _build_chunk(cell: Vector2i) -> void:
@@ -428,6 +469,7 @@ func _natural_material(source: Material, asset: String) -> ShaderMaterial:
 	material.set_shader_parameter("roughness", float(profile["roughness"]))
 	if source is BaseMaterial3D:
 		var base: BaseMaterial3D = source
+		material.set_shader_parameter("use_surface_maps", true)
 		material.set_shader_parameter("albedo", base.albedo_color)
 		material.set_shader_parameter("roughness", float(profile["roughness"]))
 		material.set_shader_parameter("metallic", 0.0)
@@ -439,6 +481,9 @@ func _natural_material(source: Material, asset: String) -> ShaderMaterial:
 		material.set_shader_parameter("uv_offset", base.uv1_offset)
 		if _ocean.has_method("configure_natural_palette"):
 			_ocean.call("configure_natural_palette", material, asset)
+	else:
+		material.set_shader_parameter("use_surface_maps", false)
+		material.set_shader_parameter("normal_scale", 0.0)
 	_material_cache[cache_key] = material
 	return material
 
@@ -772,12 +817,16 @@ func _create_ambient_fish_mesh(lantern: bool = false) -> ArrayMesh:
 		var v := vertices[index]
 		surface.add_vertex(v * (Vector3(0.17, 0.20, 0.42) if lantern else Vector3(0.11, 0.15, 0.39)))
 	# Forked tail and dorsal fin are real geometry, rather than glowing sprites.
-	for v: Vector3 in [
-		Vector3(0, 0, -0.28), Vector3(0, 0.22, -0.63), Vector3(0, 0, -0.52),
-		Vector3(0, 0, -0.28), Vector3(0, 0, -0.52), Vector3(0, -0.22, -0.63),
-		Vector3(0, 0.11, 0.16), Vector3(0, 0.25, -0.10), Vector3(0, 0.11, -0.23)
+	for fin_tri in [
+		[Vector3(0, 0, -0.28), Vector3(0, 0.22, -0.63), Vector3(0, 0, -0.52)],
+		[Vector3(0, 0, -0.28), Vector3(0, 0, -0.52), Vector3(0, -0.22, -0.63)],
+		[Vector3(0, 0.11, 0.16), Vector3(0, 0.25, -0.10), Vector3(0, 0.11, -0.23)],
 	]:
-		surface.add_vertex(v)
+		var a: Vector3 = fin_tri[0]
+		var b: Vector3 = fin_tri[1]
+		var c: Vector3 = fin_tri[2]
+		surface.add_vertex(a); surface.add_vertex(b); surface.add_vertex(c)
+		surface.add_vertex(a); surface.add_vertex(c); surface.add_vertex(b)
 	surface.generate_normals()
 	return surface.commit()
 
@@ -790,8 +839,11 @@ func _create_ambient_squid_mesh() -> ArrayMesh:
 	for vertex in vertices:
 		surface.add_vertex(vertex)
 	for side: float in [-1.0, 1.0]:
-		for vertex: Vector3 in [Vector3(side * 0.12, 0, 0.44), Vector3(side * 0.48, 0, 0.10), Vector3(side * 0.12, 0, -0.18)]:
-			surface.add_vertex(vertex)
+		var fa := Vector3(side * 0.12, 0, 0.44)
+		var fb := Vector3(side * 0.48, 0, 0.10)
+		var fc := Vector3(side * 0.12, 0, -0.18)
+		surface.add_vertex(fa); surface.add_vertex(fb); surface.add_vertex(fc)
+		surface.add_vertex(fa); surface.add_vertex(fc); surface.add_vertex(fb)
 	for arm in range(8):
 		var angle := float(arm) * TAU / 8.0
 		var root := Vector3(cos(angle) * 0.10, sin(angle) * 0.10, -0.48)
@@ -816,8 +868,10 @@ func _create_ambient_jelly_mesh(abyss: bool = false) -> ArrayMesh:
 				Vector3(cos(a1) * sin(phi0) * radius, cos(phi0) * radius * 0.7, sin(a1) * sin(phi0) * radius),
 				Vector3(cos(a0) * sin(phi1) * radius, cos(phi1) * radius * 0.7, sin(a0) * sin(phi1) * radius),
 				Vector3(cos(a1) * sin(phi1) * radius, cos(phi1) * radius * 0.7, sin(a1) * sin(phi1) * radius)]
-			for index in [0, 1, 2, 1, 3, 2]:
+			for index in [0, 2, 1, 1, 2, 3]:
 				surface.add_vertex(points[index])
+			for index in [0, 1, 2, 1, 3, 2]:
+				surface.add_vertex(points[index] * 0.97)
 	for arm in range(6):
 		var angle := float(arm) * TAU / 6.0
 		var start := Vector3(cos(angle) * radius * 0.65, -0.04, sin(angle) * radius * 0.65)
@@ -850,5 +904,5 @@ func get_ecology_snapshot() -> Dictionary:
 		"ambient_fish_count": fish_count, "max_ambient_fish": MAX_CHUNKS * MAX_FISH_PER_CHUNK,
 		"ambient_species": ambient_species, "observer_depth_band": _observer_depth_band, "observer_depth_zone": _observer_water_zone,
 		"pending_ambient_chunks": _pending_ambient.size(), "depth_zones": zones,
-		"max_chunks": MAX_CHUNKS, "max_instances_per_chunk": MAX_INSTANCES_PER_CHUNK,
+		"max_chunks": MAX_CHUNKS, "max_instances_per_chunk": _max_instances_per_chunk(),
 		"chunk_size": CHUNK_SIZE, "observer": _observer, "biomes": biomes}

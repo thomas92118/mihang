@@ -5,6 +5,8 @@ const TouchControls = preload("res://scripts/touch_controls.gd")
 var _actions: Array[Dictionary] = []
 var _moves: Array[Vector2] = []
 var _looks: Array[Vector2] = []
+var _orbits: Array[Vector2] = []
+var _pinches: Array[float] = []
 var _quick_menu_count := 0
 var _touch_use_count := 0
 
@@ -49,6 +51,8 @@ func _run() -> void:
 	)
 	surface.movement_changed.connect(func(value: Vector2): _moves.append(value))
 	surface.look_dragged.connect(func(value: Vector2): _looks.append(value))
+	surface.orbit_dragged.connect(func(value: Vector2): _orbits.append(value))
+	surface.zoom_pinched.connect(func(delta: float): _pinches.append(delta))
 	surface.quick_menu_requested.connect(func(): _quick_menu_count += 1)
 	surface.touch_used.connect(func(): _touch_use_count += 1)
 	surface.set_gameplay_enabled(true)
@@ -140,6 +144,58 @@ func _run() -> void:
 	assert(surface.get_active_touch_count() == 0)
 	assert(_action_count("attack", false, true) == 4)
 	_touch(surface, 8, Vector2.ZERO, false)
+
+	# Dual-finger pinch zoom in look area and seamless single-finger look fallback.
+	var pinch_p0 := look.position + Vector2(36, 48)
+	var pinch_p1 := look.position + Vector2(116, 48)
+	_pinches.clear()
+	assert(_touch(surface, 20, pinch_p0, true))
+	assert(_touch(surface, 21, pinch_p1, true))
+	assert(surface.get_active_touch_count() == 2)
+	assert(_drag(surface, 20, pinch_p0 + Vector2(-24, 0)))
+	assert(_drag(surface, 21, pinch_p1 + Vector2(24, 0)))
+	assert(not _pinches.is_empty(), "Two-finger reverse spread in look area must emit zoom_pinched")
+	var total_pinch := 0.0
+	for pd: float in _pinches:
+		total_pinch += pd
+	assert(total_pinch > 30.0, "Two-finger spread must report positive pinch distance delta")
+	assert(_touch(surface, 21, pinch_p1 + Vector2(24, 0), false))
+	assert(surface.get_active_touch_count() == 1)
+	var looks_before_fallback := _looks.size()
+	var orbits_before_fallback := _orbits.size()
+	assert(_drag(surface, 20, pinch_p0 + Vector2(6, -12)))
+	assert(_looks.size() == looks_before_fallback + 1, "Lifting one finger must seamlessly fall back to single-finger look_dragged")
+	assert(_looks.back().is_equal_approx(Vector2(30, -12)))
+	assert(_orbits.size() == orbits_before_fallback, "Remaining single finger must not stay stuck in orbit mode")
+	assert(_touch(surface, 20, pinch_p0 + Vector2(6, -12), false))
+	assert(surface.get_active_touch_count() == 0)
+
+	# Dynamic same-orientation resize (mobile browser address bar collapse/expand) preserves active touches.
+	viewport.size = Vector2i(844, 390)
+	await process_frame
+	await process_frame
+	surface.configure({"touch_scale": 1.0, "touch_opacity": 0.75})
+	var joy_hold_pos := surface.get_joystick_rect().get_center() + Vector2(0, -36)
+	var atk_hold_pos := surface.get_control_rect("attack").get_center()
+	var atk_cancel_before := _action_count("attack", false, true)
+	var atk_release_before := _action_count("attack", false, false)
+	assert(_touch(surface, 30, joy_hold_pos, true))
+	assert(_touch(surface, 31, atk_hold_pos, true))
+	assert(surface.get_active_touch_count() == 2 and surface.get_movement().y < -0.15)
+	viewport.size = Vector2i(844, 356)
+	surface.size = Vector2(844, 356)
+	await process_frame
+	await process_frame
+	assert(not surface._touches.is_empty() and surface.get_active_touch_count() == 2, "Same-orientation resize must not clear _touches")
+	assert(_action_count("attack", false, true) == atk_cancel_before, "Same-orientation resize must not cancel held attack")
+	assert(_action_count("attack", false, false) == atk_release_before, "Same-orientation resize must not release held attack")
+	var post_resize_drag := surface._active_joystick_center + Vector2(58, 10)
+	assert(_drag(surface, 30, post_resize_drag))
+	assert(surface.get_movement().x > 0.35, "InputEventScreenDrag after same-orientation resize must still update joystick movement")
+	assert(_touch(surface, 30, post_resize_drag, false))
+	assert(_touch(surface, 31, atk_hold_pos, false))
+	assert(surface.get_active_touch_count() == 0)
+	assert(_action_count("attack", false, false) == atk_release_before + 1)
 
 	# Main controls stay within bounds and clear of each other at practical
 	# landscape phone, tablet, and desktop sizes, including enlarged controls.

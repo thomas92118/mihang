@@ -2,6 +2,7 @@ extends RefCounted
 ## Playable character roster, procedural mermaid PBR textures & bespoke 3D ornaments.
 
 const ReferenceDiver = preload("res://scripts/presentation/reference_diver.gd")
+const SafeArea = preload("res://scripts/presentation/safe_area.gd")
 const DEFAULT_CHARACTER := "coral_mermaid"
 const SAVE_PATH := "user://character_profile.cfg"
 
@@ -474,10 +475,11 @@ static func _get_textures(cid: String, style: Dictionary) -> Dictionary:
 		return _texture_cache[cid]
 	_ensure_scale_cell_lut()
 	var out: Dictionary = {}
+	var res_div := 2 if (SafeArea.is_default_touch_platform() or OS.has_feature("web")) else 1
 
 	# 1. Imbricated Mermaid Scales (340x324 — exact 10px/col x 6px/row period for 34x54 UV grid)
-	var sw := 340
-	var sh := 324
+	var sw := 340 / res_div
+	var sh := 324 / res_div
 	var s_bytes := PackedByteArray()
 	s_bytes.resize(sw * sh * 4)
 	var se_bytes := PackedByteArray()
@@ -505,13 +507,13 @@ static func _get_textures(cid: String, style: Dictionary) -> Dictionary:
 		var vv := 1.0 - (float(y) + 0.5) / float(sh)
 		var waist_b := pow(clampf((vv - 0.85) / 0.15, 0.0, 1.0), 1.35) * 0.84
 		var ped_b := pow(clampf((0.16 - vv) / 0.16, 0.0, 1.0), 1.4) * 0.55
-		var ry := posmod(sh - 1 - y, 12)
+		var ry := posmod((sh - 1 - y) * res_div, 12)
 		var row_off := ry * 20
 		for x in range(sw):
 			var uu := (float(x) + 0.5) / float(sw)
 			var vent := u_vent[x]
 			var lat := u_lat[x]
-			var k := row_off + (x % 20)
+			var k := row_off + ((x * res_div) % 20)
 			var dome := _scale_dome[k]
 			var rim := _scale_rim[k]
 			var groove := _scale_groove[k]
@@ -533,8 +535,8 @@ static func _get_textures(cid: String, style: Dictionary) -> Dictionary:
 	out["scales_emission"] = _to_tex(sw, sh, se_bytes)
 
 	# 2. Gossamer Caudal & Lateral Fin Pearl (192x256)
-	var fw := 192
-	var fh := 256
+	var fw := 192 / res_div
+	var fh := 256 / res_div
 	var f_bytes := PackedByteArray()
 	f_bytes.resize(fw * fh * 4)
 	var fe_bytes := PackedByteArray()
@@ -565,8 +567,8 @@ static func _get_textures(cid: String, style: Dictionary) -> Dictionary:
 
 	# 3. Flowing Silk Hair & Highlights (192x256)
 	for is_hi in [false, true]:
-		var hw := 192
-		var hh := 256
+		var hw := 192 / res_div
+		var hh := 256 / res_div
 		var h_bytes := PackedByteArray()
 		h_bytes.resize(hw * hh * 4)
 		var h_root: Vector3 = style["hair_hi_root"] if is_hi else style["hair_root"]
@@ -587,7 +589,7 @@ static func _get_textures(cid: String, style: Dictionary) -> Dictionary:
 		out["hair_highlight" if is_hi else "hair"] = _to_tex(hw, hh, h_bytes)
 
 	# 4. Starry Ocean-Gem Iris (128x128)
-	var isz := 128
+	var isz := 128 / res_div
 	var i_bytes := PackedByteArray()
 	i_bytes.resize(isz * isz * 4)
 	var c_lim: Vector3 = style["iris_limbal"]
@@ -617,7 +619,7 @@ static func _get_textures(cid: String, style: Dictionary) -> Dictionary:
 	out["iris"] = _to_tex(isz, isz, i_bytes)
 
 	# 5. Scallop Shell Nacre, Face Skin, Body Skin & Glossy Lips (128x128)
-	var bsz := 128
+	var bsz := 128 / res_div
 	var sh_bytes := PackedByteArray()
 	var sk_bytes := PackedByteArray()
 	var bd_bytes := PackedByteArray()
@@ -676,6 +678,7 @@ static func _get_textures(cid: String, style: Dictionary) -> Dictionary:
 	out["body_skin"] = _to_tex(bsz, bsz, bd_bytes)
 	out["lip"] = _to_tex(bsz, bsz, lp_bytes)
 
+	_texture_cache.clear()
 	_texture_cache[cid] = out
 	return out
 

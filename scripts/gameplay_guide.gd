@@ -19,7 +19,7 @@ const CHAPTERS: Array[Dictionary] = [
 		"items": [
 			{
 				"heading": "三维推进与多角度观察",
-				"keys": "WASD / 空格/Ctrl / Shift / K",
+				"keys": "WASD / 空格/Ctrl / Shift / K / Home",
 				"body": "使用 WASD 前后推进与左右转向，按 空格 上浮、Ctrl 下潜，按住 Shift 冲刺游动。按 K 循环切换 7 种观赏视角，按住鼠标右键自由环绕观察，按 Home 一键回正。"
 			},
 			{
@@ -119,7 +119,7 @@ const CHAPTERS: Array[Dictionary] = [
 			},
 			{
 				"heading": "光标指示枪：战宠集火指挥",
-				"keys": "4 指示枪 / Z 召回",
+				"keys": "按 4 / Z 召回",
 				"body": "按 4 切换零伤害光标指示枪，射击可在目标身上锁定持久脉动红点，指挥身边所有契约战宠全速扑击围攻；按 Z 鸣哨一键召回所有伙伴回到后方列队护卫。"
 			}
 		],

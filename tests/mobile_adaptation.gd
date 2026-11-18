@@ -22,13 +22,19 @@ const LANDSCAPE_VIEWS := [
 	Vector2i(932, 430),
 ]
 
+const TABLET_FOLD_VIEWS := [
+	Vector2i(900, 800),
+	Vector2i(1024, 768),
+	Vector2i(900, 600),
+]
+
 const ALL_SCREENS := [
 	"main", "pause", "craft", "sushi", "mount_board",
 	"map", "win", "quick", "controls", "guide",
 ]
 
 func _initialize() -> void:
-	create_timer(45.0).timeout.connect(func() -> void:
+	create_timer(60.0).timeout.connect(func() -> void:
 		SafeArea.clear_mock_insets()
 		printerr("FAIL: mobile_adaptation test timed out")
 		quit(1)
@@ -47,9 +53,10 @@ func _check(cond: bool, msg: String) -> void:
 func _run() -> void:
 	await _verify_touch_and_hud_matrix()
 	await _verify_menus_responsive_matrix()
+	await _verify_loading_screen_safe_area()
 	await _verify_voyage_autosave_and_continue()
 	SafeArea.clear_mock_insets()
-	print("MOBILE_ADAPTATION_OK: portrait/landscape safe areas, >=44px touch targets, HUD anti-overlap, 10 responsive menus, and voyage save/resume")
+	print("MOBILE_ADAPTATION_OK: phone/tablet/foldable safe areas, scale 1.0/1.5 HUD anti-overlap, menu scroll hold, loading safe area, touch prompts, and voyage save/resume")
 	quit(0)
 
 func _verify_touch_and_hud_matrix() -> void:
@@ -74,11 +81,22 @@ func _verify_touch_and_hud_matrix() -> void:
 	touch.set_gameplay_enabled(true)
 	await process_frame
 
-	# Verify touch onboarding payload never prompts pointer lock.
-	var guide := GameplayGuide.new()
-	var payload: Dictionary = guide.get_hud_payload(false, true, true)
-	for v in payload.values():
-		_check(not str(v).contains("点击锁定视角"), "Touch HUD payload must never ask to click for pointer lock: %s" % str(v))
+	# Verify touch onboarding & contextual tips never leak [E] or pointer-lock copy.
+	var guide := GameplayGuide.new(false)
+	for g_mode: String in ["survival", "explore"]:
+		guide.start_voyage(g_mode)
+		for step_idx in range(GameplayGuide.ONBOARDING_STEPS.size()):
+			guide.current_step_index = step_idx
+			var payload: Dictionary = guide.get_hud_payload(false, true, true)
+			for v in payload.values():
+				var raw_str := str(v)
+				_check(not raw_str.contains("点击锁定视角") and not raw_str.contains("[E]"), "Touch GameplayGuide payload leaked desktop copy: %s" % raw_str)
+			for txt_key: String in ["instruction", "sub_hint"]:
+				var formatted := hud.format_input_text(str(payload.get(txt_key, "")))
+				_check(not formatted.contains("点击锁定视角") and not formatted.contains("[E]"), "Touch formatted onboarding text leaked desktop copy: %s" % formatted)
+	for tip_val in GameplayGuide.CONTEXTUAL_TIPS.values():
+		var fmt_tip := hud.format_input_text(str(tip_val))
+		_check(not fmt_tip.contains("点击锁定视角") and not fmt_tip.contains("[E]"), "Touch contextual tip leaked desktop copy: %s" % fmt_tip)
 
 	# Verify direct combat/exploration quick-slots exist.
 	for qs: String in ["weapon_cycle", "toggle_shield", "sonar_ping", "lamp"]:
@@ -91,6 +109,9 @@ func _verify_touch_and_hud_matrix() -> void:
 	for res: Vector2i in LANDSCAPE_VIEWS:
 		cases.append({"res": res, "insets": [0.0, 0.0, 0.0, 0.0]})
 		cases.append({"res": res, "insets": [0.0, 59.0, 21.0, 59.0]})
+	for res: Vector2i in TABLET_FOLD_VIEWS:
+		cases.append({"res": res, "insets": [0.0, 0.0, 0.0, 0.0]})
+		cases.append({"res": res, "insets": [0.0, 24.0, 20.0, 24.0]})
 
 	for case_info: Dictionary in cases:
 		var res: Vector2i = case_info["res"]
@@ -103,17 +124,21 @@ func _verify_touch_and_hud_matrix() -> void:
 		viewport.size = res
 		hud.root.size = Vector2(res)
 		touch.size = Vector2(res)
-		hud._apply_layout()
 		touch._rebuild_layout()
+		hud.set_touch_margins(touch.get_hud_safe_margins())
 		await process_frame
 
-		var hud_safe: Rect2 = hud.get_layout_safe_rect()
 		var life: Control = hud.instruments.get_node("LifeSupportInstrument")
-		var life_rect := _control_rect_in_viewport(life)
-		_check(hud_safe.grow(2.0).encloses(life_rect), "LifeSupportInstrument outside safe rect at %s insets=%s: %s vs %s" % [res, ins, life_rect, hud_safe])
 
 		for scale: float in [0.75, 1.0, 1.5]:
+			inputs.settings["touch_scale"] = scale
 			touch.configure({"touch_scale": scale, "touch_opacity": 0.78})
+			hud.set_touch_margins(touch.get_hud_safe_margins())
+			hud.update_hud({"current_weapon": "knife", "scoped": false, "in_submarine": false, "details": true})
+			var hud_safe: Rect2 = hud.get_layout_safe_rect()
+			var life_rect := _control_rect_in_viewport(life)
+			_check(hud_safe.grow(2.0).encloses(life_rect), "LifeSupportInstrument outside safe rect at %s scale %.2f insets=%s: %s vs %s" % [res, scale, ins, life_rect, hud_safe])
+
 			var t_safe: Rect2 = touch.get_safe_rect()
 			var joy_rect: Rect2 = touch.get_joystick_rect()
 			_check(t_safe.grow(1.0).encloses(joy_rect), "Joystick outside safe rect at %s scale %.2f" % [res, scale])
@@ -131,20 +156,33 @@ func _verify_touch_and_hud_matrix() -> void:
 					var rect_b: Rect2 = touch.get_control_rect(act_b)
 					_check(not rect_a.intersects(rect_b), "%s overlaps %s at %s scale %.2f" % [act_a, act_b, res, scale])
 
-			# Check HUD LifeSupportInstrument does not collide with joystick, sprint, or quick slots at default scale 1.0.
-			if is_equal_approx(scale, 1.0):
-				_check(not life_rect.intersects(joy_rect), "LifeSupport overlaps joystick at %s insets=%s: %s vs %s" % [res, ins, life_rect, joy_rect])
+			# Check HUD anti-overlap at both default (1.0) and enlarged (1.5) touch_scale.
+			if is_equal_approx(scale, 1.0) or is_equal_approx(scale, 1.5):
+				_check(not life_rect.intersects(joy_rect), "LifeSupport overlaps joystick at %s scale %.2f insets=%s: %s vs %s" % [res, scale, ins, life_rect, joy_rect])
 				for check_act: String in ["sprint", "weapon_cycle", "toggle_shield", "sonar_ping", "lamp", "attack", "interact"]:
 					var b_rect: Rect2 = touch.get_control_rect(check_act)
-					_check(not life_rect.intersects(b_rect), "LifeSupport overlaps %s at %s insets=%s: %s vs %s" % [check_act, res, ins, life_rect, b_rect])
+					_check(not life_rect.intersects(b_rect), "LifeSupport overlaps %s at %s scale %.2f insets=%s: %s vs %s" % [check_act, res, scale, ins, life_rect, b_rect])
+				_check(not hud.equipment_value.visible, "equipment_value must stay hidden in touch layout (including tablet/foldable) at %s scale %.2f" % [res, scale])
 				var radar_rect := _control_rect_in_viewport(hud.minimap_radar)
-				_check(not radar_rect.intersects(touch.get_control_rect("pause_game")), "Radar overlaps pause_game at %s" % [res])
+				_check(not radar_rect.intersects(touch.get_control_rect("pause_game")), "Radar overlaps pause_game at %s scale %.2f" % [res, scale])
+
+				hud.update_hud({"current_weapon": "sonic", "scoped": true, "scope_distance": 1200.0})
+				var scope_rect := _control_rect_in_viewport(hud.scope_exit_btn)
+				_check(hud.scope_exit_btn.visible, "scope_exit_btn must be visible when scoped")
+				_check(hud_safe.grow(2.0).encloses(scope_rect), "scope_exit_btn outside safe rect at %s scale %.2f: %s vs %s" % [res, scale, scope_rect, hud_safe])
+				_check(not scope_rect.intersects(touch.get_control_rect("ascend")), "scope_exit_btn overlaps ascend at %s scale %.2f: %s vs %s" % [res, scale, scope_rect, touch.get_control_rect("ascend")])
+				_check(not scope_rect.intersects(touch.get_control_rect("pause_game")), "scope_exit_btn overlaps pause_game at %s scale %.2f: %s vs %s" % [res, scale, scope_rect, touch.get_control_rect("pause_game")])
+				hud.update_hud({"current_weapon": "knife", "scoped": false})
 
 	# Check scope exit button behavior.
+	inputs.settings["touch_scale"] = 1.0
+	touch.configure({"touch_scale": 1.0, "touch_opacity": 0.78})
 	SafeArea.clear_mock_insets()
 	viewport.size = Vector2i(844, 390)
 	hud.root.size = Vector2(844, 390)
-	hud._apply_layout()
+	touch.size = Vector2(844, 390)
+	touch._rebuild_layout()
+	hud.set_touch_margins(touch.get_hud_safe_margins())
 	var emitted_actions: Array[String] = []
 	hud.action_requested.connect(func(a: String) -> void: emitted_actions.append(a))
 	hud.scope_exit_btn.show()
@@ -197,6 +235,22 @@ func _verify_menus_responsive_matrix() -> void:
 			if screen in ["main", "map", "guide"]:
 				_check(scroll.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED, "%s should use single-screen responsive layout without outer vertical scroll" % screen)
 
+	# Verify modal scroll preservation on touch (craft menu at 844x390 across 0.25s navigation refresh).
+	SafeArea.set_mock_insets(0.0, 59.0, 21.0, 59.0)
+	viewport.size = Vector2i(844, 390)
+	hud.root.size = Vector2(844, 390)
+	hud.set_screen("craft")
+	hud._apply_layout()
+	await process_frame
+	await process_frame
+	var craft_scroll: ScrollContainer = hud.menu_scrolls["craft"]
+	_check(not craft_scroll.follow_focus, "Touch mode craft menu must disable follow_focus")
+	craft_scroll.scroll_vertical = 120
+	await process_frame
+	hud._process(0.25)
+	await process_frame
+	_check(craft_scroll.scroll_vertical >= 100, "Touch mode craft scroll_vertical must not snap back to 0 after 0.25s navigation refresh (got %d)" % craft_scroll.scroll_vertical)
+
 	# Verify graphics_quality control and continue_voyage_btn signal.
 	_check(hud.settings_controls.has("graphics_quality"), "Controls menu must expose graphics_quality selector")
 	var gfx_changes: Array[Dictionary] = []
@@ -213,6 +267,49 @@ func _verify_menus_responsive_matrix() -> void:
 	hud.continue_voyage_btn.pressed.emit()
 	_check(int(cont_box["count"]) == 1, "Continue voyage button must emit continue_requested")
 
+	SafeArea.clear_mock_insets()
+	viewport.queue_free()
+	await process_frame
+
+func _verify_loading_screen_safe_area() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(390, 844)
+	root.add_child(viewport)
+	SafeArea.set_mock_insets(59.0, 0.0, 34.0, 0.0)
+
+	var loading_packed := load("res://scenes/loading.tscn") as PackedScene
+	_check(loading_packed != null, "scenes/loading.tscn must load cleanly")
+	var loading := loading_packed.instantiate()
+	viewport.add_child(loading)
+	loading.set_process(false)
+	await process_frame
+	loading._layout_ui()
+	await process_frame
+
+	var raw_safe := SafeArea.get_safe_rect(viewport)
+	var title_rect := Rect2(loading._title_label.position, loading._title_label.size)
+	var astro_c: Vector2 = loading._plate._astro_center
+	var astro_outer_r: float = float(loading._plate._astro_radius) * 1.11
+	var astro_rect := Rect2(astro_c - Vector2(astro_outer_r, astro_outer_r), Vector2(astro_outer_r * 2.0, astro_outer_r * 2.0))
+	var header_rect := Rect2(loading._header_label.position, loading._header_label.size)
+	var bar_rect: Rect2 = loading._plate._bar_rect
+
+	_check(raw_safe.grow(1.5).encloses(title_rect), "LoadingScreen title exceeds Dynamic Island safe area at 390x844: %s vs %s" % [title_rect, raw_safe])
+	_check(raw_safe.grow(1.5).encloses(astro_rect), "LoadingScreen astrolabe exceeds Dynamic Island safe area at 390x844: %s vs %s" % [astro_rect, raw_safe])
+	_check(raw_safe.grow(1.5).encloses(header_rect), "LoadingScreen header exceeds Dynamic Island safe area at 390x844: %s vs %s" % [header_rect, raw_safe])
+	_check(raw_safe.grow(1.5).encloses(bar_rect), "LoadingScreen progress bar exceeds Dynamic Island safe area at 390x844: %s vs %s" % [bar_rect, raw_safe])
+	_check(not title_rect.intersects(astro_rect), "LoadingScreen title overlaps astrolabe at 390x844: %s vs %s" % [title_rect, astro_rect])
+
+	var tap_ev := InputEventScreenTouch.new()
+	tap_ev.index = 0
+	tap_ev.pressed = true
+	tap_ev.position = Vector2(195.0, 420.0)
+	loading._input(tap_ev)
+	_check(bool(loading._skip_min_wait), "ScreenTouch on LoadingScreen must set _skip_min_wait")
+
+	if not String(loading._active_path).is_empty():
+		ResourceLoader.load_threaded_get(String(loading._active_path))
+	loading._held_resources.clear()
 	SafeArea.clear_mock_insets()
 	viewport.queue_free()
 	await process_frame
@@ -250,6 +347,22 @@ func _verify_voyage_autosave_and_continue() -> void:
 	_check(not game.has_voyage_save(), "Clean temp save path should start empty")
 	game._start("survival")
 	await process_frame
+
+	# Verify 3D interaction Label3D prompts cleanly switch away from [E] in touch mode.
+	game.ocean.refresh_interaction_prompts(true)
+	var label_3d_nodes: Array = game.ocean.find_children("*", "Label3D", true, false)
+	_check(not label_3d_nodes.is_empty(), "Ocean must contain 3D Label3D prompts")
+	for node in label_3d_nodes:
+		var lbl := node as Label3D
+		_check(not lbl.text.contains("[E]") and not lbl.text.contains("点击锁定视角"), "Touch Ocean Label3D leaked desktop prompt (%s): %s" % [lbl.name, lbl.text])
+	for helper_txt: String in [
+		game.ocean._format_mother_item_label("生命核心", true),
+		game.ocean._format_outpost_label("浅礁前哨", false, true),
+		game.ocean._format_outpost_label("浅礁前哨", true, true),
+		game.ocean._format_relic_label("星盘残片", true),
+	]:
+		_check(not helper_txt.contains("[E]") and helper_txt.contains("点击交互"), "Touch Ocean prompt helper must replace [E] with 点击交互: %s" % helper_txt)
+
 	var target_y := maxf(-12.0, Ocean.terrain_height(18.0, -32.0) + 3.0)
 	var target_pos := Vector3(18.0, target_y, -32.0)
 	game.diver.global_position = target_pos

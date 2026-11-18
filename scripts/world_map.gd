@@ -197,6 +197,15 @@ class CompassStrip extends Control:
 		draw_rect(bg_rect, Color(CYAN, 0.24), false, 1.0)
 		var font: Font = get_theme_default_font()
 		var half_fov := deg_to_rad(85.0)
+		var vp := get_viewport()
+		if vp != null:
+			var vp_sz := vp.get_visible_rect().size
+			var aspect := clampf(vp_sz.x / maxf(vp_sz.y, 1.0), 0.35, 3.2)
+			var cam := vp.get_camera_3d()
+			var fov_deg := clampf(cam.fov if is_instance_valid(cam) else 75.0, 20.0, 140.0)
+			var half_rad := deg_to_rad(fov_deg * 0.5)
+			var computed_hfov := half_rad if (is_instance_valid(cam) and cam.keep_aspect == Camera3D.KEEP_WIDTH) else atan(tan(half_rad) * aspect)
+			half_fov = clampf(computed_hfov, deg_to_rad(22.0), deg_to_rad(88.0))
 		var cx := w * 0.5
 
 		var dirs := [
@@ -234,8 +243,8 @@ class CompassStrip extends Control:
 				if int(d["deg"]) == 0:
 					col = AMBER
 				var txt: String = str(d["txt"])
-				var fsz: int = (11 if compact_strip else 12) if bool(d["major"]) else 10
-				draw_string(font, Vector2(x - float(txt.length()) * 3.8, 14.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, col)
+				var fsz: int = (12 if compact_strip else 13) if bool(d["major"]) else 12
+				draw_string(font, Vector2(x - float(txt.length()) * 4.0, 15.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, col)
 
 			var pip_y := minf(h - 3.0, 29.0)
 			_draw_pip(font, _bearing_to(home_pos), "⌂", HARBOR_SAGE, half_fov, cx, w, pip_y)
@@ -421,10 +430,15 @@ class MinimapRadar extends Control:
 			var coord_txt := ("X:%+d Z:%+d" % [roundi(player_pos.x), roundi(player_pos.z)]) if compact_radar else ("X:%+d  Z:%+d  [%s海图]" % [roundi(player_pos.x), roundi(player_pos.z), map_hint])
 			var x_off := 5.0 if compact_radar else 8.0
 			var y_off := 4.0 if compact_radar else 6.0
-			draw_string(font, Vector2(x_off, size.y - y_off), coord_txt, HORIZONTAL_ALIGNMENT_LEFT, maxf(24.0, size.x - x_off * 2.0), 10 if compact_radar else 11, MUTED)
+			draw_string(font, Vector2(x_off, size.y - y_off), coord_txt, HORIZONTAL_ALIGNMENT_LEFT, maxf(24.0, size.x - x_off * 2.0), 12, MUTED)
 
 
 class SeaChartCanvas extends Control:
+	const MIN_ZOOM := 1.0
+	const MAX_ZOOM := 6.5
+	const LONG_PRESS_SECONDS := 0.38
+	const LONG_PRESS_DRIFT_PX := 10.0
+
 	signal waypoint_set(world_xz: Vector2)
 	signal waypoint_cleared
 	signal fast_travel_requested(target_id: String, world_pos: Vector3, target_name: String)
@@ -455,7 +469,11 @@ class SeaChartCanvas extends Control:
 	var _touch_origins: Dictionary = {}
 	var _touch_moved: Dictionary = {}
 	var _pinch_distance := 0.0
+	var _pinch_prev_mid := Vector2.ZERO
 	var _had_multitouch := false
+	var _long_press_elapsed := 0.0
+	var _long_press_checked := false
+	var _long_press_consumed := false
 	var _last_touch_time := -1000
 	var _gamepad_device := -1
 
@@ -469,12 +487,25 @@ class SeaChartCanvas extends Control:
 				cancel_touches()
 		)
 
+	func _notification(what: int) -> void:
+		if what in [
+			NOTIFICATION_WM_WINDOW_FOCUS_OUT,
+			NOTIFICATION_APPLICATION_FOCUS_OUT,
+			NOTIFICATION_APPLICATION_PAUSED,
+			NOTIFICATION_EXIT_TREE,
+		]:
+			cancel_touches()
+
 	func cancel_touches() -> void:
 		_touches.clear()
 		_touch_origins.clear()
 		_touch_moved.clear()
 		_pinch_distance = 0.0
+		_pinch_prev_mid = Vector2.ZERO
 		_had_multitouch = false
+		_long_press_elapsed = 0.0
+		_long_press_checked = false
+		_long_press_consumed = false
 		dragging = false
 
 	func _input(event: InputEvent) -> void:
@@ -491,7 +522,36 @@ class SeaChartCanvas extends Control:
 			get_viewport().set_input_as_handled()
 
 	func _process(delta: float) -> void:
-		if not is_visible_in_tree() or not has_focus():
+		if not is_visible_in_tree():
+			return
+		if _touches.size() == 1 and not _had_multitouch and not _long_press_checked:
+			var idx: int = int(_touches.keys()[0])
+			var pt: Vector2 = _touches[idx]
+			var origin: Vector2 = _touch_origins.get(idx, pt)
+			if not bool(_touch_moved.get(idx, false)) and pt.distance_to(origin) < LONG_PRESS_DRIFT_PX and Rect2(Vector2.ZERO, size).has_point(pt):
+				_long_press_elapsed += delta
+				if _long_press_elapsed >= LONG_PRESS_SECONDS:
+					_long_press_checked = true
+					if has_waypoint and _world_to_canvas(waypoint_pos.x, waypoint_pos.z).distance_to(pt) < 24.0:
+						_long_press_consumed = true
+						waypoint_cleared.emit()
+						queue_redraw()
+					elif _find_node_at(pt).is_empty():
+						_long_press_consumed = true
+						var w_xz := _canvas_to_world(pt)
+						waypoint_set.emit(w_xz)
+						var est_y := minf(-2.5, Ocean.floor_height(w_xz.x, w_xz.y) + 6.0)
+						selected_node = {
+							"id": "custom_waypoint",
+							"kind": "waypoint",
+							"name": "自定义导航标点",
+							"desc": "已在海图标记目标航点，水下 HUD 与罗盘将实时指引航向",
+							"pos": Vector3(w_xz.x, est_y, w_xz.y),
+							"can_travel": false
+						}
+						selection_changed.emit(selected_node)
+						queue_redraw()
+		if not has_focus():
 			return
 		var connected := Input.get_connected_joypads()
 		if not connected.has(_gamepad_device):
@@ -517,7 +577,7 @@ class SeaChartCanvas extends Control:
 		queue_redraw()
 
 	func adjust_zoom(factor: float) -> void:
-		zoom = clampf(zoom * factor, 1.0, 3.2)
+		zoom = clampf(zoom * factor, MIN_ZOOM, MAX_ZOOM)
 		_clamp_pan()
 		queue_redraw()
 
@@ -657,16 +717,32 @@ class SeaChartCanvas extends Control:
 		_last_touch_time = Time.get_ticks_msec()
 		var previous: Vector2 = _touches[index]
 		_touches[index] = point
-		if point.distance_to(_touch_origins[index]) > 12.0:
+		if point.distance_to(_touch_origins[index]) >= LONG_PRESS_DRIFT_PX:
 			_touch_moved[index] = true
 		if _touches.size() >= 2:
 			_had_multitouch = true
+			_long_press_checked = true
 			var positions := _touches.values()
-			var distance: float = (positions[0] as Vector2).distance_to(positions[1])
+			var p0: Vector2 = positions[0]
+			var p1: Vector2 = positions[1]
+			var mid: Vector2 = (p0 + p1) * 0.5
+			var distance: float = p0.distance_to(p1)
+			var old_half_vis := WORLD_HALF / zoom
+			var anchor_wx := (pan_world.x - old_half_vis) + (_pinch_prev_mid.x / maxf(size.x, 1.0)) * (old_half_vis * 2.0)
+			var anchor_wz := (pan_world.y - old_half_vis) + (_pinch_prev_mid.y / maxf(size.y, 1.0)) * (old_half_vis * 2.0)
 			if _pinch_distance > 1.0 and distance > 1.0:
-				adjust_zoom(distance / _pinch_distance)
+				zoom = clampf(zoom * (distance / _pinch_distance), MIN_ZOOM, MAX_ZOOM)
+			var new_half_vis := WORLD_HALF / zoom
+			pan_world = Vector2(
+				anchor_wx + new_half_vis * (1.0 - 2.0 * (mid.x / maxf(size.x, 1.0))),
+				anchor_wz + new_half_vis * (1.0 - 2.0 * (mid.y / maxf(size.y, 1.0)))
+			)
+			_clamp_pan()
 			_pinch_distance = distance
+			_pinch_prev_mid = mid
+			queue_redraw()
 		elif bool(_touch_moved.get(index, false)):
+			_long_press_checked = true
 			var world_per_pixel := Vector2(WORLD_SPAN / zoom / maxf(size.x, 1.0), WORLD_SPAN / zoom / maxf(size.y, 1.0))
 			pan_world -= (point - previous) * world_per_pixel
 			_clamp_pan()
@@ -674,13 +750,22 @@ class SeaChartCanvas extends Control:
 
 	func _handle_touch_release(index: int, point: Vector2, canceled: bool) -> void:
 		_last_touch_time = Time.get_ticks_msec()
-		var can_select := not canceled and not _had_multitouch and not bool(_touch_moved.get(index, false))
+		var can_select := not canceled and not _had_multitouch and not _long_press_consumed and not bool(_touch_moved.get(index, false))
 		_touches.erase(index)
 		_touch_origins.erase(index)
 		_touch_moved.erase(index)
 		_pinch_distance = 0.0
+		if _touches.size() >= 2:
+			var positions := _touches.values()
+			var p0: Vector2 = positions[0]
+			var p1: Vector2 = positions[1]
+			_pinch_distance = p0.distance_to(p1)
+			_pinch_prev_mid = (p0 + p1) * 0.5
 		if _touches.is_empty():
 			_had_multitouch = false
+			_long_press_elapsed = 0.0
+			_long_press_checked = false
+			_long_press_consumed = false
 		if can_select and Rect2(Vector2.ZERO, size).has_point(point):
 			select_at(point)
 
@@ -691,10 +776,18 @@ class SeaChartCanvas extends Control:
 				_touches[event.index] = event.position
 				_touch_origins[event.index] = event.position
 				_touch_moved[event.index] = false
-				if _touches.size() >= 2:
+				if _touches.size() == 1 and not _had_multitouch:
+					_long_press_elapsed = 0.0
+					_long_press_checked = false
+					_long_press_consumed = false
+				elif _touches.size() >= 2:
 					_had_multitouch = true
+					_long_press_checked = true
 					var positions := _touches.values()
-					_pinch_distance = (positions[0] as Vector2).distance_to(positions[1])
+					var p0: Vector2 = positions[0]
+					var p1: Vector2 = positions[1]
+					_pinch_distance = p0.distance_to(p1)
+					_pinch_prev_mid = (p0 + p1) * 0.5
 			elif _touches.has(event.index):
 				_handle_touch_release(event.index, event.position, event.canceled)
 			accept_event()
@@ -835,7 +928,7 @@ class SeaChartCanvas extends Control:
 			draw_line(Vector2(gp.x, 0), Vector2(gp.x, size.y), col, 1.0)
 			draw_line(Vector2(0, gp.y), Vector2(size.x, gp.y), col, 1.0)
 			if font and g != -900 and g != 900 and (not compact_chart or g % 450 == 0):
-				draw_string(font, Vector2(gp.x + 3.0, 13.0), "%+dm" % g, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(MUTED, 0.58))
+				draw_string(font, Vector2(gp.x + 4.0, 15.0), "%+dm" % g, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(MUTED, 0.58))
 
 		if font:
 			var anchor_pts: Array[Vector2] = [_world_to_canvas(Ocean.HOME.x, Ocean.HOME.z)]
@@ -861,7 +954,7 @@ class SeaChartCanvas extends Control:
 						continue
 				var rcol := Color(PAPER, 0.76) if seen else Color(MUTED, 0.26)
 				var rtxt := str(reg["name"]) if seen else "未勘测海域"
-				draw_string(font, cp - Vector2(42, 0), rtxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, rcol)
+				draw_string(font, cp - Vector2(44, 0), rtxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12 if compact_chart else 13, rcol)
 
 		for rel in relics:
 			var rpos: Vector3 = rel["pos"]
@@ -892,14 +985,14 @@ class SeaChartCanvas extends Control:
 					draw_circle(cp, 6.0, HARBOR_SAGE)
 					draw_arc(cp, 8.8, 0.0, TAU, 20, Color(HARBOR_SAGE, 0.78), 1.3)
 					if font:
-						draw_string(font, cp + Vector2(9, 4), "⌂ 逃生舱母港", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, PAPER)
+						draw_string(font, cp + Vector2(9, 5), "⌂ 逃生舱母港", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PAPER)
 				"outpost":
 					var unlocked := bool(item["can_travel"])
 					var ocol := HARBOR_SAGE if unlocked else AMBER
 					draw_rect(Rect2(cp - Vector2(5.0, 5.0), Vector2(10, 10)), ocol, true)
 					draw_rect(Rect2(cp - Vector2(7.5, 7.5), Vector2(15, 15)), Color(AMBER if not unlocked else ocol, 0.55), false, 1.1)
 					if font:
-						draw_string(font, cp + Vector2(9, 4), str(item["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, PAPER if unlocked else AMBER)
+						draw_string(font, cp + Vector2(9, 5), str(item["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12 if compact_chart else 13, PAPER if unlocked else AMBER)
 				"submarine":
 					var tri := PackedVector2Array([cp + Vector2(0, -5.5), cp + Vector2(5.2, 4.5), cp + Vector2(-5.2, 4.5)])
 					draw_colored_polygon(tri, PAPER)
@@ -911,7 +1004,7 @@ class SeaChartCanvas extends Control:
 					draw_circle(cp, 4.5 if is_disc else 3.8, lcol)
 					if font and (is_hov or is_sel or zoom >= 1.45):
 						var lbl_col := DANGER.lightened(0.14) if (is_disc and is_hazard) else (PAPER if is_disc else AMBER)
-						draw_string(font, cp + Vector2(7, 4), str(item["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, lbl_col)
+						draw_string(font, cp + Vector2(8, 5), str(item["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12 if compact_chart else 13, lbl_col)
 
 		var player_cp := _world_to_canvas(player_pos.x, player_pos.z)
 		if has_waypoint:
@@ -921,7 +1014,7 @@ class SeaChartCanvas extends Control:
 			draw_colored_polygon(dia, AMBER)
 			if font:
 				var dist_m := roundi(Vector2(player_pos.x, player_pos.z).distance_to(Vector2(waypoint_pos.x, waypoint_pos.z)))
-				draw_string(font, wp_cp + Vector2(9, 4), "✦ 标点 (%dm)" % dist_m, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, AMBER)
+				draw_string(font, wp_cp + Vector2(9, 5), "✦ 标点 (%dm)" % dist_m, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, AMBER)
 
 		if rect.has_point(player_cp):
 			var dir2 := Vector2(sin(heading_yaw), -cos(heading_yaw))

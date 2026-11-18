@@ -7,6 +7,7 @@ static var _meshes: Dictionary = {}
 static var _details: Dictionary = {}
 static var _surface_materials: Dictionary = {}
 static var _named_materials: Dictionary = {}
+static var _creature_material_cache: Dictionary = {}
 static var _loaded := false
 
 static func mesh(key: String) -> ArrayMesh:
@@ -109,10 +110,22 @@ static func _clone_pbr_material(source_name: String, role: String, fallback_colo
 		mat.metallic_specular = 0.85
 	return mat
 
-static func create_creature_materials(calm_glow: Color, fallback_albedo := Color(0.75, 0.78, 0.82)) -> Dictionary:
+static func create_creature_materials(calm_glow: Color, fallback_albedo := Color(0.75, 0.78, 0.82), share_calm: bool = true) -> Dictionary:
+	if not share_calm:
+		return {
+			"fauna": _clone_pbr_material("HeroFaunaAtlas", "fauna", fallback_albedo),
+			"glow": _clone_pbr_material("HeroFaunaGlow", "fauna_glow", calm_glow),
+		}
+	var cache_key := "%s|%s" % [calm_glow.to_html(true), fallback_albedo.to_html(true)]
+	if not _creature_material_cache.has(cache_key):
+		_creature_material_cache[cache_key] = {
+			"fauna": _clone_pbr_material("HeroFaunaAtlas", "fauna", fallback_albedo),
+			"glow": _clone_pbr_material("HeroFaunaGlow", "fauna_glow", calm_glow),
+		}
+	var shared: Dictionary = _creature_material_cache[cache_key]
 	return {
-		"fauna": _clone_pbr_material("HeroFaunaAtlas", "fauna", fallback_albedo),
-		"glow": _clone_pbr_material("HeroFaunaGlow", "fauna_glow", calm_glow),
+		"fauna": shared["fauna"],
+		"glow": shared["glow"],
 	}
 
 static func create_submarine_materials() -> Dictionary:

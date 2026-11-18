@@ -13,7 +13,7 @@ void vertex() {
 }
 
 void fragment() {
-	float clock = review_time >= 0.0 ? review_time : TIME;
+	float clock = review_time >= 0.0 ? review_time : mod(TIME, 3600.0);
 	float s = max(0.0, sin(UV.x * 3.14159265));
 	float edge = pow(s, 1.68);
 	float slant = UV.x + (UV.y - 0.32) * 0.16;

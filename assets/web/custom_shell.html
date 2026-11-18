@@ -2,11 +2,12 @@
 <html lang="zh-CN">
 	<head>
 		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, viewport-fit=cover">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 		<meta name="mobile-web-app-capable" content="yes">
 		<meta name="apple-mobile-web-app-capable" content="yes">
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 		<meta name="theme-color" content="#041420">
+		<link rel="apple-touch-icon" sizes="180x180" href="index.apple-touch-icon.png">
 		<title>$GODOT_PROJECT_NAME</title>
 		<style>
 :root {
@@ -32,12 +33,18 @@
 }
 
 html, body, #canvas {
+	position: fixed;
+	inset: 0;
 	margin: 0;
 	padding: 0;
 	border: 0;
 	width: 100%;
+	height: 100%;
 	height: 100vh;
+	height: var(--app-height, 100vh);
 	height: 100dvh;
+	overscroll-behavior: none;
+	touch-action: none;
 	user-select: none;
 	-webkit-user-select: none;
 	-webkit-touch-callout: none;
@@ -76,7 +83,9 @@ body {
 	position: fixed;
 	inset: 0;
 	width: 100%;
+	height: 100%;
 	height: 100vh;
+	height: var(--app-height, 100vh);
 	height: 100dvh;
 	z-index: 20;
 	display: flex;
@@ -817,6 +826,94 @@ body {
 		overflow-y: auto;
 	}
 }
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+	.caustic-veil {
+		filter: none;
+		opacity: 0.68;
+		animation-duration: 18s;
+	}
+	.astrolabe-glow {
+		filter: none;
+	}
+	#astrolabe-progress-arc {
+		filter: none;
+	}
+}
+
+#abyssal-context-lost {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	display: none;
+	align-items: center;
+	justify-content: center;
+	padding: max(20px, var(--safe-top)) max(24px, var(--safe-right)) max(20px, var(--safe-bottom)) max(24px, var(--safe-left));
+	background: rgba(3, 14, 23, 0.92);
+	color: var(--paper);
+	text-align: center;
+	font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+#abyssal-context-lost.is-visible {
+	display: flex;
+}
+
+.context-lost-card {
+	max-width: 420px;
+	padding: 24px 26px;
+	border-radius: 14px;
+	border: 1px solid var(--cyan-dim);
+	background: rgba(6, 29, 46, 0.94);
+	box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.context-lost-title {
+	margin: 0 0 10px;
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--amber);
+}
+
+.context-lost-desc {
+	margin: 0 0 18px;
+	font-size: 14px;
+	line-height: 1.55;
+	color: var(--muted);
+}
+
+.context-lost-btn {
+	min-width: 168px;
+	min-height: 44px;
+	padding: 10px 22px;
+	border-radius: 999px;
+	border: 1px solid var(--amber);
+	background: rgba(237, 206, 122, 0.16);
+	color: var(--paper);
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+#abyssal-ios-fs-toast {
+	position: fixed;
+	left: 50%;
+	bottom: max(20px, calc(var(--safe-bottom) + 12px));
+	transform: translateX(-50%);
+	z-index: 35;
+	display: none;
+	max-width: min(90vw, 460px);
+	padding: 10px 18px;
+	border-radius: 999px;
+	border: 1px solid var(--cyan-dim);
+	background: rgba(5, 22, 35, 0.92);
+	color: var(--paper);
+	font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+	font-size: 13px;
+	line-height: 1.4;
+	text-align: center;
+	pointer-events: auto;
+}
 		</style>
 		$GODOT_HEAD_INCLUDE
 	</head>
@@ -962,6 +1059,15 @@ body {
 			</footer>
 		</div>
 
+		<div id="abyssal-context-lost" role="alertdialog" aria-modal="true" aria-label="深海终端恢复提示">
+			<div class="context-lost-card">
+				<h2 class="context-lost-title">深海终端已休眠并保护航程</h2>
+				<p class="context-lost-desc">后台切换期间图形上下文已被系统回收，航程进度已自动保存。轻触下方按钮即可重新唤醒潜航画面。</p>
+				<button type="button" class="context-lost-btn" id="abyssal-context-reload-btn">继续潜航</button>
+			</div>
+		</div>
+		<div id="abyssal-ios-fs-toast" role="status">iOS 浏览器暂不支持网页全屏接口，横握手机或点击浏览器“分享 → 添加到主屏幕”可获得沉浸全屏体验</div>
+
 		<script src="$GODOT_URL"></script>
 		<script>
 const GODOT_CONFIG = $GODOT_CONFIG;
@@ -970,13 +1076,30 @@ const engine = new Engine(GODOT_CONFIG);
 
 (function () {
 	const safeProbeEl = document.getElementById('abyssal-safe-probe');
+	const canvasEl = document.getElementById('canvas');
 	const fullscreenBtn = document.getElementById('abyssal-fullscreen-btn');
+	const contextLostOverlay = document.getElementById('abyssal-context-lost');
+	const contextReloadBtn = document.getElementById('abyssal-context-reload-btn');
+	const iosFsToast = document.getElementById('abyssal-ios-fs-toast');
+	let iosToastTimer = 0;
 
 	function detectCoarsePointer() {
-		return Boolean(
-			(window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
-			navigator.maxTouchPoints > 0
-		);
+		const hasCoarse = Boolean(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+		const hasFine = Boolean(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
+		if (hasCoarse && !hasFine) {
+			return true;
+		}
+		const ua = navigator.userAgent || '';
+		if (/Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(ua)) {
+			return true;
+		}
+		if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) {
+			return true;
+		}
+		if (!window.matchMedia && navigator.maxTouchPoints > 0) {
+			return true;
+		}
+		return false;
 	}
 
 	window.__abyssalGetSafeInsets = function () {
@@ -995,6 +1118,12 @@ const engine = new Engine(GODOT_CONFIG);
 		const mock = (window.__abyssalMockSafeInsets && typeof window.__abyssalMockSafeInsets === 'object')
 			? window.__abyssalMockSafeInsets
 			: null;
+		const rect = canvasEl ? canvasEl.getBoundingClientRect() : null;
+		const vv = window.visualViewport;
+		const fallbackW = (vv && vv.width > 0) ? vv.width : (window.innerWidth || 0);
+		const fallbackH = (vv && vv.height > 0) ? vv.height : (window.innerHeight || 0);
+		const cw = (rect && rect.width > 0) ? rect.width : fallbackW;
+		const ch = (rect && rect.height > 0) ? rect.height : fallbackH;
 		return {
 			top: mock && typeof mock.top === 'number' ? Math.max(0, mock.top) : Math.max(0, top),
 			right: mock && typeof mock.right === 'number' ? Math.max(0, mock.right) : Math.max(0, right),
@@ -1003,6 +1132,8 @@ const engine = new Engine(GODOT_CONFIG);
 			dpr: mock && typeof mock.dpr === 'number' ? mock.dpr : (window.devicePixelRatio || 1),
 			innerWidth: mock && typeof mock.innerWidth === 'number' ? mock.innerWidth : (window.innerWidth || 0),
 			innerHeight: mock && typeof mock.innerHeight === 'number' ? mock.innerHeight : (window.innerHeight || 0),
+			canvasWidth: mock && typeof mock.innerWidth === 'number' ? mock.innerWidth : cw,
+			canvasHeight: mock && typeof mock.innerHeight === 'number' ? mock.innerHeight : ch,
 			coarsePointer: mock && typeof mock.coarsePointer === 'boolean' ? mock.coarsePointer : baseCoarse,
 		};
 	};
@@ -1010,6 +1141,39 @@ const engine = new Engine(GODOT_CONFIG);
 	window.__abyssalGetSafeInsetsJson = function () {
 		return JSON.stringify(window.__abyssalGetSafeInsets());
 	};
+
+	let lastSafeSig = '';
+	function syncViewportAndSafeMetrics() {
+		const vv = window.visualViewport;
+		const appH = (vv && vv.height > 0) ? vv.height : (window.innerHeight || 0);
+		if (appH > 0) {
+			document.documentElement.style.setProperty('--app-height', Math.round(appH) + 'px');
+		}
+		const cur = window.__abyssalGetSafeInsets();
+		const sig = [cur.top, cur.right, cur.bottom, cur.left, Math.round(cur.canvasWidth), Math.round(cur.canvasHeight)].join(',');
+		if (sig !== lastSafeSig) {
+			lastSafeSig = sig;
+			if (typeof window.__abyssalOnSafeInsetsChanged === 'function') {
+				try { window.__abyssalOnSafeInsetsChanged(JSON.stringify(cur)); } catch (_e) {}
+			}
+		}
+	}
+
+	function scheduleSafeMetricsRefresh() {
+		syncViewportAndSafeMetrics();
+		setTimeout(syncViewportAndSafeMetrics, 120);
+		setTimeout(syncViewportAndSafeMetrics, 350);
+	}
+
+	window.addEventListener('resize', scheduleSafeMetricsRefresh, { passive: true });
+	window.addEventListener('orientationchange', scheduleSafeMetricsRefresh, { passive: true });
+	if (screen.orientation && typeof screen.orientation.addEventListener === 'function') {
+		screen.orientation.addEventListener('change', scheduleSafeMetricsRefresh);
+	}
+	if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+		window.visualViewport.addEventListener('resize', scheduleSafeMetricsRefresh, { passive: true });
+	}
+	syncViewportAndSafeMetrics();
 
 	function isFullscreenActive() {
 		return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
@@ -1021,7 +1185,7 @@ const engine = new Engine(GODOT_CONFIG);
 	}
 
 	function syncFullscreenButton() {
-		if (!fullscreenBtn) return;
+		if (!fullscreenBtn || !document.body.contains(fullscreenBtn)) return;
 		const shouldShow = window.__abyssalGetSafeInsets().coarsePointer && hasFullscreenSupport();
 		fullscreenBtn.hidden = !shouldShow;
 		if (shouldShow) {
@@ -1029,7 +1193,28 @@ const engine = new Engine(GODOT_CONFIG);
 		}
 	}
 
+	function showIosFullscreenHint() {
+		if (!iosFsToast) return;
+		iosFsToast.style.display = 'block';
+		if (iosToastTimer) clearTimeout(iosToastTimer);
+		iosToastTimer = setTimeout(function () {
+			iosFsToast.style.display = 'none';
+		}, 4200);
+	}
+
+	if (iosFsToast) {
+		iosFsToast.addEventListener('click', function () {
+			iosFsToast.style.display = 'none';
+		});
+	}
+
 	window.__abyssalToggleFullscreen = async function () {
+		if (!hasFullscreenSupport()) {
+			if (!window.navigator.standalone) {
+				showIosFullscreenHint();
+			}
+			return false;
+		}
 		try {
 			if (isFullscreenActive()) {
 				if (document.exitFullscreen) {
@@ -1063,6 +1248,7 @@ const engine = new Engine(GODOT_CONFIG);
 			// Ignore Fullscreen/Orientation rejection on iOS Safari or embedded WebViews.
 		}
 		syncFullscreenButton();
+		scheduleSafeMetricsRefresh();
 		return isFullscreenActive();
 	};
 
@@ -1075,13 +1261,29 @@ const engine = new Engine(GODOT_CONFIG);
 		document.addEventListener('webkitfullscreenchange', syncFullscreenButton);
 	}
 
+	let hookedAudioCtx = null;
 	function unlockMobileAudio() {
 		if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
 			try { navigator.audioSession.type = 'playback'; } catch (_e) {}
 		}
-		if (window.GodotAudio && window.GodotAudio.ctx && window.GodotAudio.ctx.state === 'suspended') {
+		const ctx = window.GodotAudio && window.GodotAudio.ctx;
+		if (!ctx) return;
+		if (hookedAudioCtx !== ctx) {
+			hookedAudioCtx = ctx;
+			if (typeof ctx.addEventListener === 'function') {
+				ctx.addEventListener('statechange', function () {
+					if (document.visibilityState === 'visible' && (ctx.state === 'suspended' || ctx.state === 'interrupted')) {
+						try {
+							const p = ctx.resume();
+							if (p && typeof p.catch === 'function') p.catch(function () {});
+						} catch (_e) {}
+					}
+				});
+			}
+		}
+		if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
 			try {
-				const resumePromise = window.GodotAudio.ctx.resume();
+				const resumePromise = ctx.resume();
 				if (resumePromise && typeof resumePromise.catch === 'function') {
 					resumePromise.catch(function () {});
 				}
@@ -1089,8 +1291,14 @@ const engine = new Engine(GODOT_CONFIG);
 		}
 	}
 
-	['pointerdown', 'touchstart', 'keydown'].forEach(function (eventName) {
+	['pointerdown', 'touchstart', 'touchend', 'click', 'keydown'].forEach(function (eventName) {
 		window.addEventListener(eventName, unlockMobileAudio, { capture: true, passive: true });
+	});
+
+	['contextmenu', 'selectstart', 'dragstart', 'gesturestart', 'gesturechange'].forEach(function (eventName) {
+		window.addEventListener(eventName, function (ev) {
+			ev.preventDefault();
+		}, { passive: false });
 	});
 
 	function notifyPageHidden() {
@@ -1099,12 +1307,59 @@ const engine = new Engine(GODOT_CONFIG);
 		}
 	}
 
+	function notifyPageVisible() {
+		unlockMobileAudio();
+		scheduleSafeMetricsRefresh();
+		if (typeof window.__abyssalOnPageVisible === 'function') {
+			try { window.__abyssalOnPageVisible(); } catch (_e) {}
+		}
+	}
+
 	document.addEventListener('visibilitychange', function () {
 		if (document.visibilityState === 'hidden') {
 			notifyPageHidden();
+		} else if (document.visibilityState === 'visible') {
+			notifyPageVisible();
 		}
 	});
 	window.addEventListener('pagehide', notifyPageHidden);
+
+	function showContextLostOverlay() {
+		if (contextLostOverlay) {
+			contextLostOverlay.classList.add('is-visible');
+		}
+	}
+
+	if (contextReloadBtn) {
+		contextReloadBtn.addEventListener('click', function () {
+			window.location.reload();
+		});
+	}
+
+	if (canvasEl) {
+		canvasEl.addEventListener('webglcontextlost', function (ev) {
+			ev.preventDefault();
+			notifyPageHidden();
+			showContextLostOverlay();
+		}, false);
+		canvasEl.addEventListener('webglcontextrestored', function () {
+			if (contextLostOverlay) {
+				contextLostOverlay.classList.remove('is-visible');
+			}
+		}, false);
+	}
+
+	window.addEventListener('pageshow', function (ev) {
+		if (ev.persisted) {
+			notifyPageVisible();
+			if (canvasEl) {
+				const gl = canvasEl.getContext('webgl2') || canvasEl.getContext('webgl');
+				if (gl && typeof gl.isContextLost === 'function' && gl.isContextLost()) {
+					showContextLostOverlay();
+				}
+			}
+		}
+	});
 
 	const statusOverlay = document.getElementById('status');
 	const statusNotice = document.getElementById('status-notice');
@@ -1157,6 +1412,7 @@ const engine = new Engine(GODOT_CONFIG);
 	let customPhaseLabel = '';
 	let lastTransferText = '';
 	const bootStartTime = performance.now();
+	let lastStageHeartbeat = bootStartTime;
 
 	// Ambient marine snow & rising bubble simulation on lightweight 2D canvas
 	function startOceanParticles() {
@@ -1196,9 +1452,15 @@ const engine = new Engine(GODOT_CONFIG);
 		}
 
 		let prev = performance.now();
+		const coarse = window.__abyssalGetSafeInsets().coarsePointer;
+		const minFrameMs = coarse ? 32 : 0;
 		function renderFx(now) {
 			if (!initializing) {
 				window.removeEventListener('resize', resize);
+				return;
+			}
+			if (minFrameMs > 0 && (now - prev) < minFrameMs) {
+				fxAnimId = requestAnimationFrame(renderFx);
 				return;
 			}
 			const dt = Math.min(0.05, (now - prev) / 1000);
@@ -1306,6 +1568,7 @@ const engine = new Engine(GODOT_CONFIG);
 	// Bridge called by scripts/loading_screen.gd while constructing the 3D ocean scene
 	window.__abyssalSetEngineStage = function (ratio, label) {
 		if (!initializing) return;
+		lastStageHeartbeat = performance.now();
 		if (typeof ratio === 'number') {
 			targetRatio = Math.max(targetRatio, Math.min(1, ratio));
 		}
@@ -1448,13 +1711,16 @@ const engine = new Engine(GODOT_CONFIG);
 			targetRatio = Math.max(targetRatio, 0.90);
 			customPhaseLabel = '正在构筑珊瑚浅礁与深海光影...';
 			const waitStart = performance.now();
+			lastStageHeartbeat = waitStart;
 			function waitSceneReady() {
 				if (!initializing) return;
 				if (window.artReview) {
 					dismissLoadingOverlay(true);
 					return;
 				}
-				if (window.__abyssalGameReady || (performance.now() - waitStart) > 2200) {
+				const now = performance.now();
+				const idleSinceHeartbeat = now - Math.max(waitStart, lastStageHeartbeat);
+				if (window.__abyssalGameReady || idleSinceHeartbeat > 15000 || (now - waitStart) > 25000) {
 					dismissLoadingOverlay(false);
 					return;
 				}

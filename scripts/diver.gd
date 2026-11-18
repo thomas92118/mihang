@@ -280,6 +280,50 @@ func set_mobile_performance_mode(enabled: bool) -> void:
 		if not sp.has_meta("_orig_shadow_enabled"):
 			sp.set_meta("_orig_shadow_enabled", sp.shadow_enabled)
 		sp.shadow_enabled = false if enabled else bool(sp.get_meta("_orig_shadow_enabled", false))
+	_sync_mobile_particles()
+	if is_instance_valid(camera) and not scoped:
+		camera.far = 148.0 if mobile_performance_mode else 240.0
+
+func _sync_mobile_particles() -> void:
+	for node in find_children("*", "CPUParticles3D", true, false):
+		var cp := node as CPUParticles3D
+		if cp == null:
+			continue
+		if not cp.has_meta("_orig_amount"):
+			cp.set_meta("_orig_amount", cp.amount)
+		var orig_amt := int(cp.get_meta("_orig_amount", cp.amount))
+		var target_amt := maxi(4, roundi(float(orig_amt) * 0.45)) if mobile_performance_mode else orig_amt
+		if cp.amount != target_amt:
+			cp.amount = target_amt
+
+func _viewport_aspect() -> float:
+	if not is_inside_tree():
+		return 1.6
+	var vp := get_viewport()
+	if vp == null:
+		return 1.6
+	var sz := vp.get_visible_rect().size
+	if sz.x <= 1.0 or sz.y <= 1.0:
+		return 1.6
+	return sz.x / sz.y
+
+func _adapt_fov_for_aspect(base_vfov_deg: float) -> float:
+	var aspect := _viewport_aspect()
+	if scoped:
+		if aspect < 1.0:
+			var sc_scale := minf(1.25 / maxf(aspect, 0.35), 1.35)
+			return clampf(rad_to_deg(2.0 * atan(tan(deg_to_rad(base_vfov_deg) * 0.5) * sc_scale)), base_vfov_deg, 24.0)
+		return base_vfov_deg
+	if aspect < 1.58:
+		var narrow_scale := minf(1.6 / maxf(aspect, 0.35), 1.48)
+		var vfov_rad := 2.0 * atan(tan(deg_to_rad(base_vfov_deg) * 0.5) * narrow_scale)
+		return clampf(rad_to_deg(vfov_rad), base_vfov_deg, 98.0)
+	if aspect > 1.85:
+		var max_hfov_rad := deg_to_rad(110.0)
+		var cur_hfov := 2.0 * atan(tan(deg_to_rad(base_vfov_deg) * 0.5) * aspect)
+		if cur_hfov > max_hfov_rad:
+			return rad_to_deg(2.0 * atan(tan(max_hfov_rad * 0.5) / aspect))
+	return base_vfov_deg
 
 func get_character_profile() -> Dictionary:
 	return CharacterRoster.get_profile(current_character)
@@ -308,6 +352,7 @@ func set_character(character_id: String) -> Dictionary:
 		breath_bubbles.emitting = not in_submarine_mode
 	if is_instance_valid(backpack_thruster_bubbles):
 		backpack_thruster_bubbles.emitting = false
+	_sync_mobile_particles()
 	_animate_diver_model(0.016)
 	return CharacterRoster.get_profile(current_character)
 
@@ -1372,6 +1417,9 @@ func apply_orbit_delta(relative: Vector2, from_touch: bool = false) -> void:
 	var sensitivity := 0.0032
 	if from_touch:
 		sensitivity *= float(_look_settings("touch_sensitivity", 1.0))
+		if is_inside_tree() and get_viewport() != null:
+			var vp_w := maxf(320.0, get_viewport().get_visible_rect().size.x)
+			sensitivity *= clampf(1080.0 / vp_w, 1.0, 2.0)
 	var direction := relative
 	if bool(_look_settings("invert_y", false)):
 		direction.y = -direction.y
@@ -1383,6 +1431,12 @@ func apply_look_delta(relative: Vector2, from_touch: bool = false) -> void:
 	var sensitivity := 0.00028 if scoped else (0.0011 if aiming else 0.0022)
 	if from_touch:
 		sensitivity *= float(_look_settings("touch_sensitivity", 1.0))
+		if is_inside_tree() and get_viewport() != null:
+			var vp_w := maxf(320.0, get_viewport().get_visible_rect().size.x)
+			sensitivity *= clampf(1080.0 / vp_w, 1.0, 2.15)
+		if not scoped and not aiming:
+			var step_len := relative.length()
+			sensitivity *= clampf(1.0 + maxf(0.0, step_len - 6.0) * 0.022, 1.0, 1.65)
 	var direction := relative
 	if bool(_look_settings("invert_y", false)):
 		direction.y = -direction.y
@@ -1442,7 +1496,9 @@ func _physics_process(delta: float) -> void:
 			rotate_character_roll(roll_axis * 2.5 * delta)
 	if in_submarine_mode or in_mount_mode:
 		sprinting = not aiming and _control_strength("sprint") > 0.5
-		var veh_fov: float = SCOPE_FOV if scoped else (AIM_FOV if aiming else (84.0 if sprinting else 78.0))
+		var veh_base_fov: float = SCOPE_FOV if scoped else (AIM_FOV if aiming else (84.0 if sprinting else 78.0))
+		var veh_fov: float = _adapt_fov_for_aspect(veh_base_fov)
+		camera.far = 280.0 if scoped else (148.0 if mobile_performance_mode else 240.0)
 		camera.fov = lerpf(camera.fov, veh_fov, 1.0 - exp(-delta * 9.0))
 		_update_third_person_camera(delta)
 		return
@@ -1500,7 +1556,9 @@ func _physics_process(delta: float) -> void:
 	elif position.y > 1.2:
 		position.y = 1.2
 
-	var target_fov: float = SCOPE_FOV if scoped else (AIM_FOV if aiming else (84.0 if sprinting else 78.0))
+	var base_fov: float = SCOPE_FOV if scoped else (AIM_FOV if aiming else (84.0 if sprinting else 78.0))
+	var target_fov: float = _adapt_fov_for_aspect(base_fov)
+	camera.far = 280.0 if scoped else (148.0 if mobile_performance_mode else 240.0)
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 9.0))
 	_update_third_person_camera(delta)
 
@@ -1830,6 +1888,10 @@ func _update_third_person_camera(delta: float) -> void:
 		desired_dist = THIRD_PERSON_AIM_DIST
 	elif sprinting or booster_active:
 		desired_dist = third_person_distance + 0.42
+	if not scoped and not aiming:
+		var aspect := _viewport_aspect()
+		if aspect < 1.0:
+			desired_dist *= lerpf(1.24, 1.0, clampf((aspect - 0.45) / 0.55, 0.0, 1.0))
 
 	if delta > 0.0 and not scoped:
 		current_camera_distance = lerpf(current_camera_distance, desired_dist, 1.0 - exp(-delta * 10.0))
