@@ -1,9 +1,14 @@
 extends RefCounted
 
+const WeaponCatalog = preload("res://scripts/combat/weapon_catalog.gd")
+const SkillCatalog = preload("res://scripts/combat/skill_catalog.gd")
+
 const RECIPES := {
 	"tank": {"titanium": 2, "kelp": 2},
 	"fins": {"titanium": 1, "kelp": 2},
 	"axe": {"titanium": 2, "copper": 1},
+	"harpoon": {"titanium": 2, "copper": 2, "creature_tooth": 1},
+	"sonar_cannon": {"titanium": 2, "quartz": 2, "chitin": 1},
 	"sonic": {"titanium": 2, "quartz": 2, "copper": 1},
 	"beacon": {"titanium": 3, "copper": 2, "quartz": 2},
 	"rebreather": {"titanium": 2, "copper": 1, "kelp": 2},
@@ -22,6 +27,8 @@ const RECIPE_NAMES := {
 	"fins": "动力脚蹼",
 	"rebreather": "深海循环呼吸器",
 	"axe": "破拆战斧",
+	"harpoon": "潮汐电磁鱼叉枪",
+	"sonar_cannon": "声呐共鸣冲击炮",
 	"sonic": "蓝光静滞枪",
 	"biomod_dash": "生体模组·涡流突进",
 	"beacon": "求救信标",
@@ -31,7 +38,31 @@ const RECIPE_NAMES := {
 	"reinforce_sharp": "深铸·锋锐硬化",
 	"reinforce_sonic": "深铸·晶体共鸣"
 	,"abyssal_escape_engine": "深海跃迁逃逸器 (终极逃生舰)"
-	,"marker_gun": "光标指示枪 (激光引战)"
+	,"marker_gun": "深渊晶核指挥杖 (御兽指令)"
+}
+
+const MAX_EQUIPPED_WEAPONS := 3
+const MAX_WEAPON_MODS := 2
+const MAX_DEPLOYED_PETS := 3
+
+const WEAPON_ROLE_LABELS := {
+	"knife": "轻近战 · 4连裂伤",
+	"axe": "重近战 · 破甲削韧",
+	"harpoon": "中距电磁 · 钩锁",
+	"sonar_cannon": "锥形声呐 · 活捕",
+	"sonic": "远距开镜 · 静滞",
+	"marker_gun": "御兽指挥 · 标记",
+}
+
+const MOD_CATEGORY_LABELS := {
+	"serrated_edge": "伤害 · 裂伤",
+	"superconduct_optic": "暴击 · 感电",
+	"cavitation_valve": "削韧 · 攻速",
+	"bio_battery_mod": "散热 · 冷却",
+	"cryo_core": "重击 · 静滞",
+	"acoustic_chamber": "射程 · 穿甲",
+	"anesthetic_coat": "活捕 · 三星",
+	"hydro_fins": "攻速 · 射程",
 }
 
 const ITEM_WEIGHTS := {
@@ -134,6 +165,29 @@ var inventory: Dictionary = {
 	,"mother_tree_essence": 0, "ancient_star_core": 0, "tree_seed": 0
 }
 var weapons: Array[String] = ["knife"]
+var unlocked_tools: Dictionary = {
+	"knife": true,
+	"axe": false,
+	"harpoon": false,
+	"sonar_cannon": false,
+	"sonic": false,
+	"marker_gun": false,
+}
+var equipped_weapons: Array[String] = ["knife"]
+var weapon_tiers: Dictionary = {
+	"knife": 1,
+	"axe": 1,
+	"harpoon": 1,
+	"sonar_cannon": 1,
+	"sonic": 1,
+	"marker_gun": 1,
+}
+var unlocked_mods: Array[String] = ["serrated_edge", "anesthetic_coat"]
+var weapon_mods: Dictionary = {}
+var active_tactical_skill: String = "hydro_grapple"
+var tamed_creatures: Array[Dictionary] = []
+var deployed_pet_indices: Array[int] = []
+var loadout_version: int = 1
 var weapon_upgrade_level: int = 0
 var weapon_attack_bonus: float = 0.0
 var oxygen: float = 90.0
@@ -186,6 +240,13 @@ func set_mode(new_mode: String) -> void:
 		biomod_dash = true
 		biomod_vision = true
 		weapons = ["knife", "axe", "sonic"]
+		unlocked_tools = _default_unlocked_tools(true)
+		equipped_weapons = ["axe", "harpoon", "sonic"]
+		weapon_tiers = _default_weapon_tiers(1)
+		unlocked_mods = WeaponCatalog.MOD_ORDER.duplicate()
+		weapon_mods = {}
+		active_tactical_skill = SkillCatalog.TACTICAL_ORDER[0]
+		deployed_pet_indices = []
 		max_oxygen = 999.0
 		oxygen = max_oxygen
 		health = 100.0
@@ -202,6 +263,13 @@ func set_mode(new_mode: String) -> void:
 		biomod_dash = false
 		biomod_vision = false
 		weapons = ["knife"]
+		unlocked_tools = _default_unlocked_tools(false)
+		equipped_weapons = ["knife"]
+		weapon_tiers = _default_weapon_tiers(1)
+		unlocked_mods = _default_survival_mods()
+		weapon_mods = {}
+		active_tactical_skill = SkillCatalog.TACTICAL_ORDER[0]
+		deployed_pet_indices = []
 		max_oxygen = 90.0
 		oxygen = max_oxygen
 		health = 100.0
@@ -209,6 +277,360 @@ func set_mode(new_mode: String) -> void:
 		weapon_attack_bonus = 0.0
 		max_drone_charges = 3
 		drone_charges = 3
+	loadout_version += 1
+
+func reset(mode_name: String = "survival") -> void:
+	inventory = _default_inventory()
+	landmarks_discovered.clear()
+	unlocked_outposts.clear()
+	collected_relics.clear()
+	marinca_cards.clear()
+	surveyed_cells.clear()
+	pinged_targets.clear()
+	tamed_creatures.clear()
+	clear_custom_waypoint()
+	max_health = 100.0
+	reinforced_suit = false
+	bio_battery = false
+	rescued = false
+	boss_defeated = false
+	all_bosses_defeated = false
+	mother_tree_active = false
+	escape_crafted = false
+	black_box_read = false
+	pinned_recipe = "tank"
+	tamed_beast_count = 0
+	elapsed = 0.0
+	gold = 0
+	dishes_served = 0
+	sushi_reputation = 1
+	base_max_weight = 40.0
+	cargo_upgrade_level = 0
+	sonar_cooldown = 0.0
+	fast_travel_count = 0
+	explorer_speed_bonus = 0.0
+	explorer_rank_level = 1
+	set_mode(mode_name)
+
+static func _default_unlocked_tools(unlock_all: bool = false) -> Dictionary:
+	var result: Dictionary = {}
+	for wid in WeaponCatalog.WEAPON_ORDER:
+		result[wid] = true if (wid == "knife" or unlock_all) else false
+	return result
+
+static func _default_weapon_tiers(default_tier: int = 1) -> Dictionary:
+	var clamped := clampi(default_tier, 1, WeaponCatalog.MAX_WEAPON_TIER)
+	var result: Dictionary = {}
+	for wid in WeaponCatalog.WEAPON_ORDER:
+		result[wid] = clamped
+	return result
+
+static func _default_survival_mods() -> Array[String]:
+	return ["serrated_edge", "anesthetic_coat"]
+
+func _auto_equip_weapon_if_space(weapon_id: String) -> void:
+	if not WeaponCatalog.WEAPONS.has(weapon_id):
+		return
+	if equipped_weapons.has(weapon_id):
+		return
+	if equipped_weapons.size() < MAX_EQUIPPED_WEAPONS:
+		equipped_weapons.append(weapon_id)
+
+func _unlock_weapon(weapon_id: String) -> bool:
+	if not WeaponCatalog.WEAPONS.has(weapon_id):
+		return false
+	var was_owned := has_weapon(weapon_id)
+	unlocked_tools[weapon_id] = true
+	if not weapons.has(weapon_id):
+		weapons.append(weapon_id)
+	_auto_equip_weapon_if_space(weapon_id)
+	if not was_owned:
+		loadout_version += 1
+	return not was_owned
+
+func unlock_tool(tool_id: String) -> bool:
+	if WeaponCatalog.WEAPONS.has(tool_id):
+		return _unlock_weapon(tool_id)
+	var already := bool(unlocked_tools.get(tool_id, false))
+	unlocked_tools[tool_id] = true
+	if not already:
+		loadout_version += 1
+	return not already
+
+func has_weapon(weapon_id: String) -> bool:
+	if weapon_id == "knife":
+		return true
+	return bool(unlocked_tools.get(weapon_id, false)) or weapons.has(weapon_id)
+
+func get_owned_weapons() -> Array[String]:
+	var owned: Array[String] = []
+	for wid in WeaponCatalog.WEAPON_ORDER:
+		if has_weapon(wid):
+			owned.append(wid)
+	return owned
+
+func get_weapon_tier(weapon_id: String) -> int:
+	return clampi(int(weapon_tiers.get(weapon_id, 1)), 1, WeaponCatalog.MAX_WEAPON_TIER)
+
+func get_weapon_mods(weapon_id: String) -> Array[String]:
+	var result: Array[String] = []
+	var raw: Variant = weapon_mods.get(weapon_id, [])
+	if raw is Array:
+		for item in raw:
+			var mid := str(item)
+			if WeaponCatalog.MODS.has(mid) and not result.has(mid):
+				result.append(mid)
+				if result.size() >= MAX_WEAPON_MODS:
+					break
+	return result
+
+func equip_weapon_to_slot(slot_idx: int, weapon_id: String) -> Dictionary:
+	if slot_idx < 0 or slot_idx >= MAX_EQUIPPED_WEAPONS:
+		return {
+			"ok": false,
+			"message": "无效武装槽位",
+			"equipped_weapons": equipped_weapons.duplicate(),
+		}
+	if not WeaponCatalog.WEAPONS.has(weapon_id) or not has_weapon(weapon_id):
+		return {
+			"ok": false,
+			"message": "尚未拥有该武器",
+			"equipped_weapons": equipped_weapons.duplicate(),
+		}
+	var existing_idx := equipped_weapons.find(weapon_id)
+	if existing_idx == slot_idx:
+		return {
+			"ok": true,
+			"message": "该武器已位于槽位 %d" % (slot_idx + 1),
+			"equipped_weapons": equipped_weapons.duplicate(),
+		}
+	if existing_idx >= 0:
+		if slot_idx < equipped_weapons.size():
+			var prev := equipped_weapons[slot_idx]
+			equipped_weapons[slot_idx] = weapon_id
+			equipped_weapons[existing_idx] = prev
+		else:
+			equipped_weapons.remove_at(existing_idx)
+			equipped_weapons.append(weapon_id)
+	elif slot_idx < equipped_weapons.size():
+		equipped_weapons[slot_idx] = weapon_id
+	else:
+		equipped_weapons.append(weapon_id)
+	loadout_version += 1
+	var w_name := str(WeaponCatalog.get_weapon(weapon_id).get("short_name", weapon_id))
+	var final_slot := equipped_weapons.find(weapon_id)
+	return {
+		"ok": true,
+		"message": "已将 %s 装配至槽位 %d" % [w_name, final_slot + 1],
+		"equipped_weapons": equipped_weapons.duplicate(),
+	}
+
+static func _split_upgrade_cost(weapon_id: String, next_tier: int) -> Dictionary:
+	var raw_cost: Dictionary = WeaponCatalog.get_upgrade_cost(weapon_id, next_tier)
+	var materials: Dictionary = {}
+	var gold_cost: int = 0
+	if raw_cost.has("materials") and raw_cost["materials"] is Dictionary:
+		var raw_mats: Dictionary = raw_cost["materials"]
+		for k in raw_mats:
+			var req := int(raw_mats[k])
+			if req > 0:
+				materials[str(k)] = req
+		gold_cost = maxi(0, int(raw_cost.get("gold", 0)))
+	else:
+		for k in raw_cost:
+			var ks := str(k)
+			var req := int(raw_cost[k])
+			if req <= 0:
+				continue
+			if ks == "gold":
+				gold_cost += req
+			else:
+				materials[ks] = req
+	return {"materials": materials, "gold": gold_cost}
+
+func _can_afford_upgrade(materials: Dictionary, gold_cost: int) -> bool:
+	if gold < gold_cost:
+		return false
+	for kind in materials:
+		if int(inventory.get(kind, 0)) < int(materials[kind]):
+			return false
+	return true
+
+func upgrade_weapon_tier(weapon_id: String) -> Dictionary:
+	if not WeaponCatalog.WEAPONS.has(weapon_id) or not has_weapon(weapon_id):
+		return {"ok": false, "tier": get_weapon_tier(weapon_id), "message": "尚未拥有该武器"}
+	var current_tier := get_weapon_tier(weapon_id)
+	if current_tier >= WeaponCatalog.MAX_WEAPON_TIER:
+		return {"ok": false, "tier": current_tier, "message": "该武器已达最高阶位 Lv.%d" % WeaponCatalog.MAX_WEAPON_TIER}
+	var next_tier := current_tier + 1
+	var cost_info := _split_upgrade_cost(weapon_id, next_tier)
+	var materials: Dictionary = cost_info["materials"]
+	var gold_cost: int = int(cost_info["gold"])
+	if mode != "explore":
+		if gold < gold_cost:
+			return {"ok": false, "tier": current_tier, "message": "金币不足（需要 %d 金币）" % gold_cost}
+		for kind in materials:
+			if int(inventory.get(kind, 0)) < int(materials[kind]):
+				return {"ok": false, "tier": current_tier, "message": "深铸材料不足"}
+		gold -= gold_cost
+		for kind in materials:
+			inventory[kind] = int(inventory.get(kind, 0)) - int(materials[kind])
+	weapon_tiers[weapon_id] = next_tier
+	loadout_version += 1
+	var w_name := str(WeaponCatalog.get_weapon(weapon_id).get("short_name", weapon_id))
+	return {"ok": true, "tier": next_tier, "message": "%s 已深铸至 Lv.%d" % [w_name, next_tier]}
+
+func toggle_weapon_mod(weapon_id: String, mod_id: String) -> Dictionary:
+	if not WeaponCatalog.WEAPONS.has(weapon_id) or not has_weapon(weapon_id):
+		return {"ok": false, "equipped": false, "mods": [], "message": "尚未拥有该武器"}
+	if not WeaponCatalog.MODS.has(mod_id):
+		return {"ok": false, "equipped": false, "mods": get_weapon_mods(weapon_id), "message": "未知战术模组"}
+	if not unlocked_mods.has(mod_id):
+		return {"ok": false, "equipped": false, "mods": get_weapon_mods(weapon_id), "message": "该模组尚未解锁"}
+	var current_mods := get_weapon_mods(weapon_id)
+	var mod_name := str((WeaponCatalog.MODS[mod_id] as Dictionary).get("name", mod_id))
+	if current_mods.has(mod_id):
+		current_mods.erase(mod_id)
+		weapon_mods[weapon_id] = current_mods
+		loadout_version += 1
+		return {"ok": true, "equipped": false, "mods": current_mods.duplicate(), "message": "已卸下 %s" % mod_name}
+	if current_mods.size() >= MAX_WEAPON_MODS:
+		return {"ok": false, "equipped": false, "mods": current_mods.duplicate(), "message": "模组槽已满（最多 2 个）"}
+	current_mods.append(mod_id)
+	weapon_mods[weapon_id] = current_mods
+	loadout_version += 1
+	return {"ok": true, "equipped": true, "mods": current_mods.duplicate(), "message": "已装配 %s" % mod_name}
+
+func unlock_mod(mod_id: String) -> bool:
+	if not WeaponCatalog.MODS.has(mod_id):
+		return false
+	if unlocked_mods.has(mod_id):
+		return false
+	unlocked_mods.append(mod_id)
+	loadout_version += 1
+	return true
+
+func set_active_tactical_skill(skill_id: String) -> Dictionary:
+	if not SkillCatalog.TACTICAL_SKILLS.has(skill_id):
+		return {"ok": false, "skill_id": active_tactical_skill, "message": "未知战术技能"}
+	active_tactical_skill = skill_id
+	loadout_version += 1
+	var skill_name := str((SkillCatalog.TACTICAL_SKILLS[skill_id] as Dictionary).get("name", skill_id))
+	return {"ok": true, "skill_id": active_tactical_skill, "message": "已装配战术技：%s" % skill_name}
+
+func add_tamed_creature(entry: Dictionary) -> int:
+	tamed_creatures.append(entry)
+	tamed_beast_count = maxi(tamed_beast_count, tamed_creatures.size())
+	sync_deployed_pets()
+	loadout_version += 1
+	return tamed_creatures.size() - 1
+
+func sync_deployed_pets() -> void:
+	var total := tamed_creatures.size()
+	var cleaned: Array[int] = []
+	for raw_idx in deployed_pet_indices:
+		var idx := int(raw_idx)
+		if idx >= 0 and idx < total and not cleaned.has(idx):
+			cleaned.append(idx)
+			if cleaned.size() >= MAX_DEPLOYED_PETS:
+				break
+	var target_count := mini(MAX_DEPLOYED_PETS, total)
+	if total > 0 and cleaned.size() < target_count:
+		for idx in range(total):
+			if not cleaned.has(idx):
+				cleaned.append(idx)
+				if cleaned.size() >= target_count:
+					break
+	deployed_pet_indices = cleaned
+
+func set_deployed_pet_indices(indices: Array) -> void:
+	var limit := tamed_creatures.size() if not tamed_creatures.is_empty() else tamed_beast_count
+	var cleaned: Array[int] = []
+	for raw_idx in indices:
+		if not (raw_idx is int or raw_idx is float):
+			continue
+		var idx := int(raw_idx)
+		if idx < 0:
+			continue
+		if limit > 0 and idx >= limit:
+			continue
+		if limit == 0:
+			continue
+		if not cleaned.has(idx):
+			cleaned.append(idx)
+			if cleaned.size() >= MAX_DEPLOYED_PETS:
+				break
+	deployed_pet_indices = cleaned
+	loadout_version += 1
+
+func get_deployed_pets() -> Array[Dictionary]:
+	sync_deployed_pets()
+	var result: Array[Dictionary] = []
+	for idx in deployed_pet_indices:
+		if idx >= 0 and idx < tamed_creatures.size():
+			result.append(tamed_creatures[idx])
+	return result
+
+func build_loadout_payload(character_id: String, in_submarine: bool) -> Dictionary:
+	var owned := get_owned_weapons()
+	var tiers_copy: Dictionary = {}
+	var mods_copy: Dictionary = {}
+	var weapons_catalog: Array[Dictionary] = []
+	for base_w in WeaponCatalog.get_all_weapons():
+		var wid := str(base_w.get("id", ""))
+		var is_owned := has_weapon(wid)
+		var tier := get_weapon_tier(wid)
+		tiers_copy[wid] = tier
+		mods_copy[wid] = get_weapon_mods(wid)
+		var next_tier := tier + 1
+		var mat_cost: Dictionary = {}
+		var gold_cost: int = 0
+		if tier < WeaponCatalog.MAX_WEAPON_TIER:
+			var split_cost := _split_upgrade_cost(wid, next_tier)
+			mat_cost = split_cost["materials"]
+			gold_cost = int(split_cost["gold"])
+		var entry := base_w.duplicate(true)
+		entry["owned"] = is_owned
+		entry["tier"] = tier
+		entry["max_tier"] = WeaponCatalog.MAX_WEAPON_TIER
+		entry["role"] = str(WEAPON_ROLE_LABELS.get(wid, entry.get("category", "")))
+		entry["upgrade_cost"] = mat_cost
+		entry["upgrade_gold"] = gold_cost
+		entry["can_upgrade"] = is_owned and tier < WeaponCatalog.MAX_WEAPON_TIER and (mode == "explore" or _can_afford_upgrade(mat_cost, gold_cost))
+		weapons_catalog.append(entry)
+
+	var mods_catalog: Array[Dictionary] = []
+	for base_m in WeaponCatalog.get_all_mods():
+		var mid := str(base_m.get("id", ""))
+		var m_entry := base_m.duplicate(true)
+		m_entry["unlocked"] = unlocked_mods.has(mid)
+		m_entry["category"] = str(MOD_CATEGORY_LABELS.get(mid, "通用"))
+		mods_catalog.append(m_entry)
+
+	var skills_catalog: Array[Dictionary] = []
+	for base_s in SkillCatalog.get_all_tactical_skills():
+		var s_entry := base_s.duplicate(true)
+		s_entry["school"] = str(base_s.get("branch_name", base_s.get("branch", "战术")))
+		skills_catalog.append(s_entry)
+
+	return {
+		"version": loadout_version,
+		"mode": mode,
+		"gold": gold,
+		"inventory": inventory.duplicate(),
+		"equipped_slots": equipped_weapons.duplicate(),
+		"owned_weapons": owned,
+		"weapon_tiers": tiers_copy,
+		"weapon_mods": mods_copy,
+		"unlocked_mods": unlocked_mods.duplicate(),
+		"weapons_catalog": weapons_catalog,
+		"mods_catalog": mods_catalog,
+		"skills_catalog": skills_catalog,
+		"active_tactical_skill": active_tactical_skill,
+		"character_id": character_id,
+		"ultimate_info": SkillCatalog.get_ultimate_for_context(character_id, in_submarine),
+		"deployed_pet_indices": deployed_pet_indices.duplicate(),
+	}
 
 func discover_landmark(id: String) -> bool:
 	if landmarks_discovered.has(id):
@@ -330,6 +752,7 @@ func get_pinned_info() -> Dictionary:
 	var item_names := {
 		"titanium": "钛", "copper": "铜", "quartz": "石英", "kelp": "海藻",
 		"fish_small": "小鱼", "shark_fragment": "鲨齿", "abyss_fragment": "晶核"
+		,"fish_meat": "生肉", "creature_skin": "兽皮", "creature_tooth": "生物利齿", "chitin": "甲壳"
 		,"mother_tree_essence": "生命精华", "ancient_star_core": "星核源石", "tree_seed": "启迪之种"
 	}
 	for kind in cost:
@@ -574,7 +997,7 @@ func craft(recipe: String, near_home: bool) -> String:
 		return "已拥有深海循环呼吸器"
 	if recipe == "biomod_dash" and biomod_dash:
 		return "已激活涡流突进模组"
-	if (recipe == "axe" and weapons.has("axe")) or (recipe == "sonic" and weapons.has("sonic")):
+	if recipe in ["axe", "harpoon", "sonar_cannon", "sonic", "marker_gun"] and has_weapon(recipe):
 		return "已拥有此项武器"
 	if not near_home and mode != "explore":
 		return "请回到逃生舱附近使用制造台（7 米内）"
@@ -599,6 +1022,7 @@ func craft(recipe: String, near_home: bool) -> String:
 			health = 150.0
 		"bio_battery":
 			bio_battery = true
+			unlock_mod("bio_battery_mod")
 		"serrated_blade":
 			weapon_attack_bonus += 25.0
 			weapon_upgrade_level += 1
@@ -606,14 +1030,15 @@ func craft(recipe: String, near_home: bool) -> String:
 			biomod_dash = true
 			weapon_upgrade_level += 1
 		"axe":
-			if not weapons.has("axe"):
-				weapons.append("axe")
+			_unlock_weapon("axe")
+		"harpoon":
+			_unlock_weapon("harpoon")
+		"sonar_cannon":
+			_unlock_weapon("sonar_cannon")
 		"sonic":
-			if not weapons.has("sonic"):
-				weapons.append("sonic")
+			_unlock_weapon("sonic")
 		"marker_gun":
-			if not weapons.has("marker_gun"):
-				weapons.append("marker_gun")
+			_unlock_weapon("marker_gun")
 		"beacon":
 			rescued = true
 		"reinforce_sharp":
@@ -626,6 +1051,9 @@ func craft(recipe: String, near_home: bool) -> String:
 			escape_crafted = true
 			rescued = true
 	return ""
+
+func craft_recipe(recipe: String, near_home: bool = true) -> String:
+	return craft(recipe, near_home)
 
 func tick(delta: float, safe: bool, sprinting: bool, depth: float = 0.0) -> bool:
 	elapsed += delta
@@ -726,11 +1154,22 @@ func to_save_dict() -> Dictionary:
 	for p_key in pinged_targets:
 		if bool(pinged_targets[p_key]):
 			pinged_out.append(str(p_key))
+	var weapon_mods_out: Dictionary = {}
+	for wid in weapon_mods:
+		weapon_mods_out[str(wid)] = get_weapon_mods(str(wid))
 	return {
 		"mode": mode,
 		"selected_character": selected_character,
 		"inventory": inv_out,
 		"weapons": weapons.duplicate(),
+		"unlocked_tools": unlocked_tools.duplicate(),
+		"equipped_weapons": equipped_weapons.duplicate(),
+		"weapon_tiers": weapon_tiers.duplicate(),
+		"unlocked_mods": unlocked_mods.duplicate(),
+		"weapon_mods": weapon_mods_out,
+		"active_tactical_skill": active_tactical_skill,
+		"deployed_pet_indices": deployed_pet_indices.duplicate(),
+		"loadout_version": loadout_version,
 		"weapon_upgrade_level": weapon_upgrade_level,
 		"weapon_attack_bonus": weapon_attack_bonus,
 		"oxygen": oxygen,
@@ -773,6 +1212,9 @@ func to_save_dict() -> Dictionary:
 		"explorer_speed_bonus": explorer_speed_bonus,
 		"explorer_rank_level": explorer_rank_level
 	}
+
+func to_dict() -> Dictionary:
+	return to_save_dict()
 
 func load_save_dict(data: Dictionary) -> void:
 	if data == null or not (data is Dictionary):
@@ -829,6 +1271,80 @@ func load_save_dict(data: Dictionary) -> void:
 			w_arr.push_front("knife")
 		weapons = w_arr
 
+	unlocked_tools = _default_unlocked_tools(saved_mode == "explore")
+	if data.get("unlocked_tools") is Dictionary:
+		var ut_in: Dictionary = data["unlocked_tools"]
+		for tk in ut_in:
+			unlocked_tools[str(tk)] = bool(ut_in[tk])
+	unlocked_tools["knife"] = true
+	for wid in weapons:
+		if WeaponCatalog.WEAPONS.has(wid):
+			unlocked_tools[wid] = true
+	for required_wid in WeaponCatalog.WEAPON_ORDER:
+		if not unlocked_tools.has(required_wid):
+			unlocked_tools[required_wid] = (required_wid == "knife") or (saved_mode == "explore")
+
+	weapon_tiers = _default_weapon_tiers(1)
+	if data.get("weapon_tiers") is Dictionary:
+		var wt_in: Dictionary = data["weapon_tiers"]
+		for wid in WeaponCatalog.WEAPON_ORDER:
+			if wt_in.has(wid):
+				weapon_tiers[wid] = clampi(_read_int(wt_in, wid, 1), 1, WeaponCatalog.MAX_WEAPON_TIER)
+
+	if data.get("unlocked_mods") is Array:
+		var mods_loaded: Array[String] = []
+		for raw_mod in data["unlocked_mods"]:
+			var mid := str(raw_mod)
+			if WeaponCatalog.MODS.has(mid) and not mods_loaded.has(mid):
+				mods_loaded.append(mid)
+		if mods_loaded.is_empty():
+			mods_loaded = WeaponCatalog.MOD_ORDER.duplicate() if saved_mode == "explore" else _default_survival_mods()
+		unlocked_mods = mods_loaded
+	else:
+		unlocked_mods = WeaponCatalog.MOD_ORDER.duplicate() if saved_mode == "explore" else _default_survival_mods()
+
+	weapon_mods = {}
+	if data.get("weapon_mods") is Dictionary:
+		var wm_in: Dictionary = data["weapon_mods"]
+		for raw_wid in wm_in:
+			var wid := str(raw_wid)
+			if not WeaponCatalog.WEAPONS.has(wid):
+				continue
+			var raw_list: Variant = wm_in[raw_wid]
+			if raw_list is Array:
+				var cleaned_mods: Array[String] = []
+				for rm in raw_list:
+					var mid := str(rm)
+					if WeaponCatalog.MODS.has(mid) and unlocked_mods.has(mid) and not cleaned_mods.has(mid):
+						cleaned_mods.append(mid)
+						if cleaned_mods.size() >= MAX_WEAPON_MODS:
+							break
+				if not cleaned_mods.is_empty():
+					weapon_mods[wid] = cleaned_mods
+
+	var eq_loaded: Array[String] = []
+	if data.get("equipped_weapons") is Array:
+		for raw_eq in data["equipped_weapons"]:
+			var wid := str(raw_eq)
+			if WeaponCatalog.WEAPONS.has(wid) and has_weapon(wid) and not eq_loaded.has(wid):
+				eq_loaded.append(wid)
+				if eq_loaded.size() >= MAX_EQUIPPED_WEAPONS:
+					break
+	if eq_loaded.is_empty():
+		if saved_mode == "explore" and has_weapon("axe") and has_weapon("harpoon") and has_weapon("sonic"):
+			eq_loaded = ["axe", "harpoon", "sonic"]
+		else:
+			for wid in get_owned_weapons():
+				eq_loaded.append(wid)
+				if eq_loaded.size() >= MAX_EQUIPPED_WEAPONS:
+					break
+	if eq_loaded.is_empty():
+		eq_loaded.append("knife")
+	equipped_weapons = eq_loaded
+
+	var loaded_skill := _read_string(data, "active_tactical_skill", SkillCatalog.TACTICAL_ORDER[0])
+	active_tactical_skill = loaded_skill if SkillCatalog.TACTICAL_SKILLS.has(loaded_skill) else SkillCatalog.TACTICAL_ORDER[0]
+
 	weapon_upgrade_level = maxi(0, _read_int(data, "weapon_upgrade_level", weapon_upgrade_level))
 	weapon_attack_bonus = maxf(0.0, _read_float(data, "weapon_attack_bonus", weapon_attack_bonus))
 	max_oxygen = maxf(10.0, _read_float(data, "max_oxygen", max_oxygen))
@@ -850,6 +1366,20 @@ func load_save_dict(data: Dictionary) -> void:
 	mother_tree_active = _read_bool(data, "mother_tree_active", mother_tree_active)
 	escape_crafted = _read_bool(data, "escape_crafted", escape_crafted)
 	tamed_beast_count = maxi(0, _read_int(data, "tamed_beast_count", tamed_beast_count))
+	deployed_pet_indices.clear()
+	if data.get("deployed_pet_indices") is Array:
+		var pet_limit := tamed_creatures.size() if not tamed_creatures.is_empty() else tamed_beast_count
+		for raw_pi in data["deployed_pet_indices"]:
+			if not (raw_pi is int or raw_pi is float):
+				continue
+			var pi := int(raw_pi)
+			if pi >= 0 and (pet_limit <= 0 or pi < pet_limit) and not deployed_pet_indices.has(pi):
+				deployed_pet_indices.append(pi)
+				if deployed_pet_indices.size() >= MAX_DEPLOYED_PETS:
+					break
+	if not tamed_creatures.is_empty():
+		sync_deployed_pets()
+	loadout_version = maxi(1, _read_int(data, "loadout_version", loadout_version))
 	elapsed = maxf(0.0, _read_float(data, "elapsed", elapsed))
 	gold = maxi(0, _read_int(data, "gold", gold))
 	dishes_served = maxi(0, _read_int(data, "dishes_served", dishes_served))
@@ -954,3 +1484,6 @@ func load_save_dict(data: Dictionary) -> void:
 	else:
 		has_custom_waypoint = false
 		custom_waypoint = Vector3.ZERO
+
+func from_dict(data: Dictionary) -> void:
+	load_save_dict(data)

@@ -7,6 +7,7 @@ const CharacterRoster = preload("res://scripts/presentation/character_roster.gd"
 const GameplayGuide = preload("res://scripts/gameplay_guide.gd")
 const GuidePanel = preload("res://scripts/presentation/guide_panel.gd")
 const QuestPanel = preload("res://scripts/presentation/quest_panel.gd")
+const LoadoutPanel = preload("res://scripts/presentation/loadout_panel.gd")
 const SafeArea = preload("res://scripts/presentation/safe_area.gd")
 const SCOPE_EXIT_ICON: Texture2D = preload("res://assets/ui/touch_icons/scope_exit.png")
 
@@ -43,6 +44,11 @@ signal quest_track_requested(quest_id: String, objective_id: String)
 signal quest_tracker_toggle_requested
 signal quest_nav_requested(world_pos: Vector3, label: String, open_map: bool)
 signal quest_bounty_refresh_requested
+signal open_loadout_requested
+signal loadout_equip_slot_requested(slot_idx: int, weapon_id: String)
+signal loadout_upgrade_weapon_requested(weapon_id: String)
+signal loadout_toggle_mod_requested(weapon_id: String, mod_id: String)
+signal loadout_select_tactical_requested(skill_id: String)
 
 const INK := Art.PAPER
 const MUTED := Art.MUTED
@@ -52,7 +58,7 @@ const AMBER_GOLD := Art.AMBER
 const PANEL := Art.PANEL
 const WARM_PANEL := Color(0.075, 0.10, 0.12, 0.97)
 const GRAPHICS_QUALITY_VALUES := ["auto", "performance", "high"]
-const MODAL_MENU_KEYS := ["pause", "craft", "sushi", "mount_board", "map", "quick", "controls", "guide", "quests"]
+const MODAL_MENU_KEYS := ["pause", "craft", "sushi", "mount_board", "map", "quick", "controls", "guide", "quests", "loadout"]
 const QUEST_BANNER_DURATION := 3.2
 const QUEST_BANNER_FADE_IN := 0.25
 const QUEST_BANNER_FADE_OUT := 0.45
@@ -116,7 +122,34 @@ var weapon_hint: Label
 var boss_panel: Panel
 var boss_name: Label
 var boss_bar: ProgressBar
+var boss_poise_bar: ProgressBar
 var boss_warning: Label
+var _boss_poise_normal_fill: StyleBoxFlat
+var _boss_poise_stagger_fill: StyleBoxFlat
+var _boss_stagger_active := false
+var combat_strip: Panel
+var _combat_strip_desktop_style: StyleBoxFlat
+var _combat_strip_touch_style: StyleBoxFlat
+var _combat_shield_lbl: Label
+var _combat_shield_bar: ProgressBar
+var _combat_shield_normal_fill: StyleBoxFlat
+var _combat_shield_over_fill: StyleBoxFlat
+var _combat_flux_lbl: Label
+var _combat_flux_bar: ProgressBar
+var _combat_flux_normal_fill: StyleBoxFlat
+var _combat_flux_ready_fill: StyleBoxFlat
+var _combat_heat_lbl: Label
+var _combat_heat_bar: ProgressBar
+var _combat_heat_normal_fill: StyleBoxFlat
+var _combat_heat_over_fill: StyleBoxFlat
+var _combat_art_lbl: Label
+var _combat_tac_lbl: Label
+var _combat_cmd_lbl: Label
+var _combat_strip_want_visible := false
+var _combat_ult_ready := false
+var _combat_show_heat := false
+var _combat_show_cmd := false
+var _combat_pulse_clock := 0.0
 var sub_panel: Panel
 var sub_name_label: Label
 var sub_hull_bar: ProgressBar
@@ -184,6 +217,8 @@ var _displayed_character_id := ""
 var guide_view: Dictionary = {}
 var quest_view: Dictionary = {}
 var _quest_journal_synced := false
+var loadout_view: Dictionary = {}
+var _loadout_synced := false
 var quest_banner_panel: Panel
 var _quest_banner_accent: ColorRect
 var _quest_banner_title: Label
@@ -241,7 +276,7 @@ const QUICK_ACTIONS := [
 	["sonar_ping", "声呐勘测脉冲"], ["salvage_drone", "无人机打捞"], ["booster", "手持助推器"], ["lamp", "潜水探照灯"],
 	["mount_toggle", "骑乘 / 离鞍"], ["recall_pets", "召回伙伴"],
 	["mount_board", "打开生物应援板"], ["recall_all_mounts", "收回全部伙伴"],
-	["craft_menu", "装备制造台"], ["sushi_menu", "料理 / 商店 / 图鉴"], ["world_map", "海图与跃迁"],
+	["craft_menu", "装备制造台"], ["loadout_menu", "武装配置"], ["sushi_menu", "料理 / 商店 / 图鉴"], ["world_map", "海图与跃迁"],
 	["camera_closer", "拉近第三人称视角"], ["camera_farther", "拉远第三人称视角"],
 	["mount_slot_1", "选择伙伴 1"], ["mount_slot_2", "选择伙伴 2"], ["mount_slot_3", "选择伙伴 3"],
 	["mount_slot_4", "选择伙伴 4"], ["mount_slot_5", "选择伙伴 5"], ["mount_slot_6", "选择伙伴 6"],
@@ -282,9 +317,10 @@ func _ready() -> void:
 	_build_controls()
 	_build_guide()
 	_build_quests()
+	_build_loadout()
 	_prepare_menu_scrolling()
 	_cache_instrument_layout()
-	_hint_regex.compile("(?<![A-Za-z0-9])(WASD|W/S|A/D|A D|空格/Ctrl|空格 Ctrl|L / F1|L/F1|T/Y|1—4|按住鼠标右键|鼠标右键|方向键|Home|Shift|Ctrl|Tab|Esc|F1|空格|按 1|按 2|按 3|按 4|4(?=\\s*指示枪)|W(?=\\s*前进)|[RTYCEMNOGZVHQFBPKLU])(?![A-Za-z0-9₂:.]|\\s*轴|\\s*北|\\s*东)")
+	_hint_regex.compile("(?<![A-Za-z0-9])(WASD|W/S|A/D|A D|空格/Ctrl|空格 Ctrl|L / F1|L/F1|T/Y|1—4|按住鼠标右键|鼠标右键|方向键|Home|Shift|Ctrl|Tab|Esc|F2|F1|空格|按 1|按 2|按 3|按 4|4(?=\\s*指示枪)|W(?=\\s*前进)|(?<=\\[)[XI~](?=\\])|[RTYCEMNOGZVHQFBPKLU])(?![A-Za-z0-9₂:.]|\\s*轴|\\s*北|\\s*东)")
 	root.resized.connect(_apply_layout)
 	toast_label = _label(root, "", Rect2(-390, 130, 780, 44), 15, CYAN, Vector2(0.5, 0))
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -329,10 +365,11 @@ func _process(delta: float) -> void:
 		toast_time = maxf(0.0, toast_time - delta)
 		_layout_toast()
 		toast_label.modulate.a = minf(toast_time * 2.0, 1.0)
-		toast_label.visible = toast_time > 0.0 and active_screen in ["play", "craft", "sushi", "mount_board", "map", "quests"]
+		toast_label.visible = toast_time > 0.0 and active_screen in ["play", "craft", "sushi", "mount_board", "map", "quests", "loadout"]
 	elif is_instance_valid(toast_label) and toast_label.visible:
 		toast_label.hide()
 	_process_quest_banner(delta)
+	_process_combat_visuals(delta)
 	if hit_marker_timer > 0.0:
 		hit_marker_timer = maxf(0.0, hit_marker_timer - delta)
 		if is_instance_valid(hit_marker):
@@ -488,14 +525,26 @@ func _build_instruments() -> void:
 	charge_bar.add_theme_stylebox_override("background", _style(Color(Art.INK, 0.7)))
 	charge_bar.add_theme_stylebox_override("fill", _style(CYAN))
 	charge_bar.hide()
-	boss_panel = _panel(instruments, Rect2(-260, 132, 520, 68), Vector2(0.5, 0))
-	boss_name = _label(boss_panel, "深渊领主", Rect2(16, 8, 488, 22), 14, INK)
+	boss_panel = _panel(instruments, Rect2(-260, 132, 520, 74), Vector2(0.5, 0))
+	boss_name = _label(boss_panel, "深渊领主", Rect2(16, 6, 488, 22), 14, INK)
 	boss_bar = ProgressBar.new()
-	_place(boss_bar, boss_panel, Rect2(16, 34, 488, 4))
+	_place(boss_bar, boss_panel, Rect2(16, 30, 488, 5))
 	boss_bar.show_percentage = false
+	boss_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	boss_bar.add_theme_stylebox_override("background", _style(Color(Art.DANGER, 0.15)))
 	boss_bar.add_theme_stylebox_override("fill", _style(Art.DANGER))
-	boss_warning = _label(boss_panel, "", Rect2(16, 42, 488, 20), 11, AMBER_GOLD)
+	boss_poise_bar = ProgressBar.new()
+	boss_poise_bar.name = "BossPoiseBar"
+	_place(boss_poise_bar, boss_panel, Rect2(16, 37, 488, 3))
+	boss_poise_bar.show_percentage = false
+	boss_poise_bar.max_value = 1.0
+	boss_poise_bar.value = 1.0
+	boss_poise_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boss_poise_normal_fill = _style(Color(0.95, 0.76, 0.32, 0.96), Color.TRANSPARENT, 1)
+	_boss_poise_stagger_fill = _style(Color(0.68, 0.96, 1.0, 1.0), Color.TRANSPARENT, 1)
+	boss_poise_bar.add_theme_stylebox_override("background", _style(Color(AMBER_GOLD, 0.14), Color.TRANSPARENT, 1))
+	boss_poise_bar.add_theme_stylebox_override("fill", _boss_poise_normal_fill)
+	boss_warning = _label(boss_panel, "", Rect2(16, 44, 488, 24), 11, AMBER_GOLD)
 	boss_warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	boss_panel.hide()
 	hit_marker = _label(instruments, "×", Rect2(-14, -18, 28, 36), 22, Color(1, 1, 1, 0), Vector2(0.5, 0.5))
@@ -533,6 +582,60 @@ func _build_instruments() -> void:
 	weapon_panel.name = "WeaponInstrument"
 	weapon_bar_label = _label(weapon_panel, "潜水刀", Rect2(12, 9, 416, 22), 12, INK)
 	weapon_bar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	combat_strip = _panel(instruments, Rect2(-260, -148, 520, 28), Vector2(0.5, 1))
+	combat_strip.name = "CombatStripInstrument"
+	combat_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_combat_strip_desktop_style = _style(Color(Art.INK, 0.72), Color(CYAN, 0.24), 3)
+	_combat_strip_touch_style = _style(Color(Art.INK, 0.54), Color(CYAN, 0.18), 2)
+	combat_strip.add_theme_stylebox_override("panel", _combat_strip_desktop_style)
+	_combat_shield_normal_fill = _style(CYAN, Color.TRANSPARENT, 1)
+	_combat_shield_over_fill = _style(Art.DANGER, Color.TRANSPARENT, 1)
+	_combat_flux_normal_fill = _style(Color(0.36, 0.80, 0.96, 0.92), Color.TRANSPARENT, 1)
+	_combat_flux_ready_fill = _style(AMBER_GOLD, Color.TRANSPARENT, 1)
+	_combat_heat_normal_fill = _style(Color(0.96, 0.68, 0.28, 0.94), Color.TRANSPARENT, 1)
+	_combat_heat_over_fill = _style(Art.DANGER, Color.TRANSPARENT, 1)
+	_combat_shield_lbl = _label(combat_strip, "盾", Rect2(10, 4, 28, 20), 11, CYAN)
+	_combat_shield_lbl.set_meta("_no_hint", true)
+	_combat_shield_bar = ProgressBar.new()
+	_combat_shield_bar.name = "CombatShieldBar"
+	_place(_combat_shield_bar, combat_strip, Rect2(38, 11, 56, 6))
+	_combat_shield_bar.show_percentage = false
+	_combat_shield_bar.max_value = 1.0
+	_combat_shield_bar.value = 1.0
+	_combat_shield_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_combat_shield_bar.add_theme_stylebox_override("background", _style(Color(CYAN, 0.16), Color.TRANSPARENT, 1))
+	_combat_shield_bar.add_theme_stylebox_override("fill", _combat_shield_normal_fill)
+	_combat_flux_lbl = _label(combat_strip, "共鸣", Rect2(102, 4, 34, 20), 11, CYAN)
+	_combat_flux_bar = ProgressBar.new()
+	_combat_flux_bar.name = "CombatFluxBar"
+	_place(_combat_flux_bar, combat_strip, Rect2(138, 11, 56, 6))
+	_combat_flux_bar.show_percentage = false
+	_combat_flux_bar.max_value = 1.0
+	_combat_flux_bar.value = 0.0
+	_combat_flux_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_combat_flux_bar.add_theme_stylebox_override("background", _style(Color(AMBER_GOLD, 0.14), Color.TRANSPARENT, 1))
+	_combat_flux_bar.add_theme_stylebox_override("fill", _combat_flux_normal_fill)
+	_combat_heat_lbl = _label(combat_strip, "热", Rect2(202, 4, 26, 20), 11, ORANGE)
+	_combat_heat_lbl.set_meta("_no_hint", true)
+	_combat_heat_bar = ProgressBar.new()
+	_combat_heat_bar.name = "CombatHeatBar"
+	_place(_combat_heat_bar, combat_strip, Rect2(228, 11, 46, 6))
+	_combat_heat_bar.show_percentage = false
+	_combat_heat_bar.max_value = 1.0
+	_combat_heat_bar.value = 0.0
+	_combat_heat_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_combat_heat_bar.add_theme_stylebox_override("background", _style(Color(ORANGE, 0.15), Color.TRANSPARENT, 1))
+	_combat_heat_bar.add_theme_stylebox_override("fill", _combat_heat_normal_fill)
+	_combat_art_lbl = _label(combat_strip, "[X] 战技", Rect2(282, 4, 104, 20), 11, CYAN)
+	_combat_art_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_combat_tac_lbl = _label(combat_strip, "[I] 战术", Rect2(392, 4, 104, 20), 11, CYAN)
+	_combat_tac_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_combat_cmd_lbl = _label(combat_strip, "集火狂攻", Rect2(440, 4, 72, 20), 11, AMBER_GOLD)
+	_combat_cmd_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_combat_cmd_lbl.set_meta("_no_hint", true)
+	_combat_cmd_lbl.hide()
+	combat_strip.modulate.a = 0.0
+	combat_strip.hide()
 	equipment_value = _label(instruments, "基础潜水装备", Rect2(-220, -72, 440, 22), 10, MUTED, Vector2(0.5, 1))
 	equipment_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	weapon_hint = _label(instruments, "", Rect2(-290, -147, 580, 22), 11, CYAN, Vector2(0.5, 1))
@@ -691,9 +794,14 @@ func _build_pause() -> void:
 	var map_button := _button(card, "M / 勘测海图", Rect2(28, 226, 444, 44), func() -> void: open_map_requested.emit())
 	map_button.name = "OpenSeaChartButton"
 	map_button.custom_minimum_size = Vector2(0, 44)
-	var quests_button := _button(card, "U / 潜航任务日志", Rect2(28, 278, 444, 44), func() -> void: open_quests_requested.emit())
+	var loadout_button := _button(card, "F2 / 武装配置", Rect2(28, 278, 216, 44), func() -> void: open_loadout_requested.emit())
+	loadout_button.name = "OpenLoadoutButton"
+	loadout_button.custom_minimum_size = Vector2(0, 44)
+	loadout_button.clip_text = true
+	var quests_button := _button(card, "U / 潜航任务日志", Rect2(256, 278, 216, 44), func() -> void: open_quests_requested.emit())
 	quests_button.name = "OpenQuestsButton"
 	quests_button.custom_minimum_size = Vector2(0, 44)
+	quests_button.clip_text = true
 	var guide_button := _button(card, "L / 潜航指南与引导", Rect2(28, 330, 444, 44), func() -> void: action_requested.emit("gameplay_guide"))
 	guide_button.name = "OpenGuideButton"
 	guide_button.custom_minimum_size = Vector2(0, 44)
@@ -720,7 +828,7 @@ func _build_pause() -> void:
 	hint_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_pause_ui = {
 		"card": card, "accent": accent, "eyebrow": eyebrow, "title": title, "desc": desc,
-		"resume_btn": resume_btn, "map_btn": map_button, "quests_btn": quests_button, "guide_btn": guide_button,
+		"resume_btn": resume_btn, "map_btn": map_button, "loadout_btn": loadout_button, "quests_btn": quests_button, "guide_btn": guide_button,
 		"p_prev": p_prev, "p_next": p_next, "controls_btn": controls_btn,
 		"fullscreen_btn": fullscreen_btn, "restart_btn": restart_btn,
 		"header_close": header_close, "hint_lbl": hint_lbl,
@@ -749,11 +857,17 @@ func _build_craft() -> void:
 	var resume_btn := _button(card, "返回潜航", Rect2(28, 644, 144, 44), func() -> void: resume_requested.emit())
 	resume_btn.custom_minimum_size = Vector2(0, 44)
 	var header_close := _add_modal_close_button(card, "CraftHeaderCloseButton")
-	var sushi_btn := _button(card, "料理与图鉴 / B", Rect2(184, 644, 184, 44), func() -> void: open_sushi_requested.emit())
+	var loadout_btn := _button(card, "武装配置 / F2", Rect2(180, 644, 168, 44), func() -> void: open_loadout_requested.emit())
+	loadout_btn.name = "CraftOpenLoadoutButton"
+	loadout_btn.custom_minimum_size = Vector2(0, 44)
+	loadout_btn.clip_text = true
+	var sushi_btn := _button(card, "料理与图鉴 / B", Rect2(356, 644, 168, 44), func() -> void: open_sushi_requested.emit())
 	sushi_btn.custom_minimum_size = Vector2(0, 44)
-	var foot_note := _label(card, "追踪配方，便可在潜航时查看所需材料。", Rect2(380, 654, 492, 22), 11, MUTED)
+	sushi_btn.clip_text = true
+	var foot_note := _label(card, "追踪配方，便可在潜航时查看所需材料。", Rect2(534, 654, 338, 22), 11, MUTED)
 	foot_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_craft_ui["resume_btn"] = resume_btn
+	_craft_ui["loadout_btn"] = loadout_btn
 	_craft_ui["sushi_btn"] = sushi_btn
 	_craft_ui["header_close"] = header_close
 	_craft_ui["foot_note"] = foot_note
@@ -1149,7 +1263,8 @@ func _build_quick() -> void:
 		var entry: Array = QUICK_ACTIONS[i]
 		var action := str(entry[0])
 		var title := str(entry[1])
-		var button := _button(grid, title, Rect2(0, 0, 254, 44), func() -> void: action_requested.emit(action))
+		var on_press := (func() -> void: open_loadout_requested.emit()) if action == "loadout_menu" else (func() -> void: action_requested.emit(action))
+		var button := _button(grid, title, Rect2(0, 0, 254, 44), on_press)
 		button.name = "Quick_" + action
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.custom_minimum_size = Vector2(0, 44)
@@ -1300,6 +1415,19 @@ func _build_quests() -> void:
 	})
 	if quest_view.has("card") and is_instance_valid(quest_view["card"]):
 		_modal_cards["quests"] = quest_view["card"]
+
+func _build_loadout() -> void:
+	var menu := _menu("loadout")
+	loadout_view = LoadoutPanel.build(menu, {
+		"on_close": func() -> void: close_requested.emit(),
+		"on_equip_slot": func(slot_idx: int, wid: String) -> void: loadout_equip_slot_requested.emit(slot_idx, wid),
+		"on_upgrade_weapon": func(wid: String) -> void: loadout_upgrade_weapon_requested.emit(wid),
+		"on_toggle_mod": func(wid: String, mid: String) -> void: loadout_toggle_mod_requested.emit(wid, mid),
+		"on_select_tactical": func(sid: String) -> void: loadout_select_tactical_requested.emit(sid),
+		"format_text": Callable(self, "format_input_text"),
+	})
+	if loadout_view.has("card") and is_instance_valid(loadout_view["card"]):
+		_modal_cards["loadout"] = loadout_view["card"]
 
 func _setting_slider(parent: Control, key: String, title: String, _y: float, minimum: float, maximum: float, increment: float) -> void:
 	var row := BoxContainer.new()
@@ -1647,9 +1775,52 @@ func update_hud(data: Dictionary) -> void:
 	var cur_w: String = str(data.get("current_weapon", "knife"))
 	var w_level: int = int(data.get("weapon_level", 0))
 	var w_bonus: float = float(data.get("damage_bonus", 0.0))
-	var weapon_names := {"knife": "潜水刀", "axe": "破拆战斧", "sonic": "蓝光静滞枪", "marker": "光标指示枪"}
+	var raw_cs: Variant = data.get("combat_state", {})
+	var cs: Dictionary = raw_cs if raw_cs is Dictionary else {}
+	var weapon_names := {
+		"knife": "潜水刀",
+		"axe": "破拆战斧",
+		"sonic": "蓝光静滞枪",
+		"marker": "光标指示枪",
+		"marker_gun": "光标指示枪",
+		"harpoon": "电磁鱼叉枪",
+		"sonar_cannon": "声呐震荡炮",
+	}
+	var short_weapon_names := {
+		"knife": "战术刀",
+		"axe": "破拆斧",
+		"sonic": "蓝光枪",
+		"marker": "指示枪",
+		"marker_gun": "指示枪",
+		"harpoon": "鱼叉枪",
+		"sonar_cannon": "震荡炮",
+	}
+	var raw_slots: Variant = cs.get("equipped_slots", data.get("equipped_slots", []))
+	var equipped_slots: Array = raw_slots if raw_slots is Array else []
+	for s_i in range(mini(3, equipped_slots.size())):
+		var qk := "weapon_%d" % (s_i + 1)
+		if quick_buttons.has(qk) and is_instance_valid(quick_buttons[qk]):
+			var sw_id := str(equipped_slots[s_i])
+			var sw_label := str(weapon_names.get(sw_id, sw_id))
+			if not sw_label.is_empty():
+				(quick_buttons[qk] as Button).text = "%d · %s" % [s_i + 1, sw_label]
+	var cur_w_name := str(weapon_names.get(cur_w, "潜水装备"))
 	var upgrade_info := " · 强化 %d / +%d" % [w_level, int(w_bonus)] if w_level > 0 else ""
-	weapon_bar_label.text = ("%s%s" % [str(weapon_names.get(cur_w, "潜水装备")), upgrade_info]) if _touch_layout else ("1—4 切换 / %s%s" % [str(weapon_names.get(cur_w, "潜水装备")), upgrade_info])
+	if _touch_layout:
+		weapon_bar_label.text = "%s%s" % [cur_w_name, upgrade_info]
+	elif not equipped_slots.is_empty():
+		var slot_parts: PackedStringArray = PackedStringArray()
+		for s_i in range(mini(3, equipped_slots.size())):
+			var sw_id := str(equipped_slots[s_i])
+			if sw_id.is_empty():
+				continue
+			var sn := str(short_weapon_names.get(sw_id, weapon_names.get(sw_id, sw_id)))
+			slot_parts.append(("◆%d %s" % [s_i + 1, sn]) if sw_id == cur_w else ("%d %s" % [s_i + 1, sn]))
+		if cur_w in ["marker", "marker_gun"]:
+			slot_parts.append("◆4 指示枪")
+		weapon_bar_label.text = "%s%s" % ["  ·  ".join(slot_parts), upgrade_info] if not slot_parts.is_empty() else ("1—4 切换 / %s%s" % [cur_w_name, upgrade_info])
+	else:
+		weapon_bar_label.text = "1—4 切换 / %s%s" % [cur_w_name, upgrade_info]
 	var is_gun := cur_w == "sonic"
 	var aiming: bool = is_gun and bool(data.get("aiming", false))
 	var scoped: bool = is_gun and bool(data.get("scoped", false))
@@ -1690,7 +1861,54 @@ func update_hud(data: Dictionary) -> void:
 	boss_bar.value = float(boss.get("health", 1800.0))
 	boss_name.text = "%s  %d / %d" % [str(boss.get("name", "深渊水龙")), ceili(boss_bar.value), int(boss_bar.max_value)]
 	var frozen: float = float(boss.get("frozen", 0.0))
-	boss_warning.text = "静滞冻结 %.1f 秒 · 立即用激光攻击" % frozen if frozen > 0.0 else str(boss.get("warning", ""))
+	var stagger_t: float = float(boss.get("stagger_timer", 0.0))
+	var is_staggered: bool = bool(boss.get("is_staggered", boss.get("staggered", false))) or stagger_t > 0.0
+	_boss_stagger_active = fighting and is_staggered
+	if is_instance_valid(boss_poise_bar):
+		var poise_ratio := 1.0
+		if is_staggered:
+			var stagger_max := maxf(1.0, float(boss.get("stagger_max", 4.5)))
+			poise_ratio = clampf(stagger_t / stagger_max, 0.0, 1.0) if stagger_t > 0.0 else 1.0
+			boss_poise_bar.add_theme_stylebox_override("fill", _boss_poise_stagger_fill)
+		else:
+			if boss.has("poise_ratio"):
+				poise_ratio = clampf(float(boss.get("poise_ratio", 1.0)), 0.0, 1.0)
+			elif boss.has("poise") or boss.has("max_poise"):
+				var max_p := maxf(1.0, float(boss.get("max_poise", 100.0)))
+				poise_ratio = clampf(float(boss.get("poise", max_p)) / max_p, 0.0, 1.0)
+			boss_poise_bar.add_theme_stylebox_override("fill", _boss_poise_normal_fill)
+			boss_poise_bar.modulate = Color.WHITE
+		boss_poise_bar.max_value = 1.0
+		boss_poise_bar.value = poise_ratio
+	var weakpoint_lbl := str(boss.get("weakpoint_label", boss.get("weakpoint", ""))).strip_edges()
+	var status_tag := _format_boss_statuses(boss.get("statuses", boss.get("status_effects", boss.get("active_statuses", []))))
+	var boss_warn_raw := str(boss.get("warning", "")).strip_edges()
+	var boss_sub_parts: PackedStringArray = PackedStringArray()
+	if is_staggered:
+		boss_sub_parts.append(("破防失衡 %.1fs" % stagger_t) if stagger_t > 0.0 else "破防失衡")
+		if not weakpoint_lbl.is_empty():
+			boss_sub_parts.append("弱点: %s" % weakpoint_lbl)
+		if not status_tag.is_empty():
+			boss_sub_parts.append(status_tag)
+		_set_font_color(boss_warning, CYAN)
+	elif frozen > 0.0:
+		boss_sub_parts.append("静滞冻结 %.1fs · 立即攻击" % frozen)
+		if not status_tag.is_empty():
+			boss_sub_parts.append(status_tag)
+		_set_font_color(boss_warning, CYAN)
+	elif not boss_warn_raw.is_empty():
+		boss_sub_parts.append(boss_warn_raw)
+		if not status_tag.is_empty():
+			boss_sub_parts.append(status_tag)
+		_set_font_color(boss_warning, AMBER_GOLD)
+	else:
+		if not weakpoint_lbl.is_empty():
+			boss_sub_parts.append("弱点: %s" % weakpoint_lbl)
+		if not status_tag.is_empty():
+			boss_sub_parts.append(status_tag)
+		_set_font_color(boss_warning, MUTED if boss_sub_parts.is_empty() else AMBER_GOLD)
+	boss_warning.text = " · ".join(boss_sub_parts)
+	_update_combat_strip(cs, cur_w, fighting, scoped, in_sub, data)
 
 	# 潜水艇驾驶舱状态更新
 	sub_panel.visible = in_sub
@@ -1843,7 +2061,7 @@ func update_hud(data: Dictionary) -> void:
 	if is_instance_valid(_journal_bar):
 		_journal_bar.modulate.a = 0.92 if (show_mission or show_onboarding) else 0.26
 	weapon_hint.visible = details and not scoped and not in_sub and not booster_on
-	reticle.visible = not scoped and (aiming or charging or not target.is_empty() or in_sub or cur_w in ["sonic", "marker", "marker_gun"])
+	reticle.visible = not scoped and (aiming or charging or not target.is_empty() or in_sub or cur_w in ["sonic", "marker", "marker_gun", "harpoon", "sonar_cannon"])
 	tame_panel.visible = beast_cnt > 0 and not scoped and (details or mount_idx >= 0 or fighting)
 	if is_instance_valid(onboarding_panel):
 		onboarding_panel.visible = show_onboarding
@@ -1908,6 +2126,8 @@ func update_hud(data: Dictionary) -> void:
 	if raw_journal is Dictionary and not (raw_journal as Dictionary).is_empty():
 		if active_screen == "quests" or not _quest_journal_synced:
 			sync_quest_journal(raw_journal as Dictionary)
+	if data.has("loadout") and data["loadout"] is Dictionary and not loadout_view.is_empty():
+		sync_loadout(data["loadout"] as Dictionary)
 	if data.has("character_id"):
 		set_selected_character(str(data["character_id"]))
 	_apply_device_hints()
@@ -1956,6 +2176,261 @@ func sync_quest_journal(journal_payload: Dictionary) -> void:
 		return
 	QuestPanel.update_data(quest_view, journal_payload)
 	_quest_journal_synced = true
+
+func sync_loadout(loadout_payload: Dictionary) -> void:
+	if loadout_view.is_empty():
+		return
+	LoadoutPanel.update_data(loadout_view, loadout_payload)
+	_loadout_synced = true
+
+static func _format_boss_statuses(raw_statuses: Variant) -> String:
+	var status_names := {
+		"electro": "感电",
+		"rupture": "流血",
+		"bleed": "流血",
+		"stasis": "静滞",
+		"resonance": "共鸣",
+		"armor_shred": "破甲",
+	}
+	var tags: PackedStringArray = PackedStringArray()
+	if raw_statuses is Dictionary:
+		var sd: Dictionary = raw_statuses
+		for k_v in sd.keys():
+			var val: Variant = sd[k_v]
+			if (val is float or val is int) and float(val) <= 0.0:
+				continue
+			if val is bool and not bool(val):
+				continue
+			var key := str(k_v).strip_edges()
+			var lbl := str(status_names.get(key, key))
+			if not lbl.is_empty() and not tags.has(lbl):
+				tags.append(lbl)
+	elif raw_statuses is Array:
+		for item in (raw_statuses as Array):
+			var key := ""
+			if item is Dictionary:
+				key = str((item as Dictionary).get("name", (item as Dictionary).get("id", ""))).strip_edges()
+			else:
+				key = str(item).strip_edges()
+			var lbl := str(status_names.get(key, key))
+			if not lbl.is_empty() and not tags.has(lbl):
+				tags.append(lbl)
+	if tags.is_empty():
+		return ""
+	return "[%s]" % "/".join(tags)
+
+func _update_combat_strip(cs: Dictionary, cur_w: String, fighting: bool, scoped: bool, in_sub: bool, data: Dictionary) -> void:
+	if not is_instance_valid(combat_strip):
+		return
+	if cs.is_empty():
+		_combat_strip_want_visible = false
+		_combat_ult_ready = false
+		_combat_show_heat = false
+		_combat_show_cmd = false
+		combat_strip.modulate.a = 0.0
+		combat_strip.hide()
+		return
+	var shield_ratio := clampf(float(cs.get("shield_ratio", 1.0)), 0.0, 1.0)
+	var shield_over := bool(cs.get("shield_overloaded", false))
+	var flux_ratio := clampf(float(cs.get("flux_ratio", 0.0)), 0.0, 1.0)
+	var ult_ready := bool(cs.get("ultimate_ready", false))
+	var show_heat := bool(cs.get("show_sonic_heat", false))
+	var heat_ratio := clampf(float(cs.get("sonic_heat_ratio", 0.0)), 0.0, 1.0)
+	var heat_over := bool(cs.get("sonic_overheated", false))
+	var art_cd := float(cs.get("weapon_art_cd", 0.0))
+	var tac_cd := float(cs.get("tactical_cd", 0.0))
+	var in_combat := bool(cs.get("in_combat", data.get("in_combat", false)))
+	var show_cmd := cur_w in ["marker", "marker_gun"]
+
+	var layout_dirty := (
+		ult_ready != _combat_ult_ready
+		or show_heat != _combat_show_heat
+		or show_cmd != _combat_show_cmd
+	)
+	_combat_ult_ready = ult_ready
+	_combat_show_heat = show_heat
+	_combat_show_cmd = show_cmd
+
+	_combat_shield_bar.value = shield_ratio
+	_combat_shield_bar.add_theme_stylebox_override("fill", _combat_shield_over_fill if shield_over else _combat_shield_normal_fill)
+	_combat_shield_lbl.text = "过载" if shield_over else "盾"
+	_set_font_color(_combat_shield_lbl, Art.DANGER if shield_over else CYAN)
+
+	_combat_flux_bar.value = flux_ratio
+	_combat_flux_bar.add_theme_stylebox_override("fill", _combat_flux_ready_fill if ult_ready else _combat_flux_normal_fill)
+	if ult_ready:
+		_combat_flux_lbl.text = "[~] 终极技就绪"
+		_set_font_color(_combat_flux_lbl, AMBER_GOLD)
+	else:
+		_combat_flux_lbl.text = "共鸣"
+		_set_font_color(_combat_flux_lbl, CYAN)
+		_combat_flux_lbl.modulate = Color.WHITE
+
+	_combat_heat_bar.value = heat_ratio
+	_combat_heat_bar.add_theme_stylebox_override("fill", _combat_heat_over_fill if heat_over else _combat_heat_normal_fill)
+	_combat_heat_lbl.text = "过热" if heat_over else "热"
+	_set_font_color(_combat_heat_lbl, Art.DANGER if heat_over else ORANGE)
+
+	var art_name := str(cs.get("weapon_art_name", "战技")).strip_edges()
+	if art_name.is_empty():
+		art_name = "战技"
+	_combat_art_lbl.text = ("[X] %.1fs" % art_cd) if art_cd > 0.05 else ("[X] %s" % art_name)
+	_set_font_color(_combat_art_lbl, MUTED if art_cd > 0.05 else CYAN)
+
+	var tac_name := str(cs.get("tactical_name", "战术")).strip_edges()
+	if tac_name.is_empty():
+		tac_name = "战术"
+	_combat_tac_lbl.text = ("[I] %.1fs" % tac_cd) if tac_cd > 0.05 else ("[I] %s" % tac_name)
+	_set_font_color(_combat_tac_lbl, MUTED if tac_cd > 0.05 else CYAN)
+
+	var cmd_mode := str(cs.get("command_mode", "focus"))
+	var is_capture := cmd_mode == "capture"
+	_combat_cmd_lbl.text = "活捕压血" if is_capture else "集火狂攻"
+	_set_font_color(_combat_cmd_lbl, Color("63e0b8") if is_capture else AMBER_GOLD)
+
+	var active_for_touch := (
+		in_combat
+		or fighting
+		or shield_ratio < 0.99
+		or shield_over
+		or flux_ratio > 0.01
+		or ult_ready
+		or (show_heat and heat_ratio > 0.01)
+		or heat_over
+	)
+	var active_for_desktop := active_for_touch or art_cd > 0.05 or tac_cd > 0.05
+	var want_show := (not scoped) and (not in_sub) and (active_for_touch if _touch_layout else active_for_desktop)
+	var vis_changed := want_show != _combat_strip_want_visible
+	_combat_strip_want_visible = want_show
+
+	if _touch_layout:
+		combat_strip.visible = want_show
+		combat_strip.modulate.a = 0.92 if want_show else 0.0
+	elif want_show:
+		combat_strip.visible = true
+		if combat_strip.modulate.a < 0.05:
+			combat_strip.modulate.a = 0.25
+	if layout_dirty or vis_changed:
+		_layout_combat_strip_contents(combat_strip.offset_right - combat_strip.offset_left, combat_strip.offset_bottom - combat_strip.offset_top)
+		_sync_desktop_bottom_offsets()
+
+func _process_combat_visuals(delta: float) -> void:
+	_combat_pulse_clock += delta
+	var pulse := 0.62 + 0.38 * (0.5 + 0.5 * sin(_combat_pulse_clock * 7.5))
+	if _boss_stagger_active and is_instance_valid(boss_panel) and boss_panel.visible and is_instance_valid(boss_poise_bar):
+		boss_poise_bar.modulate = Color(1.0, 1.0, 1.0, pulse)
+	if is_instance_valid(combat_strip):
+		if _touch_layout:
+			if not _combat_strip_want_visible and combat_strip.visible:
+				combat_strip.hide()
+		else:
+			var target_a := 0.96 if _combat_strip_want_visible else 0.0
+			if absf(combat_strip.modulate.a - target_a) > 0.01:
+				combat_strip.modulate.a = move_toward(combat_strip.modulate.a, target_a, delta * 5.0)
+			else:
+				combat_strip.modulate.a = target_a
+			var should_vis := _combat_strip_want_visible or combat_strip.modulate.a > 0.01
+			if combat_strip.visible != should_vis:
+				combat_strip.visible = should_vis
+				_sync_desktop_bottom_offsets()
+		if combat_strip.visible and _combat_ult_ready and is_instance_valid(_combat_flux_lbl) and not _touch_layout:
+			_combat_flux_lbl.modulate = Color(1.0, 1.0, 1.0, pulse)
+		elif is_instance_valid(_combat_flux_lbl):
+			_combat_flux_lbl.modulate = Color.WHITE
+
+func _sync_desktop_bottom_offsets() -> void:
+	if _touch_layout or _is_compact:
+		return
+	if not is_instance_valid(weapon_hint) or not is_instance_valid(target_value):
+		return
+	var lift := 28.0 if (is_instance_valid(combat_strip) and combat_strip.visible) else 0.0
+	_set_control_rect(weapon_hint, Rect2(-290.0, -147.0 - lift, 580.0, 22.0), Vector2(0.5, 1.0))
+	_set_control_rect(target_value, Rect2(-280.0, -188.0 - lift, 560.0, 30.0), Vector2(0.5, 1.0))
+
+func _layout_combat_strip_contents(strip_w: float, strip_h: float) -> void:
+	if not is_instance_valid(combat_strip):
+		return
+	var w := maxf(120.0, strip_w)
+	var h := maxf(14.0, strip_h)
+	combat_strip.add_theme_stylebox_override("panel", _combat_strip_touch_style if _touch_layout else _combat_strip_desktop_style)
+	if _touch_layout:
+		_combat_shield_lbl.visible = false
+		_combat_flux_lbl.visible = false
+		_combat_heat_lbl.visible = false
+		_combat_art_lbl.visible = false
+		_combat_tac_lbl.visible = false
+		_combat_cmd_lbl.visible = false
+		_combat_shield_bar.visible = true
+		_combat_flux_bar.visible = true
+		_combat_heat_bar.visible = _combat_show_heat
+		var pad := 8.0
+		var gap := 6.0
+		var bar_h := 4.0
+		var bar_y := floorf((h - bar_h) * 0.5)
+		var count := 3 if _combat_show_heat else 2
+		var seg_w := maxf(24.0, floorf((w - pad * 2.0 - gap * float(count - 1)) / float(count)))
+		_set_control_rect(_combat_shield_bar, Rect2(pad, bar_y, seg_w, bar_h))
+		_set_control_rect(_combat_flux_bar, Rect2(pad + seg_w + gap, bar_y, seg_w, bar_h))
+		if _combat_show_heat:
+			var hx := pad + (seg_w + gap) * 2.0
+			_set_control_rect(_combat_heat_bar, Rect2(hx, bar_y, maxf(20.0, w - pad - hx), bar_h))
+		return
+
+	_combat_shield_lbl.visible = true
+	_combat_shield_bar.visible = true
+	_combat_flux_lbl.visible = true
+	_combat_flux_bar.visible = true
+	_combat_heat_lbl.visible = _combat_show_heat
+	_combat_heat_bar.visible = _combat_show_heat
+	_combat_art_lbl.visible = true
+	_combat_tac_lbl.visible = true
+	_combat_cmd_lbl.visible = _combat_show_cmd
+
+	var pad_d := 10.0
+	var x := pad_d
+	var narrow_bar := w < 430.0
+	var bar_h_d := 5.0
+	var bar_y_d := floorf((h - bar_h_d) * 0.5)
+	var lbl_y := floorf((h - 20.0) * 0.5)
+
+	var sh_lbl_w := 32.0 if _combat_shield_lbl.text.length() >= 2 else 22.0
+	var sh_bar_w := 36.0 if narrow_bar else 50.0
+	_set_control_rect(_combat_shield_lbl, Rect2(x, lbl_y, sh_lbl_w, 20.0))
+	x += sh_lbl_w + 2.0
+	_set_control_rect(_combat_shield_bar, Rect2(x, bar_y_d, sh_bar_w, bar_h_d))
+	x += sh_bar_w + 8.0
+
+	if _combat_ult_ready:
+		var ready_w := 92.0 if narrow_bar else 108.0
+		_set_control_rect(_combat_flux_lbl, Rect2(x, lbl_y - 1.0, ready_w, 18.0))
+		_set_control_rect(_combat_flux_bar, Rect2(x, h - 5.0, ready_w, 2.0))
+		x += ready_w + 8.0
+	else:
+		var fl_lbl_w := 30.0
+		var fl_bar_w := 36.0 if narrow_bar else 50.0
+		_set_control_rect(_combat_flux_lbl, Rect2(x, lbl_y, fl_lbl_w, 20.0))
+		x += fl_lbl_w + 2.0
+		_set_control_rect(_combat_flux_bar, Rect2(x, bar_y_d, fl_bar_w, bar_h_d))
+		x += fl_bar_w + 8.0
+
+	if _combat_show_heat:
+		var ht_lbl_w := 32.0 if _combat_heat_lbl.text.length() >= 2 else 22.0
+		var ht_bar_w := 32.0 if narrow_bar else 42.0
+		_set_control_rect(_combat_heat_lbl, Rect2(x, lbl_y, ht_lbl_w, 20.0))
+		x += ht_lbl_w + 2.0
+		_set_control_rect(_combat_heat_bar, Rect2(x, bar_y_d, ht_bar_w, bar_h_d))
+		x += ht_bar_w + 8.0
+
+	var rem_w := maxf(80.0, w - pad_d - x)
+	var chip_count := 3 if _combat_show_cmd else 2
+	var chip_gap := 6.0
+	var chip_w := maxf(32.0, floorf((rem_w - chip_gap * float(chip_count - 1)) / float(chip_count)))
+	_set_control_rect(_combat_art_lbl, Rect2(x, lbl_y, chip_w, 20.0))
+	x += chip_w + chip_gap
+	_set_control_rect(_combat_tac_lbl, Rect2(x, lbl_y, chip_w if _combat_show_cmd else maxf(32.0, w - pad_d - x), 20.0))
+	if _combat_show_cmd:
+		x += chip_w + chip_gap
+		_set_control_rect(_combat_cmd_lbl, Rect2(x, lbl_y, maxf(32.0, w - pad_d - x), 20.0))
 
 func push_quest_banners(banners: Array) -> void:
 	for raw in banners:
@@ -2274,6 +2749,8 @@ func set_screen(screen: String) -> void:
 		sea_chart.center_on_player()
 	if screen == "quests" and not quest_view.is_empty():
 		QuestPanel.refresh_layout(quest_view)
+	if screen == "loadout" and not loadout_view.is_empty():
+		LoadoutPanel.refresh_layout(loadout_view)
 	if screen != "play":
 		toast_label.hide()
 		if is_instance_valid(quest_banner_panel):
@@ -2288,7 +2765,7 @@ func toast(message: String) -> void:
 	toast_label.set_meta("_hint_rendered", toast_label.text)
 	toast_time = 3.6
 	toast_label.modulate.a = 1.0
-	toast_label.visible = active_screen in ["play", "craft", "sushi", "mount_board", "map", "quests"]
+	toast_label.visible = active_screen in ["play", "craft", "sushi", "mount_board", "map", "quests", "loadout"]
 	_layout_toast()
 
 func _layout_toast() -> void:
@@ -2369,7 +2846,7 @@ func _on_input_settings_changed() -> void:
 func get_input_hint(action: String) -> String:
 	if is_instance_valid(input_controller):
 		return str(input_controller.hint(action))
-	return str({"forward": "W", "backward": "S", "left": "A", "right": "D", "ascend": "空格", "descend": "Ctrl", "attack": "R", "aim": "T", "scope": "Y", "interact": "E", "craft_menu": "Tab", "pause_game": "Esc", "world_map": "M", "sonar_ping": "N", "mount_board": "O", "toggle_shield": "C", "dash": "Q", "booster": "H", "lamp": "F", "sprint": "Shift", "recall_pets": "Z", "mount_toggle": "G", "salvage_drone": "V", "sushi_menu": "B", "character_switch": "P", "character_angle": "K", "char_angle_reset": "Home", "weapon_1": "1", "weapon_2": "2", "weapon_3": "3", "weapon_4": "4", "weapon_cycle": "1-4", "quick_menu": "快捷操作", "gameplay_guide": "L", "quest_log": "U"}.get(action, action))
+	return str({"forward": "W", "backward": "S", "left": "A", "right": "D", "ascend": "空格", "descend": "Ctrl", "attack": "R", "aim": "T", "scope": "Y", "interact": "E", "craft_menu": "Tab", "pause_game": "Esc", "world_map": "M", "sonar_ping": "N", "mount_board": "O", "toggle_shield": "C", "dash": "Q", "booster": "H", "lamp": "F", "sprint": "Shift", "recall_pets": "Z", "mount_toggle": "G", "salvage_drone": "V", "sushi_menu": "B", "character_switch": "P", "character_angle": "K", "char_angle_reset": "Home", "weapon_1": "1", "weapon_2": "2", "weapon_3": "3", "weapon_4": "4", "weapon_cycle": "1-4", "quick_menu": "快捷操作", "gameplay_guide": "L", "quest_log": "U", "weapon_art": "X", "tactical_skill": "I", "ultimate_skill": "~", "loadout_menu": "F2"}.get(action, action))
 
 func _join_hints(first_action: String, second_action: String, separator := "/") -> String:
 	var first := get_input_hint(first_action)
@@ -2410,11 +2887,12 @@ func format_input_text(text: String) -> String:
 			"按 4": "使用 " + get_input_hint("weapon_4"),
 			"4": get_input_hint("weapon_4"),
 			"Tab": get_input_hint("craft_menu"),
-			"Esc": get_input_hint("pause_game"), "F1": get_input_hint("gameplay_guide"), "R": get_input_hint("attack"), "T": get_input_hint("aim"),
+			"Esc": get_input_hint("pause_game"), "F2": get_input_hint("loadout_menu"), "F1": get_input_hint("gameplay_guide"), "R": get_input_hint("attack"), "T": get_input_hint("aim"),
 			"Y": get_input_hint("scope"), "C": get_input_hint("toggle_shield"), "E": get_input_hint("interact"),
 			"M": get_input_hint("world_map"), "N": get_input_hint("sonar_ping"), "O": get_input_hint("mount_board"),
 			"G": get_input_hint("mount_toggle"), "Z": get_input_hint("recall_pets"), "V": get_input_hint("salvage_drone"),
-			"H": get_input_hint("booster"), "Q": get_input_hint("dash"), "F": get_input_hint("lamp"), "B": get_input_hint("sushi_menu"), "P": get_input_hint("character_switch"), "K": get_input_hint("character_angle"), "L": get_input_hint("gameplay_guide"), "U": get_input_hint("quest_log")
+			"H": get_input_hint("booster"), "Q": get_input_hint("dash"), "F": get_input_hint("lamp"), "B": get_input_hint("sushi_menu"), "P": get_input_hint("character_switch"), "K": get_input_hint("character_angle"), "L": get_input_hint("gameplay_guide"), "U": get_input_hint("quest_log"),
+			"X": get_input_hint("weapon_art"), "I": get_input_hint("tactical_skill"), "~": get_input_hint("ultimate_skill")
 		}
 	var result := ""
 	var cursor := 0
@@ -2500,6 +2978,7 @@ func _apply_device_hints() -> void:
 		minimap_radar.map_hint = get_input_hint("world_map")
 	var guide_changed := false
 	var quest_changed := false
+	var loadout_changed := false
 	for node in root.find_children("*", "Control", true, false):
 		if not (node is Label or node is Button):
 			continue
@@ -2523,10 +3002,14 @@ func _apply_device_hints() -> void:
 				guide_changed = true
 			if menus.has("quests") and menus["quests"].is_ancestor_of(node):
 				quest_changed = true
+			if menus.has("loadout") and menus["loadout"].is_ancestor_of(node):
+				loadout_changed = true
 	if guide_changed and not guide_view.is_empty():
 		GuidePanel.refresh_layout(guide_view)
 	if quest_changed and not quest_view.is_empty():
 		QuestPanel.refresh_layout(quest_view)
+	if loadout_changed and not loadout_view.is_empty():
+		LoadoutPanel.refresh_layout(loadout_view)
 
 func _sync_input_settings() -> void:
 	if settings_controls.is_empty():
@@ -2642,7 +3125,7 @@ func _refresh_navigation() -> void:
 			controls[0].grab_focus()
 
 func _prepare_menu_scrolling() -> void:
-	menu_min_sizes = {"main": Vector2(860, 740), "pause": Vector2(532, 568), "craft": Vector2(932, 732), "sushi": Vector2(1032, 748), "mount_board": Vector2(972, 732), "map": Vector2(1092, 760), "win": Vector2(712, 512), "quick": Vector2(892, 748), "controls": Vector2(732, 672), "guide": Vector2(992, 732), "quests": Vector2(992, 732)}
+	menu_min_sizes = {"main": Vector2(860, 740), "pause": Vector2(532, 568), "craft": Vector2(932, 732), "sushi": Vector2(1032, 748), "mount_board": Vector2(972, 732), "map": Vector2(1092, 760), "win": Vector2(712, 512), "quick": Vector2(892, 748), "controls": Vector2(732, 672), "guide": Vector2(992, 732), "quests": Vector2(992, 732), "loadout": Vector2(960, 700)}
 	for key: String in menus:
 		var menu: Control = menus[key]
 		var children := menu.get_children()
@@ -2970,10 +3453,17 @@ func _apply_layout() -> void:
 		_apply_compact_hud_layout(safe, is_narrow, is_short, is_portrait)
 	else:
 		var boss_w := minf(520.0, maxf(220.0, safe.size.x - 360.0))
-		_set_control_rect(boss_panel, Rect2(-boss_w * 0.5, 132.0, boss_w, 68.0), Vector2(0.5, 0.0))
-		_set_control_rect(boss_name, Rect2(16.0, 8.0, boss_w - 32.0, 22.0))
-		_set_control_rect(boss_bar, Rect2(16.0, 34.0, boss_w - 32.0, 4.0))
-		_set_control_rect(boss_warning, Rect2(16.0, 42.0, boss_w - 32.0, 20.0))
+		_set_control_rect(boss_panel, Rect2(-boss_w * 0.5, 132.0, boss_w, 74.0), Vector2(0.5, 0.0))
+		_set_control_rect(boss_name, Rect2(16.0, 6.0, boss_w - 32.0, 22.0))
+		_set_control_rect(boss_bar, Rect2(16.0, 30.0, boss_w - 32.0, 5.0))
+		if is_instance_valid(boss_poise_bar):
+			_set_control_rect(boss_poise_bar, Rect2(16.0, 37.0, boss_w - 32.0, 3.0))
+		_set_control_rect(boss_warning, Rect2(16.0, 44.0, boss_w - 32.0, 24.0))
+		if is_instance_valid(combat_strip):
+			var cs_w := minf(520.0, maxf(360.0, safe.size.x - 160.0))
+			_set_control_rect(combat_strip, Rect2(-cs_w * 0.5, -148.0, cs_w, 28.0), Vector2(0.5, 1.0))
+			_layout_combat_strip_contents(cs_w, 28.0)
+			_sync_desktop_bottom_offsets()
 
 	_layout_onboarding()
 	_apply_touch_visibility()
@@ -3070,10 +3560,25 @@ func _apply_compact_hud_layout(safe: Rect2, _is_narrow: bool, is_short: bool, is
 
 		var b_w := minf(340.0, maxf(180.0, safe.size.x - 24.0))
 		var b_y := (maxf(left_bottom, radar_y + radar_sz) + 6.0) if _touch_layout else (life_y + life_h + 6.0)
-		_set_control_rect(boss_panel, Rect2(-b_w * 0.5, b_y, b_w, 62.0), Vector2(0.5, 0.0))
-		_set_control_rect(boss_name, Rect2(12.0, 6.0, b_w - 24.0, 20.0))
-		_set_control_rect(boss_bar, Rect2(12.0, 29.0, b_w - 24.0, 4.0))
-		_set_control_rect(boss_warning, Rect2(12.0, 36.0, b_w - 24.0, 22.0))
+		_set_control_rect(boss_panel, Rect2(-b_w * 0.5, b_y, b_w, 68.0), Vector2(0.5, 0.0))
+		_set_control_rect(boss_name, Rect2(12.0, 5.0, b_w - 24.0, 20.0))
+		_set_control_rect(boss_bar, Rect2(12.0, 27.0, b_w - 24.0, 4.0))
+		if is_instance_valid(boss_poise_bar):
+			_set_control_rect(boss_poise_bar, Rect2(12.0, 33.0, b_w - 24.0, 3.0))
+		_set_control_rect(boss_warning, Rect2(12.0, 39.0, b_w - 24.0, 24.0))
+		if is_instance_valid(combat_strip):
+			if _touch_layout:
+				var tcs_w := minf(192.0, life_w)
+				var tcs_h := 16.0
+				var tcs_y := maxf(band_top, life_y - tcs_h - 4.0)
+				_set_control_rect(combat_strip, Rect2(-tcs_w * 0.5, tcs_y, tcs_w, tcs_h), Vector2(0.5, 0.0))
+				_layout_combat_strip_contents(tcs_w, tcs_h)
+			else:
+				var dcs_w := minf(420.0, maxf(240.0, safe.size.x - 24.0))
+				var dcs_h := 28.0
+				var dcs_y := maxf(band_top, wep_top - dcs_h - 4.0)
+				_set_control_rect(combat_strip, Rect2(-dcs_w * 0.5, dcs_y, dcs_w, dcs_h), Vector2(0.5, 0.0))
+				_layout_combat_strip_contents(dcs_w, dcs_h)
 	else:
 		var sc_btn_w := 46.0 if _touch_layout else 98.0
 		var sc_btn_x := safe.size.x - 120.0
@@ -3174,6 +3679,13 @@ func _apply_compact_hud_layout(safe: Rect2, _is_narrow: bool, is_short: bool, is
 			var sub_y := maxf(compass_y + 58.0, life_y - sub_h - 6.0)
 			_layout_compact_sub_panel(Rect2(center_x, sub_y, center_w, sub_h))
 			bottom_hud_top = minf(life_y, minf(wep_y, sub_y))
+			if is_instance_valid(combat_strip):
+				var tcs_w_l := clampf(chan_w - 12.0, 120.0, 192.0)
+				var tcs_h_l := 16.0
+				var tcs_x_l := clampf(chan_cx - tcs_w_l * 0.5, chan_left, maxf(chan_left, chan_right - tcs_w_l))
+				var tcs_y_l := maxf(compass_y + 56.0, life_y - tcs_h_l - 4.0)
+				_set_control_rect(combat_strip, Rect2(tcs_x_l, tcs_y_l, tcs_w_l, tcs_h_l))
+				_layout_combat_strip_contents(tcs_w_l, tcs_h_l)
 		else:
 			var center_w2 := minf(400.0, maxf(180.0, safe.size.x - 280.0))
 			_set_control_rect(weapon_bar_label.get_parent(), Rect2(-center_w2 * 0.5, -110.0, center_w2, 36.0), Vector2(0.5, 1.0))
@@ -3181,6 +3693,10 @@ func _apply_compact_hud_layout(safe: Rect2, _is_narrow: bool, is_short: bool, is
 			_set_control_rect(equipment_value, Rect2(-center_w2 * 0.5, -70.0, center_w2, 22.0), Vector2(0.5, 1.0))
 			_set_control_rect(sub_panel, Rect2(-center_w2 * 0.5, -136.0, center_w2, 88.0), Vector2(0.5, 1.0))
 			bottom_hud_top = safe.size.y - 136.0
+			if is_instance_valid(combat_strip):
+				var dcs_w2 := minf(460.0, maxf(280.0, safe.size.x - 120.0))
+				_set_control_rect(combat_strip, Rect2(-dcs_w2 * 0.5, -142.0, dcs_w2, 28.0), Vector2(0.5, 1.0))
+				_layout_combat_strip_contents(dcs_w2, 28.0)
 
 		var boss_left_lim := left_x + left_w + 10.0
 		var boss_right_lim := safe.size.x - radar_sz - radar_right_inset - 10.0
@@ -3189,17 +3705,21 @@ func _apply_compact_hud_layout(safe: Rect2, _is_narrow: bool, is_short: bool, is
 			var b_w2 := minf(440.0, boss_gap)
 			var b_x2 := boss_left_lim + (boss_gap - b_w2) * 0.5
 			var b_y2 := maxf(depth_value.offset_bottom + 4.0, compass_y + 58.0)
-			_set_control_rect(boss_panel, Rect2(b_x2, b_y2, b_w2, 62.0))
-			_set_control_rect(boss_name, Rect2(10.0, 5.0, b_w2 - 20.0, 22.0))
-			_set_control_rect(boss_bar, Rect2(10.0, 29.0, b_w2 - 20.0, 4.0))
-			_set_control_rect(boss_warning, Rect2(10.0, 36.0, b_w2 - 20.0, 22.0))
+			_set_control_rect(boss_panel, Rect2(b_x2, b_y2, b_w2, 68.0))
+			_set_control_rect(boss_name, Rect2(10.0, 5.0, b_w2 - 20.0, 20.0))
+			_set_control_rect(boss_bar, Rect2(10.0, 27.0, b_w2 - 20.0, 4.0))
+			if is_instance_valid(boss_poise_bar):
+				_set_control_rect(boss_poise_bar, Rect2(10.0, 33.0, b_w2 - 20.0, 3.0))
+			_set_control_rect(boss_warning, Rect2(10.0, 39.0, b_w2 - 20.0, 24.0))
 		else:
 			var b_w3 := minf(320.0, maxf(180.0, safe.size.x - 24.0))
 			var b_y3 := target_value.offset_bottom + 6.0
-			_set_control_rect(boss_panel, Rect2(-b_w3 * 0.5, b_y3, b_w3, 62.0), Vector2(0.5, 0.0))
-			_set_control_rect(boss_name, Rect2(10.0, 5.0, b_w3 - 20.0, 22.0))
-			_set_control_rect(boss_bar, Rect2(10.0, 29.0, b_w3 - 20.0, 4.0))
-			_set_control_rect(boss_warning, Rect2(10.0, 36.0, b_w3 - 20.0, 22.0))
+			_set_control_rect(boss_panel, Rect2(-b_w3 * 0.5, b_y3, b_w3, 68.0), Vector2(0.5, 0.0))
+			_set_control_rect(boss_name, Rect2(10.0, 5.0, b_w3 - 20.0, 20.0))
+			_set_control_rect(boss_bar, Rect2(10.0, 27.0, b_w3 - 20.0, 4.0))
+			if is_instance_valid(boss_poise_bar):
+				_set_control_rect(boss_poise_bar, Rect2(10.0, 33.0, b_w3 - 20.0, 3.0))
+			_set_control_rect(boss_warning, Rect2(10.0, 39.0, b_w3 - 20.0, 24.0))
 	boss_name.clip_text = true
 	boss_warning.clip_text = true
 
@@ -3285,6 +3805,13 @@ func _layout_menus(frame: Rect2, safe_size: Vector2) -> void:
 	QuestPanel.set_responsive_layout(quest_view, frame.size)
 	menu_contents["quests"].custom_minimum_size = frame.size
 	menu_contents["quests"].size = frame.size
+
+	menu_scrolls["loadout"].vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	LoadoutPanel.set_touch_mode(loadout_view, _touch_layout)
+	LoadoutPanel.set_responsive_layout(loadout_view, frame.size)
+	LoadoutPanel.refresh_layout(loadout_view)
+	menu_contents["loadout"].custom_minimum_size = frame.size
+	menu_contents["loadout"].size = frame.size
 
 	_place_modal_card("pause", _pause_ui["card"], _layout_pause_card(frame.size), frame.size)
 	_place_modal_card("craft", _craft_ui["card"], _layout_craft_card(frame.size), frame.size)
@@ -3564,7 +4091,9 @@ func _layout_pause_card(avail: Vector2) -> Vector2:
 	_set_control_rect(_pause_ui["desc"], Rect2(pad, 110.0, iw, 40.0))
 	_set_control_rect(_pause_ui["resume_btn"], Rect2(pad, 160.0, iw, 46.0))
 	_set_control_rect(_pause_ui["map_btn"], Rect2(pad, 214.0, iw, 44.0))
-	_set_control_rect(_pause_ui["quests_btn"], Rect2(pad, 266.0, iw, 44.0))
+	var mid_half := floorf((iw - 10.0) * 0.5)
+	_set_control_rect(_pause_ui["loadout_btn"], Rect2(pad, 266.0, mid_half, 44.0))
+	_set_control_rect(_pause_ui["quests_btn"], Rect2(pad + mid_half + 10.0, 266.0, iw - mid_half - 10.0, 44.0))
 	_set_control_rect(_pause_ui["guide_btn"], Rect2(pad, 318.0, iw, 44.0))
 	_set_control_rect(_pause_ui["p_prev"], Rect2(pad, 370.0, 48.0, 44.0))
 	_set_control_rect(pause_char_btn, Rect2(pad + 54.0, 370.0, maxf(100.0, iw - 108.0), 44.0))
@@ -3626,14 +4155,16 @@ func _layout_craft_card(avail: Vector2) -> Vector2:
 	var f_note: Label = _craft_ui["foot_note"]
 	if stacked:
 		var fh := floorf((iw - 8.0) * 0.5)
-		_set_control_rect(_craft_ui["resume_btn"], Rect2(pad, foot_y, fh, 44.0))
+		_set_control_rect(_craft_ui["loadout_btn"], Rect2(pad, foot_y, fh, 44.0))
 		_set_control_rect(_craft_ui["sushi_btn"], Rect2(pad + fh + 8.0, foot_y, iw - fh - 8.0, 44.0))
+		_set_control_rect(_craft_ui["resume_btn"], Rect2(pad, foot_y + 52.0, iw, 44.0))
 		f_note.visible = false
-		return Vector2(w, foot_y + 60.0)
-	_set_control_rect(_craft_ui["resume_btn"], Rect2(pad, foot_y, 144.0, 44.0))
-	_set_control_rect(_craft_ui["sushi_btn"], Rect2(pad + 154.0, foot_y, 184.0, 44.0))
-	f_note.visible = iw >= 580.0
-	_set_control_rect(f_note, Rect2(pad + 348.0, foot_y + 12.0, maxf(120.0, iw - 348.0), 22.0))
+		return Vector2(w, foot_y + 112.0)
+	_set_control_rect(_craft_ui["resume_btn"], Rect2(pad, foot_y, 128.0, 44.0))
+	_set_control_rect(_craft_ui["loadout_btn"], Rect2(pad + 136.0, foot_y, 164.0, 44.0))
+	_set_control_rect(_craft_ui["sushi_btn"], Rect2(pad + 308.0, foot_y, 168.0, 44.0))
+	f_note.visible = iw >= 640.0
+	_set_control_rect(f_note, Rect2(pad + 486.0, foot_y + 12.0, maxf(120.0, iw - 486.0), 22.0))
 	return Vector2(w, foot_y + 60.0)
 
 func _layout_sushi_card(avail: Vector2) -> Vector2:

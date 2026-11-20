@@ -12,14 +12,18 @@ signal orbit_dragged(relative: Vector2)
 signal zoom_pinched(distance_delta: float)
 signal scope_requested
 signal quick_menu_requested
+signal weapon_art_requested
+@warning_ignore("unused_signal")
+signal tactical_skill_requested
+signal ultimate_skill_requested
 signal touch_used
 
 const LABELS := {
 	"attack": "攻击", "interact": "交互", "aim": "瞄准",
 	"ascend": "上浮", "descend": "下潜", "sprint": "加速",
-	"dash": "突进", "weapon_cycle": "武器", "toggle_shield": "护盾",
-	"sonar_ping": "声呐", "lamp": "头灯", "world_map": "海图",
-	"pause_game": "暂停", "quick_menu": "快捷"
+	"dash": "突进", "weapon_art": "战技", "weapon_cycle": "武器",
+	"toggle_shield": "护盾", "sonar_ping": "声呐", "lamp": "头灯",
+	"world_map": "海图", "pause_game": "暂停", "quick_menu": "快捷"
 }
 const ICONS := {
 	"attack": preload("res://assets/ui/touch_icons/attack.png"),
@@ -75,6 +79,13 @@ var _has_active_torpedo := false
 var _is_scoped := false
 var _shield_on := false
 var _lamp_on := false
+var _art_cd := 0.0
+var _art_max_cd := 0.0
+var _ult_ratio := 0.0
+var _ult_ready := false
+var _tactical_cd := 0.0
+var _ultimate_rect := Rect2()
+var _pulse_time := 0.0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -109,12 +120,38 @@ func set_vehicle_context(in_submarine: bool, sub_type: String = "", has_active_t
 	_lamp_on = lamp_on
 	queue_redraw()
 
-func _process(_delta: float) -> void:
+func set_combat_context(art_cd: float, art_max_cd: float, ult_ratio: float, ult_ready: bool, tactical_cd: float = 0.0) -> void:
+	var clamped_art_cd := maxf(0.0, art_cd)
+	var clamped_art_max := maxf(0.0, art_max_cd)
+	var clamped_ult_ratio := clampf(ult_ratio, 0.0, 1.0)
+	var clamped_tac_cd := maxf(0.0, tactical_cd)
+	if (
+		is_equal_approx(_art_cd, clamped_art_cd)
+		and is_equal_approx(_art_max_cd, clamped_art_max)
+		and is_equal_approx(_ult_ratio, clamped_ult_ratio)
+		and _ult_ready == ult_ready
+		and is_equal_approx(_tactical_cd, clamped_tac_cd)
+	):
+		return
+	_art_cd = clamped_art_cd
+	_art_max_cd = clamped_art_max
+	_ult_ratio = clamped_ult_ratio
+	_ult_ready = ult_ready
+	_tactical_cd = clamped_tac_cd
+	queue_redraw()
+
+func _is_ultimate_visible() -> bool:
+	return _ult_ready and not _is_scoped and _ultimate_rect.size.x > 0.0 and _ultimate_rect.size.y > 0.0
+
+func _process(delta: float) -> void:
 	if not _gameplay_enabled or not is_visible_in_tree():
 		return
 	var next_safe := _calculate_safe_rect()
 	if not _safe_rect.is_equal_approx(next_safe):
 		_apply_responsive_relayout()
+	if _is_ultimate_visible():
+		_pulse_time += delta
+		queue_redraw()
 
 func _on_resized() -> void:
 	_apply_responsive_relayout()
@@ -154,6 +191,8 @@ func cancel_all() -> void:
 	queue_redraw()
 
 func get_control_rect(action: String) -> Rect2:
+	if action == "ultimate_skill":
+		return _ultimate_rect if _is_ultimate_visible() else Rect2()
 	return _buttons.get(action, Rect2())
 
 func get_joystick_rect() -> Rect2:
@@ -262,6 +301,8 @@ func _to_local(viewport_position: Vector2) -> Vector2:
 	return get_global_transform_with_canvas().affine_inverse() * viewport_position
 
 func _find_button_at(at: Vector2) -> String:
+	if _is_ultimate_visible() and _ultimate_rect.has_point(at):
+		return "ultimate_skill"
 	for candidate: String in _buttons:
 		var rect: Rect2 = _buttons[candidate]
 		if rect.has_point(at):
@@ -270,6 +311,12 @@ func _find_button_at(at: Vector2) -> String:
 		return ""
 	var best_action := ""
 	var best_dist_sq := 26.0
+	if _is_ultimate_visible() and _ultimate_rect.grow(5.0).has_point(at):
+		var clamped_u := Vector2(clampf(at.x, _ultimate_rect.position.x, _ultimate_rect.end.x), clampf(at.y, _ultimate_rect.position.y, _ultimate_rect.end.y))
+		var d_sq_u := at.distance_squared_to(clamped_u)
+		if d_sq_u < best_dist_sq:
+			best_dist_sq = d_sq_u
+			best_action = "ultimate_skill"
 	for candidate: String in _buttons:
 		var rect: Rect2 = _buttons[candidate]
 		if not rect.grow(5.0).has_point(at):
@@ -282,6 +329,8 @@ func _find_button_at(at: Vector2) -> String:
 	return best_action
 
 func _is_in_button_deadzone(at: Vector2) -> bool:
+	if _is_ultimate_visible() and _ultimate_rect.grow(6.0).has_point(at):
+		return true
 	for candidate: String in _buttons:
 		var rect: Rect2 = _buttons[candidate]
 		if rect.grow(6.0).has_point(at):
@@ -312,6 +361,16 @@ func _begin_touch(index: int, at: Vector2) -> bool:
 			if not _touches.has(index):
 				return true
 			quick_menu_requested.emit()
+		elif action == "weapon_art":
+			touch_used.emit()
+			if not _touches.has(index):
+				return true
+			weapon_art_requested.emit()
+		elif action == "ultimate_skill":
+			touch_used.emit()
+			if not _touches.has(index):
+				return true
+			ultimate_skill_requested.emit()
 		elif action == "aim" and _is_scoped:
 			touch_used.emit()
 			if not _touches.has(index):
@@ -474,7 +533,7 @@ func _relayout_rects(next_safe: Rect2, preserve_active_joystick: bool = false) -
 func _update_cluster_bounds() -> void:
 	var has_right := false
 	var r_box := Rect2()
-	for key: String in ["attack", "descend", "ascend", "interact", "aim", "dash"]:
+	for key: String in ["attack", "descend", "ascend", "interact", "aim", "dash", "weapon_art"]:
 		if _buttons.has(key):
 			var b: Rect2 = _buttons[key]
 			r_box = b if not has_right else r_box.merge(b)
@@ -513,7 +572,7 @@ func _landscape_bounds(m: Dictionary) -> Vector2:
 	var top_w: float = 2.0 * pad + 3.0 * float(m["top_d"]) + 2.0 * gap
 	var left_h: float = 2.0 * pad + float(m["top_d"]) + gap + float(m["sec_d"]) + gap + float(m["joy_box"])
 	var right1_h: float = 2.0 * pad + float(m["top_d"]) + gap + 2.0 * float(m["sec_d"]) + 2.0 * gap + float(m["atk_d"])
-	var right2_h: float = 2.0 * pad + float(m["top_d"]) + gap + 3.0 * float(m["sec_d"]) + 2.0 * gap
+	var right2_h: float = 2.0 * pad + float(m["top_d"]) + gap + 4.0 * float(m["sec_d"]) + 3.0 * gap
 	return Vector2(maxf(bottom_w, top_w), maxf(left_h, maxf(right1_h, right2_h)))
 
 func _landscape_fits(m: Dictionary, safe_size: Vector2) -> bool:
@@ -567,7 +626,7 @@ func _build_landscape_layout() -> void:
 	var right_w := atk_d + gap + sec_d
 	var min_right_x := maxf(_movement_rect.end.x + gap + center_min_w + gap, _safe_rect.get_center().x + 88.0)
 	var atk_inset_x := clampf(16.0 * u, 0.0, minf(22.0, maxf(0.0, (right - right_w) - min_right_x)))
-	var right_needed_h := maxf(atk_d + 2.0 * gap + 2.0 * sec_d, 3.0 * sec_d + 2.0 * gap)
+	var right_needed_h := maxf(atk_d + 2.0 * gap + 2.0 * sec_d, 4.0 * sec_d + 3.0 * gap)
 	var max_inset_y := maxf(0.0, (bottom - right_needed_h) - maxf(top + top_d + gap + 6.0, _safe_rect.position.y + 148.0))
 	var atk_inset_y := clampf(12.0 * u, 0.0, minf(18.0, max_inset_y))
 	var atk_right := right - atk_inset_x
@@ -577,21 +636,32 @@ func _build_landscape_layout() -> void:
 	var right_cluster_left := atk_x - gap - sec_d
 	var aim_y := atk_bottom - 2.0 * sec_d - gap
 	var descend_y := atk_y - gap - sec_d
+	var ascend_y := descend_y - gap - sec_d
+	var dash_y := aim_y - gap - sec_d
+	var weapon_art_x := atk_right - 2.0 * sec_d - gap
+	var weapon_art_y := dash_y - gap - sec_d
 	var qs_start_x := _movement_rect.end.x + ((right_cluster_left - _movement_rect.end.x) - qs_total_w) * 0.5
 	var qs_y := bottom - qs_d
 
 	_buttons = {
 		"attack": Rect2(Vector2(atk_x, atk_y), Vector2(atk_d, atk_d)),
 		"descend": Rect2(Vector2(atk_right - sec_d, descend_y), Vector2(sec_d, sec_d)),
-		"ascend": Rect2(Vector2(atk_right - sec_d, descend_y - gap - sec_d), Vector2(sec_d, sec_d)),
+		"ascend": Rect2(Vector2(atk_right - sec_d, ascend_y), Vector2(sec_d, sec_d)),
 		"interact": Rect2(Vector2(right_cluster_left, atk_bottom - sec_d), Vector2(sec_d, sec_d)),
 		"aim": Rect2(Vector2(atk_x - gap * 0.5 - sec_d, aim_y), Vector2(sec_d, sec_d)),
-		"dash": Rect2(Vector2(atk_right - 2.0 * sec_d - gap, aim_y - gap - sec_d), Vector2(sec_d, sec_d)),
+		"dash": Rect2(Vector2(weapon_art_x, dash_y), Vector2(sec_d, sec_d)),
+		"weapon_art": Rect2(Vector2(weapon_art_x, weapon_art_y), Vector2(sec_d, sec_d)),
 		"sprint": Rect2(Vector2(sprint_x, _movement_rect.position.y - gap - sec_d), Vector2(sec_d, sec_d)),
 		"world_map": Rect2(Vector2(left, top), Vector2(top_d, top_d)),
 		"quick_menu": Rect2(Vector2(right - 2.0 * top_d - gap, top), Vector2(top_d, top_d)),
 		"pause_game": Rect2(Vector2(right - top_d, top), Vector2(top_d, top_d)),
 	}
+	var ult_y := ascend_y - gap - sec_d
+	if ult_y >= top + top_d + gap:
+		_ultimate_rect = Rect2(Vector2(atk_right - sec_d, ult_y), Vector2(sec_d, sec_d))
+	else:
+		var alt_x := maxf(_movement_rect.end.x + gap, weapon_art_x - gap - sec_d)
+		_ultimate_rect = Rect2(Vector2(alt_x, maxf(top + top_d + gap, weapon_art_y)), Vector2(sec_d, sec_d))
 	for i in range(QUICK_SLOTS.size()):
 		_buttons[QUICK_SLOTS[i]] = Rect2(Vector2(qs_start_x + float(i) * (qs_d + gap), qs_y), Vector2(qs_d, qs_d))
 
@@ -626,7 +696,7 @@ func _portrait_bounds(m: Dictionary) -> Vector2:
 	var top_row_w: float = 2.0 * pad + 3.0 * float(m["top_d"]) + 2.0 * gap
 	var left_cluster_h: float = float(m["joy_box"]) + gap + float(m["sec_d"])
 	var right1_cluster_h: float = float(m["atk_d"]) + 2.0 * gap + 2.0 * float(m["sec_d"])
-	var right2_cluster_h: float = 3.0 * float(m["sec_d"]) + 2.0 * gap
+	var right2_cluster_h: float = 4.0 * float(m["sec_d"]) + 3.0 * gap
 	var cluster_h := maxf(left_cluster_h, maxf(right1_cluster_h, right2_cluster_h))
 	var total_h: float = 2.0 * pad + float(m["top_d"]) + gap + float(m["look_band"]) + float(m["qs_d"]) + float(m["row_gap"]) + cluster_h
 	return Vector2(maxf(bottom_w, maxf(qs_row_w, top_row_w)), total_h)
@@ -682,25 +752,31 @@ func _build_portrait_layout() -> void:
 	var right_cluster_left := atk_x - gap - sec_d
 	var aim_y := bottom - 2.0 * sec_d - gap
 	var descend_y := atk_y - gap - sec_d
+	var dash_y := aim_y - gap - sec_d
+	var weapon_art_x := right - 2.0 * sec_d - gap
+	var weapon_art_y := dash_y - gap - sec_d
 	_buttons = {
 		"attack": Rect2(Vector2(atk_x, atk_y), Vector2(atk_d, atk_d)),
 		"descend": Rect2(Vector2(right - sec_d, descend_y), Vector2(sec_d, sec_d)),
 		"ascend": Rect2(Vector2(right - sec_d, descend_y - gap - sec_d), Vector2(sec_d, sec_d)),
 		"interact": Rect2(Vector2(right_cluster_left, bottom - sec_d), Vector2(sec_d, sec_d)),
 		"aim": Rect2(Vector2(atk_x - gap * 0.5 - sec_d, aim_y), Vector2(sec_d, sec_d)),
-		"dash": Rect2(Vector2(right - 2.0 * sec_d - gap, aim_y - gap - sec_d), Vector2(sec_d, sec_d)),
+		"dash": Rect2(Vector2(weapon_art_x, dash_y), Vector2(sec_d, sec_d)),
+		"weapon_art": Rect2(Vector2(weapon_art_x, weapon_art_y), Vector2(sec_d, sec_d)),
 		"sprint": Rect2(Vector2(left, _movement_rect.position.y - gap - sec_d), Vector2(sec_d, sec_d)),
 		"world_map": Rect2(Vector2(left, top), Vector2(top_d, top_d)),
 		"quick_menu": Rect2(Vector2(right - 2.0 * top_d - gap, top), Vector2(top_d, top_d)),
 		"pause_game": Rect2(Vector2(right - top_d, top), Vector2(top_d, top_d)),
 	}
 
-	var cluster_top := minf(_buttons["sprint"].position.y, minf(_buttons["ascend"].position.y, _buttons["dash"].position.y))
+	var cluster_top := minf(_buttons["sprint"].position.y, minf(_buttons["ascend"].position.y, _buttons["weapon_art"].position.y))
 	var qs_y := cluster_top - row_gap - qs_d
 	var qs_total_w := 4.0 * qs_d + 3.0 * gap
 	var qs_start_x := left + ((right - left) - qs_total_w) * 0.5
 	for i in range(QUICK_SLOTS.size()):
 		_buttons[QUICK_SLOTS[i]] = Rect2(Vector2(qs_start_x + float(i) * (qs_d + gap), qs_y), Vector2(qs_d, qs_d))
+	var ult_p_y := maxf(top + top_d + gap, qs_y - row_gap - sec_d)
+	_ultimate_rect = Rect2(Vector2(right - sec_d, ult_p_y), Vector2(sec_d, sec_d))
 
 	var min_look_top := top + top_d + gap
 	var look_top := min_look_top
@@ -730,11 +806,70 @@ func _is_toggled_active(action: String) -> bool:
 	return false
 
 func _is_dimmed_in_context(action: String) -> bool:
-	if _in_submarine and action in ["weapon_cycle", "toggle_shield", "dash"]:
+	if _in_submarine and action in ["weapon_cycle", "toggle_shield", "dash", "weapon_art"]:
 		return true
 	if _in_submarine and _sub_type != "mini" and action == "aim" and not _is_scoped:
 		return true
 	return false
+
+func _is_touch_pressing(action: String) -> bool:
+	if _action_holders.has(action):
+		return true
+	for contact: Dictionary in _touches.values():
+		if str(contact.get("kind", "")) == "button" and str(contact.get("action", "")) == action:
+			return true
+	return false
+
+func _draw_centered_text(center: Vector2, text: String, font_size: int, color: Color) -> void:
+	var font := get_theme_default_font()
+	if font == null:
+		font = ThemeDB.fallback_font
+	if font == null:
+		return
+	var sz := font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+	var ascent := font.get_ascent(font_size)
+	var pos := Vector2(center.x - sz.x * 0.5, center.y + (ascent - sz.y * 0.5) * 0.85)
+	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+
+func _draw_weapon_art_button(rect: Rect2) -> void:
+	var pressed := _is_touch_pressing("weapon_art")
+	var dimmed := _is_dimmed_in_context("weapon_art")
+	var on_cd := _art_cd > 0.01
+	var draw_box := rect.grow(-rect.size.x * 0.04) if pressed else rect
+	var center := draw_box.get_center()
+	var radius := minf(draw_box.size.x, draw_box.size.y) * 0.5 * MEDALLION_FILL_RATIO
+	if not dimmed:
+		draw_circle(center + Vector2(0.0, 1.5 * _unit), radius * 0.98, Color(0.01, 0.04, 0.08, 0.30), true, -1.0, true)
+	var base_alpha := 0.36 if dimmed else (0.48 if on_cd else (0.86 if pressed else 0.74))
+	draw_circle(center, radius, Color(Art.PANEL, base_alpha), true, -1.0, true)
+	draw_arc(center, radius * 0.82, 0.0, TAU, 36, Color(Art.CYAN, 0.14 if (dimmed or on_cd) else 0.34), _unit, true)
+	if on_cd and not dimmed:
+		draw_arc(center, radius, 0.0, TAU, 44, Color(Art.CYAN, 0.24), 1.4 * _unit, true)
+		var ready_ratio := clampf(1.0 - (_art_cd / maxf(_art_max_cd, 0.001)), 0.0, 1.0)
+		if ready_ratio > 0.01:
+			draw_arc(center, radius, -PI * 0.5, -PI * 0.5 + TAU * ready_ratio, 40, Color(Art.CYAN, 0.82), 2.0 * _unit, true)
+		var cd_text := ("%.1f" % _art_cd) if _art_cd < 1.0 else ("%ds" % ceili(_art_cd))
+		_draw_centered_text(center, cd_text, maxi(11, int(round(13.0 * _unit))), Color(Art.PAPER, 0.92))
+	else:
+		var rim_col := Color(0.60, 0.72, 0.78, 0.36) if dimmed else (Color(Art.AMBER, 0.95) if pressed else Color(Art.CYAN, 0.95))
+		draw_arc(center, radius, 0.0, TAU, 48, rim_col, (2.2 if not dimmed else 1.3) * _unit, true)
+		if not dimmed:
+			draw_arc(center, radius + 1.8 * _unit, 0.0, TAU, 48, Color(Art.CYAN, 0.32), 1.2 * _unit, true)
+		var lbl_col := Color(Art.PAPER, 0.45) if dimmed else Color(Art.PAPER, 0.98)
+		_draw_centered_text(center, "战技", maxi(11, int(round(13.0 * _unit))), lbl_col)
+
+func _draw_ultimate_button(rect: Rect2) -> void:
+	var pressed := _is_touch_pressing("ultimate_skill")
+	var draw_box := rect.grow(-rect.size.x * 0.04) if pressed else rect
+	var center := draw_box.get_center()
+	var radius := minf(draw_box.size.x, draw_box.size.y) * 0.5 * MEDALLION_FILL_RATIO
+	var pulse := 0.5 + 0.5 * sin(_pulse_time * 5.2)
+	draw_circle(center + Vector2(0.0, 1.5 * _unit), radius * 0.98, Color(0.02, 0.02, 0.01, 0.34), true, -1.0, true)
+	draw_arc(center, radius + (2.0 + 3.2 * pulse) * _unit, 0.0, TAU, 48, Color(Art.AMBER, 0.34 + 0.46 * pulse), (1.8 + 0.8 * pulse) * _unit, true)
+	draw_circle(center, radius, Color(0.14, 0.10, 0.03, 0.90 if pressed else 0.84), true, -1.0, true)
+	draw_circle(center, radius * 0.80, Color(Art.AMBER, 0.16 + 0.12 * pulse), true, -1.0, true)
+	draw_arc(center, radius, 0.0, TAU, 48, Color(Art.AMBER, 0.98), 2.3 * _unit, true)
+	_draw_centered_text(center, "终极", maxi(11, int(round(13.0 * _unit))), Color(1.0, 0.96, 0.84, 1.0))
 
 func _draw() -> void:
 	if not _gameplay_enabled or _buttons.is_empty():
@@ -754,6 +889,9 @@ func _draw() -> void:
 
 	for action: String in _buttons:
 		var rect: Rect2 = _buttons[action]
+		if action == "weapon_art":
+			_draw_weapon_art_button(rect)
+			continue
 		var tex := _resolve_icon(action)
 		if tex == null:
 			continue
@@ -771,3 +909,5 @@ func _draw() -> void:
 		if not dimmed and (pressed or toggled):
 			var ring_col := Art.AMBER if (attack or action in ["aim", "lamp"]) else Art.CYAN
 			draw_arc(center, medallion_r + 1.4 * _unit, 0.0, TAU, 48, Color(ring_col, 0.92 if pressed else 0.78), 1.8 * _unit, true)
+	if _is_ultimate_visible():
+		_draw_ultimate_button(_ultimate_rect)

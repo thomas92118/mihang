@@ -33,10 +33,11 @@ const ACTIONS: Array[String] = [
 	"quick_menu", "gameplay_guide", "quest_log", "character_switch", "character_angle", "char_angle_reset",
 	"char_rotate_left", "char_rotate_right", "char_tilt_up", "char_tilt_down",
 	"char_roll_left", "char_roll_right", "camera_closer", "camera_farther", "ui_cancel",
+	"weapon_art", "tactical_skill", "ultimate_skill", "loadout_menu",
 ]
 const MENU_ACTIONS: Array[String] = [
 	"pause_game", "world_map", "craft_menu", "sushi_menu", "mount_board",
-	"sonar_ping", "quick_menu", "gameplay_guide", "quest_log", "character_switch", "character_angle", "char_angle_reset",
+	"sonar_ping", "quick_menu", "gameplay_guide", "quest_log", "loadout_menu", "character_switch", "character_angle", "char_angle_reset",
 	"char_rotate_left", "char_rotate_right", "char_tilt_up", "char_tilt_down", "ui_cancel",
 ]
 const CONTINUOUS_ACTIONS: Array[String] = [
@@ -59,6 +60,7 @@ const KEY_HINTS := {
 	"char_tilt_up": "方向键上", "char_tilt_down": "方向键下",
 	"char_roll_left": ",", "char_roll_right": ".", "camera_closer": "滚轮上",
 	"camera_farther": "滚轮下", "ui_cancel": "Esc",
+	"weapon_art": "X", "tactical_skill": "I", "ultimate_skill": "~", "loadout_menu": "F2",
 }
 const ACTION_LABELS := {
 	"forward": "左摇杆", "backward": "左摇杆", "left": "左摇杆", "right": "左摇杆",
@@ -79,6 +81,7 @@ const ACTION_LABELS := {
 	"mount_slot_1": "伙伴 1", "mount_slot_2": "伙伴 2", "mount_slot_3": "伙伴 3",
 	"mount_slot_4": "伙伴 4", "mount_slot_5": "伙伴 5", "mount_slot_6": "伙伴 6",
 	"camera_closer": "拉近视角", "camera_farther": "拉远视角", "ui_cancel": "返回",
+	"weapon_art": "战技", "tactical_skill": "战术技", "ultimate_skill": "终极技", "loadout_menu": "武装",
 }
 const PAD_HINTS := {
 	"forward": "左摇杆", "backward": "左摇杆", "left": "左摇杆", "right": "左摇杆",
@@ -87,6 +90,10 @@ const PAD_HINTS := {
 	"toggle_shield": "X / □", "quick_menu": "Y / △", "world_map": "View / Touchpad",
 	"gameplay_guide": "Y / △ · 潜航指南",
 	"quest_log": "Y / △ · 任务",
+	"weapon_art": "Y / △ · 战技",
+	"tactical_skill": "Y / △ · 战术技",
+	"ultimate_skill": "Y / △ · 终极技",
+	"loadout_menu": "Y / △ · 武装",
 	"weapon_cycle": "Y / △ · 切换武器",
 	"pause_game": "Menu / Options", "sonar_ping": "方向键上", "recall_pets": "方向键下",
 	"camera_closer": "方向键左", "camera_farther": "方向键右", "character_angle": "R3",
@@ -169,6 +176,19 @@ func setup_defaults() -> void:
 	var quest_key := InputEventKey.new()
 	quest_key.physical_keycode = KEY_U
 	_add_binding("quest_log", quest_key)
+	var weapon_art_key := InputEventKey.new()
+	weapon_art_key.physical_keycode = KEY_X
+	_add_binding("weapon_art", weapon_art_key)
+	var tactical_key := InputEventKey.new()
+	tactical_key.physical_keycode = KEY_I
+	_add_binding("tactical_skill", tactical_key)
+	for ult_keycode: int in [KEY_QUOTELEFT, KEY_SEMICOLON]:
+		var ult_key := InputEventKey.new()
+		ult_key.physical_keycode = ult_keycode
+		_add_binding("ultimate_skill", ult_key)
+	var loadout_key := InputEventKey.new()
+	loadout_key.physical_keycode = KEY_F2
+	_add_binding("loadout_menu", loadout_key)
 	_update_deadzones()
 
 func _add_joy_button(action: String, button: int) -> void:

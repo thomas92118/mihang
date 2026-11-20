@@ -117,9 +117,34 @@ var charge_time := 0.0
 var gun_muzzle: Marker3D
 var charge_glow: MeshInstance3D
 var marker_muzzle: Marker3D
+var harpoon_muzzle: Marker3D
+var sonar_muzzle: Marker3D
+var _harpoon_spear_node: Node3D
+var _sonar_core_node: Node3D
+var _marker_crystal_node: Node3D
+var _marker_halo_node: Node3D
 var shield_mount: Node3D
 var shield_node: Node3D
 var shield_active: bool = false
+var _shield_barrier_mesh: MeshInstance3D
+var _shield_ring_mesh: MeshInstance3D
+var _shield_light: OmniLight3D
+var _parry_flash_timer: float = 0.0
+var _parry_flash_duration: float = 0.22
+var _weapon_art_pose_weapon: String = ""
+var _weapon_art_pose_timer: float = 0.0
+var _weapon_art_pose_duration: float = 0.45
+var _dodge_impulse_dir: Vector3 = Vector3.ZERO
+var _dodge_impulse_speed: float = 0.0
+var _dodge_impulse_timer: float = 0.0
+var _dodge_impulse_duration: float = 0.24
+var _dodge_bank_sign: float = 0.0
+var _grapple_active: bool = false
+var _grapple_target: Vector3 = Vector3.ZERO
+var _grapple_stop_distance: float = 4.2
+var _grapple_speed: float = 28.0
+var _grapple_timer: float = 0.0
+var _sonic_charge_visual_ratio: float = 0.0
 
 # Handheld Mini Propulsion Booster (Seaglide / H 助推器)
 var booster_active: bool = false
@@ -507,6 +532,30 @@ func _setup_weapons() -> void:
 	weapon_base_trans["marker_gun"] = {"pos": marker_root.position, "rot": marker_root.rotation_degrees}
 	weapon_nodes["marker_gun"] = marker_root
 
+	# Procedurally build Electromagnetic Harpoon Gun (潮汐电磁鱼叉枪)
+	var harpoon_root := Node3D.new()
+	harpoon_root.name = "HarpoonGun"
+	_build_harpoon_gun(harpoon_root)
+	weapon_mount.add_child(harpoon_root)
+	var harpoon_cfg := {"pos": Vector3(0.24, -0.13, -0.47), "rot": Vector3(2.0, -5.0, 0.0), "scale": 1.02}
+	harpoon_root.position = harpoon_cfg["pos"]
+	harpoon_root.rotation_degrees = harpoon_cfg["rot"]
+	harpoon_root.scale = Vector3.ONE * harpoon_cfg["scale"]
+	weapon_base_trans["harpoon"] = {"pos": harpoon_root.position, "rot": harpoon_root.rotation_degrees}
+	weapon_nodes["harpoon"] = harpoon_root
+
+	# Procedurally build Deep-Pressure Sonar Cannon (声呐共鸣冲击炮)
+	var sonar_root := Node3D.new()
+	sonar_root.name = "SonarCannon"
+	_build_sonar_cannon(sonar_root)
+	weapon_mount.add_child(sonar_root)
+	var sonar_cfg := {"pos": Vector3(0.25, -0.14, -0.44), "rot": Vector3(3.0, -6.0, 0.0), "scale": 1.04}
+	sonar_root.position = sonar_cfg["pos"]
+	sonar_root.rotation_degrees = sonar_cfg["rot"]
+	sonar_root.scale = Vector3.ONE * sonar_cfg["scale"]
+	weapon_base_trans["sonar_cannon"] = {"pos": sonar_root.position, "rot": sonar_root.rotation_degrees}
+	weapon_nodes["sonar_cannon"] = sonar_root
+
 	muzzle_flash = OmniLight3D.new()
 	muzzle_flash.light_color = Color(0.35, 0.92, 1.0)
 	muzzle_flash.light_energy = 0.0
@@ -722,8 +771,11 @@ func toggle_booster() -> bool:
 	return booster_active
 
 func set_weapon(weapon_id: String) -> void:
+	if not is_instance_valid(weapon_mount):
+		_ensure_third_person_rig()
 	if current_weapon != weapon_id:
 		cancel_gun_charge()
+		set_sonic_charge_visual(0.0)
 		aiming = false
 		scoped = false
 		if weapon_nodes.has(current_weapon):
@@ -732,6 +784,8 @@ func set_weapon(weapon_id: String) -> void:
 				weapon_nodes[current_weapon].position = old_base["pos"]
 				weapon_nodes[current_weapon].rotation_degrees = old_base["rot"]
 		attack_anim_time = 0.0
+		_weapon_art_pose_timer = 0.0
+		_weapon_art_pose_weapon = ""
 		equip_anim_time = equip_duration
 		_trigger_equip_vfx()
 	current_weapon = weapon_id
@@ -739,6 +793,134 @@ func set_weapon(weapon_id: String) -> void:
 	combo_timer = 0.0
 	for id: String in weapon_nodes:
 		weapon_nodes[id].visible = (id == current_weapon) and not booster_active
+
+func set_tool(tool_name: String) -> void:
+	set_weapon(tool_name)
+
+func trigger_weapon_art_pose(weapon_id: String) -> void:
+	_ensure_third_person_rig()
+	var wid := weapon_id if weapon_nodes.has(weapon_id) else current_weapon
+	_weapon_art_pose_weapon = wid
+	match wid:
+		"knife":
+			_weapon_art_pose_duration = 0.36
+			camera_punch = Vector3(-0.028, 0.0, 0.0)
+			add_trauma(0.18)
+			_trigger_slash_vfx(Vector3(0.0, 0.0, 0.0), Vector3(1.05, 1.05, 1.45), Color(0.32, 0.96, 1.0, 0.96), 0.30, true)
+		"axe":
+			_weapon_art_pose_duration = 0.52
+			camera_punch = Vector3(-0.065, 0.0, 0.0)
+			add_trauma(0.38)
+			_trigger_slash_vfx(Vector3(10.0, 0.0, 18.0), Vector3(1.75, 1.75, 1.65), Color(1.0, 0.72, 0.24, 0.96), 0.42, false)
+		"harpoon":
+			_weapon_art_pose_duration = 0.44
+			camera_punch = Vector3(-0.042, 0.0, 0.0)
+			add_trauma(0.24)
+			if is_instance_valid(muzzle_flash):
+				muzzle_flash.light_color = Color(0.24, 0.88, 1.0)
+				muzzle_flash.light_energy = 7.5
+				muzzle_flash.omni_range = 14.0
+		"sonar_cannon":
+			_weapon_art_pose_duration = 0.48
+			camera_punch = Vector3(-0.052, 0.0, 0.0)
+			add_trauma(0.30)
+			if is_instance_valid(muzzle_flash):
+				muzzle_flash.light_color = Color(1.0, 0.84, 0.34)
+				muzzle_flash.light_energy = 8.0
+				muzzle_flash.omni_range = 16.0
+			if is_instance_valid(sonic_ring):
+				sonic_ring.visible = true
+				sonic_ring.position = Vector3(0.20, -0.10, -0.92)
+				sonic_ring.scale = Vector3.ONE * 0.46
+				var s_mat = sonic_ring.material_override
+				if s_mat is StandardMaterial3D:
+					s_mat.albedo_color = Color(1.0, 0.84, 0.34, 0.95)
+				vfx_timer = 0.32
+				vfx_max_timer = 0.32
+		"sonic":
+			_weapon_art_pose_duration = 0.42
+			camera_punch = Vector3(-0.036, 0.0, 0.0)
+			add_trauma(0.22)
+			if is_instance_valid(muzzle_flash):
+				muzzle_flash.light_color = Color(0.38, 0.96, 1.0)
+				muzzle_flash.light_energy = 8.5
+				muzzle_flash.omni_range = 15.0
+		"marker_gun":
+			_weapon_art_pose_duration = 0.46
+			camera_punch = Vector3(-0.020, 0.0, 0.0)
+			add_trauma(0.14)
+			if is_instance_valid(muzzle_flash):
+				muzzle_flash.light_color = Color(0.95, 0.82, 0.32)
+				muzzle_flash.light_energy = 6.5
+				muzzle_flash.omni_range = 14.0
+		_:
+			_weapon_art_pose_duration = 0.38
+	_weapon_art_pose_timer = _weapon_art_pose_duration
+	equip_anim_time = 0.0
+
+func trigger_parry_flash() -> void:
+	_ensure_third_person_rig()
+	_parry_flash_duration = 0.22
+	_parry_flash_timer = _parry_flash_duration
+	_apply_parry_flash_visual(1.0)
+
+func trigger_dodge_impulse(move_dir: Vector3, speed: float = 21.0, duration: float = 0.24) -> void:
+	var dir := move_dir
+	if dir.length_squared() < 0.0001:
+		dir = -camera.global_basis.z if (is_instance_valid(camera) and camera.is_inside_tree()) else -basis.z
+	dir = dir.normalized()
+	_dodge_impulse_dir = dir
+	_dodge_impulse_speed = maxf(0.0, speed)
+	_dodge_impulse_duration = maxf(0.05, duration)
+	_dodge_impulse_timer = _dodge_impulse_duration
+	var right_ref := camera.global_basis.x if (is_instance_valid(camera) and camera.is_inside_tree()) else basis.x
+	var lateral := clampf(dir.dot(right_ref), -1.0, 1.0)
+	_dodge_bank_sign = lateral if absf(lateral) > 0.15 else 0.35
+	velocity = dir * _dodge_impulse_speed
+	if is_instance_valid(backpack_thruster_bubbles) and not in_submarine_mode:
+		backpack_thruster_bubbles.emitting = true
+
+func trigger_grapple_pull(target_pos: Vector3, stop_distance: float = 4.2, speed: float = 28.0) -> void:
+	_grapple_active = true
+	_grapple_target = target_pos
+	_grapple_stop_distance = maxf(0.5, stop_distance)
+	_grapple_speed = maxf(1.0, speed)
+	_grapple_timer = 0.65
+	_dodge_impulse_timer = 0.0
+
+func set_sonic_charge_visual(ratio: float) -> void:
+	_sonic_charge_visual_ratio = clampf(ratio, 0.0, 1.0)
+	_update_sonic_charge_visual()
+
+func _update_sonic_charge_visual() -> void:
+	if not is_instance_valid(charge_glow):
+		return
+	var active_ratio := maxf(get_charge_ratio() if gun_trigger_held else 0.0, _sonic_charge_visual_ratio)
+	var show_glow := (gun_trigger_held and charge_time >= 0.15) or _sonic_charge_visual_ratio > 0.001
+	charge_glow.visible = show_glow
+	var mat := charge_glow.material_override as StandardMaterial3D
+	if mat != null:
+		if show_glow:
+			mat.emission_energy_multiplier = lerpf(1.0, 6.2, active_ratio)
+			mat.emission = Color(0.03, 0.22, 0.8).lerp(Color(0.36, 0.96, 1.0), active_ratio)
+		else:
+			mat.emission_energy_multiplier = 1.0
+			mat.emission = Color(0.03, 0.22, 0.8)
+
+func _apply_parry_flash_visual(intensity: float) -> void:
+	if not is_instance_valid(shield_node):
+		return
+	var k := clampf(intensity, 0.0, 1.0)
+	shield_node.scale = Vector3.ONE * lerpf(1.0, 1.22, k)
+	if is_instance_valid(_shield_barrier_mesh) and _shield_barrier_mesh.material_override is StandardMaterial3D:
+		var bm := _shield_barrier_mesh.material_override as StandardMaterial3D
+		bm.albedo_color = Color(0.15, 0.92, 1.0, 0.45).lerp(Color(1.0, 0.90, 0.42, 0.88), k)
+	if is_instance_valid(_shield_ring_mesh) and _shield_ring_mesh.material_override is StandardMaterial3D:
+		var rm := _shield_ring_mesh.material_override as StandardMaterial3D
+		rm.albedo_color = Color(0.2, 1.0, 0.9, 0.85).lerp(Color(1.0, 0.95, 0.50, 1.0), k)
+	if is_instance_valid(_shield_light):
+		_shield_light.light_color = Color(0.18, 0.95, 1.0).lerp(Color(1.0, 0.88, 0.42), k)
+		_shield_light.light_energy = lerpf(2.4, 7.6, k)
 
 func _setup_booster() -> void:
 	if is_instance_valid(booster_node):
@@ -903,7 +1085,7 @@ func _setup_booster() -> void:
 	booster_node.visible = false
 
 func toggle_aim() -> bool:
-	if current_weapon != "sonic":
+	if current_weapon != "sonic" and current_weapon != "harpoon":
 		aiming = false
 		return false
 	if scoped:
@@ -947,6 +1129,10 @@ func get_muzzle_position() -> Vector3:
 		return position + Vector3(0.22, -0.16, -0.9)
 	if current_weapon == "marker_gun" and is_instance_valid(marker_muzzle) and marker_muzzle.is_inside_tree():
 		return marker_muzzle.global_position
+	if current_weapon == "harpoon" and is_instance_valid(harpoon_muzzle) and harpoon_muzzle.is_inside_tree():
+		return harpoon_muzzle.global_position
+	if current_weapon == "sonar_cannon" and is_instance_valid(sonar_muzzle) and sonar_muzzle.is_inside_tree():
+		return sonar_muzzle.global_position
 	return gun_muzzle.global_position if (is_instance_valid(gun_muzzle) and gun_muzzle.is_inside_tree()) else (camera.to_global(Vector3(0.22, -0.16, -0.9)) if (is_instance_valid(camera) and camera.is_inside_tree()) else position)
 
 func get_aim_origin() -> Vector3:
@@ -960,6 +1146,8 @@ func _update_vehicle_collision_state() -> void:
 		if is_instance_valid(body_collision):
 			body_collision.disabled = true
 		velocity = Vector3.ZERO
+		_dodge_impulse_timer = 0.0
+		_grapple_active = false
 		camera_trauma = 0.0
 		camera_punch = Vector3.ZERO
 		_camera_punch_offset = Vector3.ZERO
@@ -1342,6 +1530,69 @@ func attack() -> Dictionary:
 			camera_punch = Vector3(-0.005, 0.0, 0.0)
 			add_trauma(0.02)
 
+		"harpoon":
+			attack_cooldown = 0.54
+			attack_anim_duration = 0.30
+			combo_timer = 0.0
+			var harpoon_dmg: float = 32.0 + damage_bonus
+			result = {
+				"weapon": "harpoon",
+				"name": "潮汐电磁鱼叉枪",
+				"mode": "harpoon",
+				"damage": harpoon_dmg,
+				"base_damage": 32.0,
+				"bonus": damage_bonus,
+				"range": 38.0,
+				"is_sonic": false,
+				"knockback": 5.0,
+				"cleave_angle": 0.985,
+				"max_targets": 1,
+				"combo": 1,
+				"active_delay": 0.0
+			}
+			camera_punch = Vector3(-0.028, 0.0, 0.0)
+			add_trauma(0.14)
+			if is_instance_valid(muzzle_flash):
+				muzzle_flash.light_color = Color(0.24, 0.88, 1.0)
+				muzzle_flash.light_energy = 5.5
+				muzzle_flash.omni_range = 10.0
+
+		"sonar_cannon":
+			attack_cooldown = 0.68
+			attack_anim_duration = 0.34
+			combo_timer = 0.0
+			var sonar_dmg: float = 26.0 + damage_bonus
+			result = {
+				"weapon": "sonar_cannon",
+				"name": "声呐共鸣冲击炮",
+				"mode": "sonar_cone",
+				"damage": sonar_dmg,
+				"base_damage": 26.0,
+				"bonus": damage_bonus,
+				"range": 22.0,
+				"is_sonic": true,
+				"knockback": 10.0,
+				"cleave_angle": 0.74,
+				"max_targets": 8,
+				"combo": 1,
+				"active_delay": 0.0
+			}
+			camera_punch = Vector3(-0.038, 0.0, 0.0)
+			add_trauma(0.20)
+			if is_instance_valid(muzzle_flash):
+				muzzle_flash.light_color = Color(1.0, 0.82, 0.34)
+				muzzle_flash.light_energy = 6.2
+				muzzle_flash.omni_range = 12.0
+			if is_instance_valid(sonic_ring):
+				sonic_ring.visible = true
+				sonic_ring.position = Vector3(0.20, -0.11, -0.90)
+				sonic_ring.scale = Vector3.ONE * 0.42
+				var sc_mat = sonic_ring.material_override
+				if sc_mat is StandardMaterial3D:
+					sc_mat.albedo_color = Color(1.0, 0.82, 0.34, 0.90)
+				vfx_timer = 0.28
+				vfx_max_timer = 0.28
+
 	attack_anim_time = attack_anim_duration
 	return result
 
@@ -1507,6 +1758,8 @@ func _physics_process(delta: float) -> void:
 	if not active:
 		orbit_dragging = false
 		velocity = Vector3.ZERO
+		_dodge_impulse_timer = 0.0
+		_grapple_active = false
 		_update_third_person_camera(delta)
 		return
 	if is_instance_valid(input_controller):
@@ -1562,7 +1815,30 @@ func _physics_process(delta: float) -> void:
 		speed *= 0.6
 	if overweight and not exploration_mode and not booster_active:
 		speed *= 0.72
-	velocity = velocity.lerp(direction.limit_length() * speed, 1.0 - exp(-delta * 4.0))
+
+	var dodge_fov_bonus := 0.0
+	if _grapple_active:
+		_grapple_timer -= delta
+		var cur_pos := global_position if is_inside_tree() else position
+		var to_target := _grapple_target - cur_pos
+		var dist := to_target.length()
+		if dist <= _grapple_stop_distance or _grapple_timer <= 0.0 or dist < 0.001:
+			_grapple_active = false
+			velocity *= 0.45
+		else:
+			var pull_dir := to_target / dist
+			var pull_speed := minf(_grapple_speed, maxf(6.0, (dist - _grapple_stop_distance) / maxf(delta, 0.016)))
+			velocity = pull_dir * pull_speed
+			dodge_fov_bonus = 6.5
+	elif _dodge_impulse_timer > 0.0:
+		_dodge_impulse_timer = maxf(0.0, _dodge_impulse_timer - delta)
+		var dodge_ratio := clampf(_dodge_impulse_timer / maxf(_dodge_impulse_duration, 0.001), 0.0, 1.0)
+		var desired_dodge_vel := _dodge_impulse_dir * (_dodge_impulse_speed * (0.35 + 0.65 * dodge_ratio))
+		velocity = velocity.lerp(desired_dodge_vel, 1.0 - exp(-delta * 20.0))
+		turn_bank = lerpf(turn_bank, clampf(-_dodge_bank_sign * 0.42 * dodge_ratio, -0.48, 0.48), 1.0 - exp(-delta * 16.0))
+		dodge_fov_bonus = 7.5 * dodge_ratio
+	else:
+		velocity = velocity.lerp(direction.limit_length() * speed, 1.0 - exp(-delta * 4.0))
 	move_and_slide()
 
 	if booster_active and is_instance_valid(booster_propeller):
@@ -1584,6 +1860,8 @@ func _physics_process(delta: float) -> void:
 		position.y = 1.2
 
 	var base_fov: float = SCOPE_FOV if scoped else (AIM_FOV if aiming else (84.0 if sprinting else 78.0))
+	if not scoped and not aiming and dodge_fov_bonus > 0.0:
+		base_fov += dodge_fov_bonus
 	var target_fov: float = _adapt_fov_for_aspect(base_fov)
 	camera.far = 280.0 if scoped else (148.0 if mobile_performance_mode else 240.0)
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 9.0))
@@ -1595,14 +1873,27 @@ func _process(delta: float) -> void:
 	if gun_trigger_held:
 		charge_time = minf(CHARGE_DURATION, charge_time + delta)
 	if is_instance_valid(charge_glow):
-		charge_glow.visible = gun_trigger_held and charge_time >= 0.15
+		var eff_charge := maxf(get_charge_ratio() if gun_trigger_held else 0.0, _sonic_charge_visual_ratio)
+		_update_sonic_charge_visual()
 		var pulse := 1.0 + sin(Time.get_ticks_msec() * 0.01) * 0.04
-		charge_glow.scale = Vector3.ONE * (0.35 + get_charge_ratio() * 4.65) * pulse
+		charge_glow.scale = Vector3.ONE * (0.35 + eff_charge * 4.65) * pulse
 		charge_glow.rotate_y(delta * 3.0)
-	if weapon_nodes.has("sonic"):
-		weapon_nodes["sonic"].visible = current_weapon == "sonic" and not scoped and not booster_active
-	if weapon_nodes.has("marker_gun"):
-		weapon_nodes["marker_gun"].visible = current_weapon == "marker_gun" and not scoped and not booster_active
+	if _parry_flash_timer > 0.0:
+		_parry_flash_timer = maxf(0.0, _parry_flash_timer - delta)
+		var parry_ratio := clampf(_parry_flash_timer / maxf(_parry_flash_duration, 0.001), 0.0, 1.0)
+		_apply_parry_flash_visual(parry_ratio)
+	for ranged_id: String in ["sonic", "marker_gun", "harpoon", "sonar_cannon"]:
+		if weapon_nodes.has(ranged_id):
+			weapon_nodes[ranged_id].visible = current_weapon == ranged_id and not scoped and not booster_active
+	if is_instance_valid(_sonar_core_node):
+		_sonar_core_node.rotate_y(delta * 2.4)
+		_sonar_core_node.rotate_x(delta * 1.1)
+	if is_instance_valid(_marker_crystal_node):
+		var hover_t := Time.get_ticks_msec() * 0.004
+		_marker_crystal_node.position.y = 0.015 + sin(hover_t) * 0.008
+		_marker_crystal_node.rotate_y(delta * 2.2)
+	if is_instance_valid(_marker_halo_node):
+		_marker_halo_node.rotate_z(delta * 1.8)
 	if attack_cooldown > 0.0:
 		attack_cooldown = maxf(0.0, attack_cooldown - delta)
 	if combo_timer > 0.0:
@@ -1617,6 +1908,10 @@ func _process(delta: float) -> void:
 		hitstop_jitter = Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5) * 0.018
 	elif attack_anim_time > 0.0:
 		attack_anim_time = maxf(0.0, attack_anim_time - delta)
+	if _weapon_art_pose_timer > 0.0 and hitstop_timer <= 0.0:
+		_weapon_art_pose_timer = maxf(0.0, _weapon_art_pose_timer - delta)
+		if _weapon_art_pose_timer <= 0.0:
+			_weapon_art_pose_weapon = ""
 	if is_instance_valid(muzzle_flash):
 		if muzzle_flash.light_energy > 0.0:
 			muzzle_flash.light_energy = maxf(0.0, muzzle_flash.light_energy - delta * 28.0)
@@ -1755,6 +2050,13 @@ func _process(delta: float) -> void:
 		base_pos = base_pos.lerp(Vector3(0.025, -0.14, -0.46), aim_blend)
 		if gun_trigger_held:
 			base_pos.z -= get_charge_ratio() * 0.3
+		if _sonic_charge_visual_ratio > 0.001:
+			var vib_t := Time.get_ticks_msec() * 0.065
+			var vib_amp := _sonic_charge_visual_ratio * 0.009
+			base_pos += Vector3(sin(vib_t) * vib_amp, cos(vib_t * 1.37) * vib_amp, -_sonic_charge_visual_ratio * 0.04)
+		base_rot = base_rot.lerp(Vector3.ZERO, aim_blend)
+	elif current_weapon == "harpoon":
+		base_pos = base_pos.lerp(Vector3(0.04, -0.13, -0.46), aim_blend)
 		base_rot = base_rot.lerp(Vector3.ZERO, aim_blend)
 
 	# Subtle natural swimming sway
@@ -1850,6 +2152,51 @@ func _process(delta: float) -> void:
 					var spring := exp(-p1 * 6.5) * cos(p1 * 14.0)
 					anim_offset_pos = Vector3(0.0, 0.12 * spring, 0.44 * spring)
 					anim_offset_rot = Vector3(-42.0 * spring, 0.0, 0.0)
+			"harpoon":
+				if progress < 0.18:
+					var p0 := progress / 0.18
+					anim_offset_pos = Vector3(0.0, 0.05 * p0, 0.22 * p0)
+					anim_offset_rot = Vector3(14.0 * p0, 0.0, 0.0)
+				else:
+					var p1 := (progress - 0.18) / 0.82
+					var recover := 1.0 - p1
+					anim_offset_pos = Vector3(0.0, 0.05 * recover, 0.22 * recover)
+					anim_offset_rot = Vector3(14.0 * recover, 0.0, 0.0)
+				if is_instance_valid(_harpoon_spear_node):
+					var spear_slide := sin(clampf(progress, 0.0, 1.0) * PI)
+					_harpoon_spear_node.position.z = -0.06 - spear_slide * 0.14
+			"sonar_cannon":
+				var punch := sin(clampf(progress, 0.0, 1.0) * PI)
+				anim_offset_pos = Vector3(0.0, 0.04 * punch, 0.18 * punch)
+				anim_offset_rot = Vector3(16.0 * punch, 0.0, 0.0)
+	else:
+		if is_instance_valid(_harpoon_spear_node) and _weapon_art_pose_timer <= 0.0:
+			_harpoon_spear_node.position.z = lerpf(_harpoon_spear_node.position.z, -0.06, 1.0 - exp(-delta * 14.0))
+
+	if _weapon_art_pose_timer > 0.0 and _weapon_art_pose_weapon == current_weapon:
+		var art_progress := 1.0 - (_weapon_art_pose_timer / maxf(_weapon_art_pose_duration, 0.001))
+		var art_env := sin(clampf(art_progress, 0.0, 1.0) * PI)
+		match current_weapon:
+			"knife":
+				anim_offset_pos += Vector3(-0.04 * art_env, -0.02 * art_env, -0.46 * art_env)
+				anim_offset_rot += Vector3(-16.0 * art_env, -20.0 * art_env, 38.0 * art_env)
+			"axe":
+				anim_offset_pos += Vector3(-0.28 * art_env, -0.14 * art_env, -0.26 * art_env)
+				anim_offset_rot += Vector3(48.0 * art_env, -66.0 * art_env, -42.0 * art_env)
+			"harpoon":
+				anim_offset_pos += Vector3(0.0, 0.08 * art_env, 0.28 * art_env)
+				anim_offset_rot += Vector3(22.0 * art_env, 0.0, 0.0)
+				if is_instance_valid(_harpoon_spear_node):
+					_harpoon_spear_node.position.z = -0.06 - art_env * 0.22
+			"sonar_cannon":
+				anim_offset_pos += Vector3(0.0, 0.06 * art_env, 0.24 * art_env)
+				anim_offset_rot += Vector3(20.0 * art_env, 0.0, sin(art_progress * TAU * 2.0) * 6.0 * art_env)
+			"sonic":
+				anim_offset_pos += Vector3(0.0, 0.10 * art_env, 0.22 * art_env)
+				anim_offset_rot += Vector3(26.0 * art_env, 0.0, 12.0 * art_env)
+			"marker_gun":
+				anim_offset_pos += Vector3(-0.04 * art_env, 0.16 * art_env, -0.14 * art_env)
+				anim_offset_rot += Vector3(32.0 * art_env, -10.0 * art_env, -8.0 * art_env)
 	anim_offset_pos += jitter
 
 	# 叠加待机晃动、冲刺姿态、攻击位移动态与鼠标惯性迟滞
@@ -1886,7 +2233,7 @@ func _process(delta: float) -> void:
 	var is_melee := current_weapon == "knife" or current_weapon == "axe"
 	if is_melee and is_instance_valid(diver_model) and is_instance_valid(body_pivot) and is_instance_valid(right_arm_pivot) and is_instance_valid(right_forearm_pivot) and is_instance_valid(right_hand_socket) and is_instance_valid(equipment_rig):
 		_sync_melee_weapon_to_hand(active_node, current_weapon, lag_rot + fluid_drag_rot * 0.45, jitter)
-	elif reference_model_active and third_person_mode and not scoped and current_weapon in ["sonic", "marker_gun"]:
+	elif reference_model_active and third_person_mode and not scoped and current_weapon in ["sonic", "marker_gun", "harpoon", "sonar_cannon"]:
 		_sync_reference_gun_to_hand(active_node, current_weapon, lag_rot + fluid_drag_rot * 0.3, jitter)
 	else:
 		active_node.position = base_pos + Vector3(sway_x, sway_y, 0) + sprint_offset + anim_offset_pos + lag_pos + equip_offset_pos + fluid_drag_pos
@@ -2820,7 +3167,7 @@ func _animate_diver_model(delta: float) -> void:
 			right_wrist_rot = Vector3.ZERO
 			left_wrist_rot = Vector3.ZERO
 		else:
-			var is_gun := current_weapon == "sonic" or current_weapon == "marker_gun"
+			var is_gun := current_weapon in ["sonic", "marker_gun", "harpoon", "sonar_cannon"]
 			var aim_pitch_comp := rad_to_deg(cam_pitch - body_pivot.rotation.x) * lerpf(0.35, 0.75, combat_stance_blend)
 			var eq_factor := 0.0
 			if equip_anim_time > 0.0:
@@ -2927,7 +3274,7 @@ func _animate_reference_posture(delta: float, cam_pitch: float, in_attack: bool,
 		# Combat choreography already solves the wrist so the knife thrust and
 		# its blade direction agree. Idle anatomical alignment must not replace it.
 		return
-	var is_gun := current_weapon in ["sonic", "marker_gun"]
+	var is_gun := current_weapon in ["sonic", "marker_gun", "harpoon", "sonar_cannon"]
 	var aiming_gun := is_gun and (aiming or gun_trigger_held)
 	if not in_attack and combat_stance_blend < 0.05 and not in_mount_mode:
 		var torso_wave := sin(swim_clock) * wave_amp * 0.16
@@ -2997,7 +3344,10 @@ func _sync_reference_gun_to_hand(active_node: Node3D, weapon_id: String, inertia
 	var mount_in_diver := equipment_rig.transform * weapon_mount.transform
 	var hand_in_mount := mount_in_diver.affine_inverse() * hand_in_diver
 	var inertia := Basis.from_euler(Vector3(deg_to_rad(clampf(inertia_rot_deg.x, -5, 5)), deg_to_rad(clampf(inertia_rot_deg.y, -5, 5)), 0))
-	var grip := Vector3(0, -0.10, 0.16) if weapon_id == "sonic" else Vector3(0, -0.08, 0.06)
+	var grip := Vector3(0, -0.10, 0.16) if weapon_id == "sonic" else (
+		Vector3(0, -0.09, 0.12) if weapon_id == "harpoon" else (
+		Vector3(0, -0.10, 0.10) if weapon_id == "sonar_cannon" else Vector3(0, -0.08, 0.06)
+	))
 	var final_basis := (hand_in_mount.basis.orthonormalized() * inertia).scaled(Vector3.ONE * 1.02)
 	active_node.transform = Transform3D(final_basis, hand_in_mount.origin - final_basis * grip + jitter_offset)
 
@@ -3012,60 +3362,286 @@ func _sync_shield_to_left_arm() -> void:
 	shield_node.transform = Transform3D(final_s_basis, final_s_origin)
 
 func _build_marker_gun(root: Node3D) -> void:
-	var body := MeshInstance3D.new()
-	var b_box := BoxMesh.new()
-	b_box.size = Vector3(0.045, 0.065, 0.26)
-	body.mesh = b_box
-	var mat_body := StandardMaterial3D.new()
-	mat_body.albedo_color = Color(0.12, 0.14, 0.18)
-	mat_body.metallic = 0.85
-	mat_body.roughness = 0.35
-	body.material_override = mat_body
-	root.add_child(body)
+	var mat_shaft := StandardMaterial3D.new()
+	mat_shaft.albedo_color = Color(0.11, 0.17, 0.28)
+	mat_shaft.metallic = 0.86
+	mat_shaft.roughness = 0.28
 
-	var barrel := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.014
-	cyl.bottom_radius = 0.016
-	cyl.height = 0.12
-	barrel.mesh = cyl
-	barrel.position = Vector3(0, 0.01, -0.18)
-	barrel.rotation.x = PI * 0.5
-	var mat_barrel := StandardMaterial3D.new()
-	mat_barrel.albedo_color = Color(0.42, 0.45, 0.5)
-	mat_barrel.metallic = 0.95
-	mat_barrel.roughness = 0.2
-	barrel.material_override = mat_barrel
-	root.add_child(barrel)
+	var mat_gold := StandardMaterial3D.new()
+	mat_gold.albedo_color = Color(0.88, 0.72, 0.32)
+	mat_gold.metallic = 0.92
+	mat_gold.roughness = 0.22
 
-	var lens := MeshInstance3D.new()
-	var l_cyl := CylinderMesh.new()
-	l_cyl.top_radius = 0.011
-	l_cyl.bottom_radius = 0.011
-	l_cyl.height = 0.02
-	lens.mesh = l_cyl
-	lens.position = Vector3(0, 0.01, -0.25)
-	lens.rotation.x = PI * 0.5
-	var mat_lens := StandardMaterial3D.new()
-	mat_lens.albedo_color = Color(1.0, 0.1, 0.1)
-	mat_lens.emission_enabled = true
-	mat_lens.emission = Color(1.0, 0.1, 0.1)
-	mat_lens.emission_energy_multiplier = 4.0
-	lens.material_override = mat_lens
-	root.add_child(lens)
+	var mat_crystal := StandardMaterial3D.new()
+	mat_crystal.albedo_color = Color(0.32, 0.92, 1.0)
+	mat_crystal.emission_enabled = true
+	mat_crystal.emission = Color(0.28, 0.88, 1.0)
+	mat_crystal.emission_energy_multiplier = 4.2
+	mat_crystal.roughness = 0.12
+
+	var shaft := MeshInstance3D.new()
+	var shaft_cyl := CylinderMesh.new()
+	shaft_cyl.top_radius = 0.016
+	shaft_cyl.bottom_radius = 0.019
+	shaft_cyl.height = 0.44
+	shaft.mesh = shaft_cyl
+	shaft.position = Vector3(0.0, -0.01, -0.04)
+	shaft.rotation.x = PI * 0.5
+	shaft.material_override = mat_shaft
+	root.add_child(shaft)
+
+	for band_z in [0.10, -0.02, -0.19]:
+		var band := MeshInstance3D.new()
+		var band_cyl := CylinderMesh.new()
+		band_cyl.top_radius = 0.023
+		band_cyl.bottom_radius = 0.023
+		band_cyl.height = 0.022
+		band.mesh = band_cyl
+		band.position = Vector3(0.0, -0.01, band_z)
+		band.rotation.x = PI * 0.5
+		band.material_override = mat_gold
+		root.add_child(band)
 
 	var grip := MeshInstance3D.new()
 	var g_box := BoxMesh.new()
-	g_box.size = Vector3(0.038, 0.12, 0.05)
+	g_box.size = Vector3(0.036, 0.11, 0.048)
 	grip.mesh = g_box
-	grip.position = Vector3(0, -0.07, 0.04)
-	grip.rotation.x = -0.35
-	grip.material_override = mat_body
+	grip.position = Vector3(0.0, -0.07, 0.05)
+	grip.rotation.x = -0.32
+	grip.material_override = mat_shaft
 	root.add_child(grip)
 
+	for side in [-1.0, 1.0]:
+		var prong := MeshInstance3D.new()
+		var p_box := BoxMesh.new()
+		p_box.size = Vector3(0.014, 0.022, 0.14)
+		prong.mesh = p_box
+		prong.position = Vector3(side * 0.034, 0.012, -0.29)
+		prong.rotation_degrees = Vector3(0.0, -side * 12.0, side * 14.0)
+		prong.material_override = mat_gold
+		root.add_child(prong)
+
+	var crystal_pivot := Node3D.new()
+	crystal_pivot.name = "AbyssalCrystalCore"
+	crystal_pivot.position = Vector3(0.0, 0.015, -0.31)
+	root.add_child(crystal_pivot)
+	_marker_crystal_node = crystal_pivot
+
+	var crystal := MeshInstance3D.new()
+	var c_mesh := PrismMesh.new()
+	c_mesh.size = Vector3(0.044, 0.072, 0.044)
+	crystal.mesh = c_mesh
+	crystal.rotation_degrees = Vector3(18.0, 0.0, 22.0)
+	crystal.material_override = mat_crystal
+	crystal_pivot.add_child(crystal)
+
+	var halo := MeshInstance3D.new()
+	var halo_tor := TorusMesh.new()
+	halo_tor.inner_radius = 0.042
+	halo_tor.outer_radius = 0.050
+	halo.mesh = halo_tor
+	halo.position = Vector3(0.0, 0.015, -0.31)
+	halo.rotation.x = PI * 0.5
+	var mat_halo := StandardMaterial3D.new()
+	mat_halo.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat_halo.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat_halo.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat_halo.albedo_color = Color(0.95, 0.80, 0.34, 0.78)
+	halo.material_override = mat_halo
+	root.add_child(halo)
+	_marker_halo_node = halo
+
 	marker_muzzle = Marker3D.new()
-	marker_muzzle.position = Vector3(0, 0.01, -0.27)
+	marker_muzzle.position = Vector3(0.0, 0.015, -0.36)
 	root.add_child(marker_muzzle)
+
+func _build_harpoon_gun(root: Node3D) -> void:
+	var mat_titanium := StandardMaterial3D.new()
+	mat_titanium.albedo_color = Color(0.32, 0.38, 0.44)
+	mat_titanium.metallic = 0.88
+	mat_titanium.roughness = 0.28
+
+	var mat_dark := StandardMaterial3D.new()
+	mat_dark.albedo_color = Color(0.11, 0.14, 0.18)
+	mat_dark.metallic = 0.75
+	mat_dark.roughness = 0.42
+
+	var mat_coil := StandardMaterial3D.new()
+	mat_coil.albedo_color = Color(0.20, 0.88, 1.0)
+	mat_coil.emission_enabled = true
+	mat_coil.emission = Color(0.18, 0.86, 1.0)
+	mat_coil.emission_energy_multiplier = 3.8
+	mat_coil.roughness = 0.20
+
+	var receiver := MeshInstance3D.new()
+	var r_box := BoxMesh.new()
+	r_box.size = Vector3(0.056, 0.072, 0.28)
+	receiver.mesh = r_box
+	receiver.position = Vector3(0.0, -0.005, 0.04)
+	receiver.material_override = mat_dark
+	root.add_child(receiver)
+
+	var grip := MeshInstance3D.new()
+	var g_box := BoxMesh.new()
+	g_box.size = Vector3(0.040, 0.12, 0.052)
+	grip.mesh = g_box
+	grip.position = Vector3(0.0, -0.078, 0.10)
+	grip.rotation.x = -0.30
+	grip.material_override = mat_dark
+	root.add_child(grip)
+
+	# Dual slender titanium guide rails
+	for side in [-1.0, 1.0]:
+		var rail := MeshInstance3D.new()
+		var rail_box := BoxMesh.new()
+		rail_box.size = Vector3(0.012, 0.020, 0.46)
+		rail.mesh = rail_box
+		rail.position = Vector3(side * 0.024, 0.018, -0.24)
+		rail.material_override = mat_titanium
+		root.add_child(rail)
+
+	# Dual cyan-blue electromagnetic accelerator coils
+	for coil_z in [-0.14, -0.34]:
+		var coil := MeshInstance3D.new()
+		var c_tor := TorusMesh.new()
+		c_tor.inner_radius = 0.028
+		c_tor.outer_radius = 0.040
+		coil.mesh = c_tor
+		coil.position = Vector3(0.0, 0.018, coil_z)
+		coil.rotation.x = PI * 0.5
+		coil.material_override = mat_coil
+		root.add_child(coil)
+
+	# Metallic barbed harpoon spear (slides on fire / weapon art)
+	var spear_root := Node3D.new()
+	spear_root.name = "HarpoonSpear"
+	spear_root.position = Vector3(0.0, 0.018, -0.06)
+	root.add_child(spear_root)
+	_harpoon_spear_node = spear_root
+
+	var spear_shaft := MeshInstance3D.new()
+	var s_cyl := CylinderMesh.new()
+	s_cyl.top_radius = 0.007
+	s_cyl.bottom_radius = 0.007
+	s_cyl.height = 0.50
+	spear_shaft.mesh = s_cyl
+	spear_shaft.position = Vector3(0.0, 0.0, -0.24)
+	spear_shaft.rotation.x = PI * 0.5
+	spear_shaft.material_override = mat_titanium
+	spear_root.add_child(spear_shaft)
+
+	var spear_tip := MeshInstance3D.new()
+	var tip_cone := CylinderMesh.new()
+	tip_cone.top_radius = 0.001
+	tip_cone.bottom_radius = 0.022
+	tip_cone.height = 0.095
+	spear_tip.mesh = tip_cone
+	spear_tip.position = Vector3(0.0, 0.0, -0.51)
+	spear_tip.rotation.x = -PI * 0.5
+	spear_tip.material_override = mat_titanium
+	spear_root.add_child(spear_tip)
+
+	for barb_side in [-1.0, 1.0]:
+		var barb := MeshInstance3D.new()
+		var barb_box := BoxMesh.new()
+		barb_box.size = Vector3(0.006, 0.012, 0.048)
+		barb.mesh = barb_box
+		barb.position = Vector3(barb_side * 0.016, 0.0, -0.46)
+		barb.rotation_degrees = Vector3(0.0, barb_side * 24.0, 0.0)
+		barb.material_override = mat_coil
+		spear_root.add_child(barb)
+
+	harpoon_muzzle = Marker3D.new()
+	harpoon_muzzle.position = Vector3(0.0, 0.018, -0.58)
+	root.add_child(harpoon_muzzle)
+
+func _build_sonar_cannon(root: Node3D) -> void:
+	var mat_hull := StandardMaterial3D.new()
+	mat_hull.albedo_color = Color(0.14, 0.18, 0.23)
+	mat_hull.metallic = 0.84
+	mat_hull.roughness = 0.34
+
+	var mat_brass := StandardMaterial3D.new()
+	mat_brass.albedo_color = Color(0.84, 0.66, 0.28)
+	mat_brass.metallic = 0.90
+	mat_brass.roughness = 0.24
+
+	var mat_core := StandardMaterial3D.new()
+	mat_core.albedo_color = Color(0.95, 0.84, 0.36)
+	mat_core.emission_enabled = true
+	mat_core.emission = Color(0.88, 0.90, 0.38)
+	mat_core.emission_energy_multiplier = 4.4
+	mat_core.roughness = 0.14
+
+	var body := MeshInstance3D.new()
+	var b_box := BoxMesh.new()
+	b_box.size = Vector3(0.095, 0.105, 0.30)
+	body.mesh = b_box
+	body.position = Vector3(0.0, 0.0, 0.02)
+	body.material_override = mat_hull
+	root.add_child(body)
+
+	var grip := MeshInstance3D.new()
+	var g_box := BoxMesh.new()
+	g_box.size = Vector3(0.044, 0.125, 0.056)
+	grip.mesh = g_box
+	grip.position = Vector3(0.0, -0.088, 0.08)
+	grip.rotation.x = -0.28
+	grip.material_override = mat_hull
+	root.add_child(grip)
+
+	# Wide-aperture flared acoustic dish + dual concentric resonance rings
+	var dish := MeshInstance3D.new()
+	var dish_cyl := CylinderMesh.new()
+	dish_cyl.top_radius = 0.052
+	dish_cyl.bottom_radius = 0.118
+	dish_cyl.height = 0.15
+	dish_cyl.cap_bottom = false
+	dish.mesh = dish_cyl
+	dish.position = Vector3(0.0, 0.01, -0.20)
+	dish.rotation.x = PI * 0.5
+	dish.material_override = mat_hull
+	root.add_child(dish)
+
+	var outer_ring := MeshInstance3D.new()
+	var o_tor := TorusMesh.new()
+	o_tor.inner_radius = 0.106
+	o_tor.outer_radius = 0.122
+	outer_ring.mesh = o_tor
+	outer_ring.position = Vector3(0.0, 0.01, -0.29)
+	outer_ring.rotation.x = PI * 0.5
+	outer_ring.material_override = mat_brass
+	root.add_child(outer_ring)
+
+	var inner_ring := MeshInstance3D.new()
+	var i_tor := TorusMesh.new()
+	i_tor.inner_radius = 0.068
+	i_tor.outer_radius = 0.080
+	inner_ring.mesh = i_tor
+	inner_ring.position = Vector3(0.0, 0.01, -0.35)
+	inner_ring.rotation.x = PI * 0.5
+	var mat_cyan_ring := StandardMaterial3D.new()
+	mat_cyan_ring.albedo_color = Color(0.32, 0.94, 1.0)
+	mat_cyan_ring.emission_enabled = true
+	mat_cyan_ring.emission = Color(0.28, 0.92, 1.0)
+	mat_cyan_ring.emission_energy_multiplier = 3.2
+	inner_ring.material_override = mat_cyan_ring
+	root.add_child(inner_ring)
+
+	# Gold-cyan resonance core orb suspended inside the emitter
+	var core := MeshInstance3D.new()
+	var core_sphere := SphereMesh.new()
+	core_sphere.radius = 0.040
+	core_sphere.height = 0.080
+	core.mesh = core_sphere
+	core.position = Vector3(0.0, 0.01, -0.30)
+	core.material_override = mat_core
+	root.add_child(core)
+	_sonar_core_node = core
+
+	sonar_muzzle = Marker3D.new()
+	sonar_muzzle.position = Vector3(0.0, 0.01, -0.44)
+	root.add_child(sonar_muzzle)
 
 func toggle_shield() -> bool:
 	shield_active = not shield_active
@@ -3128,6 +3704,7 @@ func _build_shield_viewmodel() -> void:
 	mat_shield.disable_fog = true
 	barrier.material_override = mat_shield
 	shield_node.add_child(barrier)
+	_shield_barrier_mesh = barrier
 
 	# 4. 外圈加固能量环
 	var ring := MeshInstance3D.new()
@@ -3145,6 +3722,7 @@ func _build_shield_viewmodel() -> void:
 	mat_ring.disable_fog = true
 	ring.material_override = mat_ring
 	shield_node.add_child(ring)
+	_shield_ring_mesh = ring
 
 	# 5. 护盾环境微光
 	var s_light := OmniLight3D.new()
@@ -3153,5 +3731,6 @@ func _build_shield_viewmodel() -> void:
 	s_light.light_energy = 2.4
 	s_light.omni_range = 3.5
 	shield_node.add_child(s_light)
+	_shield_light = s_light
 
 	shield_node.visible = false

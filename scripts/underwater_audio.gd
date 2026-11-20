@@ -12,7 +12,9 @@ const WARMUP_SOUNDS: Array[String] = [
 	"kill_sound", "weapon_equip", "booster_start", "booster_stop",
 	"sub_torpedo_launch", "sub_torpedo_hit", "sub_enter", "sub_exit",
 	"tame_success", "mount_ride", "shield_deploy", "shield_block",
-	"clam_bubble"
+	"clam_bubble",
+	"parry_clang", "dodge_whoosh", "harpoon_fire", "sonar_cannon",
+	"reaction_burst", "stagger_break", "ultimate_cast", "weapon_art"
 ]
 
 static func warmup_step(batch_size: int = 4) -> bool:
@@ -90,6 +92,22 @@ static func get_stream(sound_name: String) -> AudioStreamWAV:
 			stream = _generate_sushi_serve()
 		"clam_bubble":
 			stream = _generate_clam_bubble()
+		"parry_clang":
+			stream = _generate_parry_clang()
+		"dodge_whoosh":
+			stream = _generate_dodge_whoosh()
+		"harpoon_fire":
+			stream = _generate_harpoon_fire()
+		"sonar_cannon":
+			stream = _generate_sonar_cannon()
+		"reaction_burst":
+			stream = _generate_reaction_burst()
+		"stagger_break":
+			stream = _generate_stagger_break()
+		"ultimate_cast":
+			stream = _generate_ultimate_cast()
+		"weapon_art":
+			stream = _generate_weapon_art()
 	if stream:
 		_cache[sound_name] = stream
 	return stream
@@ -620,4 +638,222 @@ static func _generate_pet_recall() -> AudioStreamWAV:
 		p1 += freq1 * TAU / float(mix_rate)
 		p2 += freq2 * TAU / float(mix_rate)
 		samples[i] = (sin(p1) * 0.5 + sin(p2) * 0.35) * env
+	return _create_wav(samples, mix_rate)
+
+static func _generate_parry_clang() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.42
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var delay_samples := int(mix_rate * 0.085)
+	var phase_base := 0.0
+	var phase_hi1 := 0.0
+	var phase_hi2 := 0.0
+	var phase_ring := 0.0
+	for idx in range(total_samples):
+		var time_s := float(idx) / float(mix_rate)
+		var attack := minf(1.0, time_s * 420.0)
+		var decay := exp(-time_s * 7.8)
+		phase_base += 1180.0 * TAU / float(mix_rate)
+		phase_hi1 += 2485.0 * TAU / float(mix_rate)
+		phase_hi2 += 3690.0 * TAU / float(mix_rate)
+		phase_ring += (590.0 + sin(time_s * 24.0) * 14.0) * TAU / float(mix_rate)
+		var metallic := sin(phase_base) * 0.42 + sin(phase_hi1) * 0.30 * exp(-time_s * 12.0) + sin(phase_hi2) * 0.22 * exp(-time_s * 18.0)
+		var shimmer := sin(phase_ring) * 0.26 * exp(-time_s * 5.2)
+		var spark := (randf() * 2.0 - 1.0) * 0.48 * exp(-time_s * 55.0)
+		var dry := (metallic + shimmer + spark) * attack * decay
+		var echo := samples[idx - delay_samples] * 0.32 if idx >= delay_samples else 0.0
+		samples[idx] = clampf((dry + echo) * 0.92, -1.0, 1.0)
+	return _create_wav(samples, mix_rate)
+
+static func _generate_dodge_whoosh() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.28
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var phase := 0.0
+	var lp_state := 0.0
+	var hp_state := 0.0
+	for idx in range(total_samples):
+		var time_s := float(idx) / float(mix_rate)
+		var ratio := time_s / duration
+		var env := sin(ratio * PI) * (1.0 - ratio * 0.2)
+		var cutoff := lerpf(1950.0, 310.0, pow(ratio, 0.85))
+		var alpha_lp := clampf(cutoff / (cutoff + float(mix_rate) * 0.16), 0.02, 0.92)
+		var white := randf() * 2.0 - 1.0
+		lp_state += alpha_lp * (white - lp_state)
+		hp_state += 0.045 * (lp_state - hp_state)
+		var band_noise := (lp_state - hp_state) * 1.45
+		var sweep_freq := lerpf(440.0, 135.0, ratio)
+		phase += sweep_freq * TAU / float(mix_rate)
+		var vortex_tone := sin(phase) * 0.28
+		samples[idx] = clampf((band_noise * 0.72 + vortex_tone) * env * 0.92, -1.0, 1.0)
+	return _create_wav(samples, mix_rate)
+
+static func _generate_harpoon_fire() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.34
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var launch_phase := 0.0
+	var bolt_phase := 0.0
+	var arc_phase := 0.0
+	for idx in range(total_samples):
+		var time_s := float(idx) / float(mix_rate)
+		var ratio := time_s / duration
+		var attack := minf(1.0, time_s * 360.0)
+		var launch_freq := lerpf(740.0, 155.0, minf(1.0, ratio * 2.4))
+		launch_phase += launch_freq * TAU / float(mix_rate)
+		var launch_body := sin(launch_phase) * exp(-time_s * 24.0) * 0.65
+		bolt_phase += 1920.0 * TAU / float(mix_rate)
+		var bolt_snap := sin(bolt_phase) * exp(-time_s * 68.0) * 0.45
+		arc_phase += (290.0 + sin(time_s * 80.0) * 65.0) * TAU / float(mix_rate)
+		var arc_gate := 0.55 + 0.45 * absf(sin(time_s * 96.0))
+		var arc_env := clampf((time_s - 0.025) * 35.0, 0.0, 1.0) * exp(-time_s * 7.2)
+		var arc_buzz := (sin(arc_phase) * 0.32 + sin(arc_phase * 3.0) * 0.18 + (randf() * 2.0 - 1.0) * 0.46) * arc_gate * arc_env
+		samples[idx] = clampf((launch_body + bolt_snap + arc_buzz) * attack * 0.94, -1.0, 1.0)
+	return _create_wav(samples, mix_rate)
+
+static func _generate_sonar_cannon() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.62
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var sub_phase := 0.0
+	var ping_phase1 := 0.0
+	var ping_phase2 := 0.0
+	for idx in range(total_samples):
+		var time_s := float(idx) / float(mix_rate)
+		var ratio := time_s / duration
+		var attack := minf(1.0, time_s * 180.0)
+		var sub_freq := 128.0 * exp(-time_s * 4.8) + 34.0
+		sub_phase += sub_freq * TAU / float(mix_rate)
+		var sub_env := exp(-time_s * 4.2)
+		var sub_boom := (sin(sub_phase) * 0.72 + sin(sub_phase * 0.5) * 0.32) * sub_env
+		ping_phase1 += 920.0 * TAU / float(mix_rate)
+		ping_phase2 += 1380.0 * TAU / float(mix_rate)
+		var shimmer := 0.8 + 0.2 * sin(time_s * 18.0 * TAU)
+		var overtones := (sin(ping_phase1) * 0.26 + sin(ping_phase2) * 0.16) * exp(-time_s * 5.0) * shimmer
+		var thump := (randf() * 2.0 - 1.0) * 0.32 * exp(-time_s * 32.0)
+		var tail_fade := clampf((1.0 - ratio) * 8.0, 0.0, 1.0)
+		samples[idx] = clampf((sub_boom + overtones + thump) * attack * tail_fade * 0.95, -1.0, 1.0)
+	return _create_wav(samples, mix_rate)
+
+static func _generate_reaction_burst() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.48
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var chirp_phase := 0.0
+	var sub_phase := 0.0
+	var chord_phase1 := 0.0
+	var chord_phase2 := 0.0
+	for idx in range(total_samples):
+		var time_s := float(idx) / float(mix_rate)
+		var ratio := time_s / duration
+		var attack := minf(1.0, time_s * 300.0)
+		var chirp_freq := lerpf(520.0, 1960.0, minf(1.0, ratio * 4.5)) if ratio < 0.22 else lerpf(1960.0, 240.0, (ratio - 0.22) / 0.78)
+		chirp_phase += chirp_freq * TAU / float(mix_rate)
+		var sub_freq := lerpf(105.0, 40.0, ratio)
+		sub_phase += sub_freq * TAU / float(mix_rate)
+		chord_phase1 += 784.0 * TAU / float(mix_rate)
+		chord_phase2 += 1174.66 * TAU / float(mix_rate)
+		var sparkle := 0.65 + 0.35 * sin(time_s * 48.0 * TAU)
+		var energy := sin(chirp_phase) * 0.42 * exp(-time_s * 7.2)
+		var chord := (sin(chord_phase1) * 0.24 + sin(chord_phase2) * 0.18) * sparkle * exp(-time_s * 6.0)
+		var punch := sin(sub_phase) * 0.48 * exp(-time_s * 9.5)
+		var burst_noise := (randf() * 2.0 - 1.0) * 0.36 * exp(-time_s * 22.0)
+		samples[idx] = clampf((energy + chord + punch + burst_noise) * attack * 0.94, -1.0, 1.0)
+	return _create_wav(samples, mix_rate)
+
+static func _generate_stagger_break() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.52
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var sub_phase := 0.0
+	var shard_p1 := 0.0
+	var shard_p2 := 0.0
+	var shard_p3 := 0.0
+	for idx in range(total_samples):
+		var time_s := float(idx) / float(mix_rate)
+		var ratio := time_s / duration
+		var attack := minf(1.0, time_s * 380.0)
+		var sub_freq := lerpf(152.0, 32.0, pow(ratio, 0.7))
+		sub_phase += sub_freq * TAU / float(mix_rate)
+		var sub_impact := (sin(sub_phase) * 0.72 + sin(sub_phase * 0.5) * 0.24) * exp(-time_s * 7.2)
+		shard_p1 += 2420.0 * TAU / float(mix_rate)
+		shard_p2 += 3380.0 * TAU / float(mix_rate)
+		shard_p3 += 4310.0 * TAU / float(mix_rate)
+		var shard1 := sin(shard_p1) * exp(-time_s * 22.0) * 0.34
+		var shard2 := sin(shard_p2) * exp(-maxf(0.0, time_s - 0.04) * 24.0) * (0.28 if time_s >= 0.04 else 0.0)
+		var shard3 := sin(shard_p3) * exp(-maxf(0.0, time_s - 0.09) * 20.0) * (0.24 if time_s >= 0.09 else 0.0)
+		var shatter_noise := (randf() * 2.0 - 1.0) * 0.46 * exp(-time_s * 28.0)
+		samples[idx] = clampf((sub_impact + shard1 + shard2 + shard3 + shatter_noise) * attack * 0.96, -1.0, 1.0)
+	return _create_wav(samples, mix_rate)
+
+static func _generate_ultimate_cast() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.95
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var p_root := 0.0
+	var p_fifth := 0.0
+	var p_oct := 0.0
+	var p_third := 0.0
+	var p_ninth := 0.0
+	var lp_surge := 0.0
+	for idx in range(total_samples):
+		var time_s := float(idx) / float(mix_rate)
+		var ratio := time_s / duration
+		var rise := pow(ratio, 1.25)
+		var pitch_lift := lerpf(0.92, 1.18, rise)
+		var env := pow(sin(ratio * PI), 0.72)
+		p_root += (130.81 * pitch_lift) * TAU / float(mix_rate)
+		p_fifth += (196.00 * pitch_lift) * TAU / float(mix_rate)
+		p_oct += (261.63 * pitch_lift) * TAU / float(mix_rate)
+		p_third += (329.63 * pitch_lift) * TAU / float(mix_rate)
+		p_ninth += (587.33 * pitch_lift) * TAU / float(mix_rate)
+		var shimmer := 0.82 + 0.18 * sin(time_s * 8.5 * TAU)
+		var chord := (
+			sin(p_root) * 0.34 +
+			sin(p_fifth) * 0.24 +
+			sin(p_oct) * 0.22 +
+			sin(p_third) * 0.16 * clampf(ratio * 1.8, 0.0, 1.0) +
+			sin(p_ninth) * 0.14 * rise * shimmer
+		)
+		var white := randf() * 2.0 - 1.0
+		var alpha := lerpf(0.03, 0.18, rise)
+		lp_surge += alpha * (white - lp_surge)
+		samples[idx] = clampf((chord + lp_surge * 0.36) * env * 0.94, -1.0, 1.0)
+	return _create_wav(samples, mix_rate)
+
+static func _generate_weapon_art() -> AudioStreamWAV:
+	var mix_rate := 22050
+	var duration := 0.24
+	var total_samples := int(mix_rate * duration)
+	var samples := PackedFloat32Array()
+	samples.resize(total_samples)
+	var pulse_phase := 0.0
+	var harm_phase := 0.0
+	var sub_phase := 0.0
+	for idx in range(total_samples):
+		var time_s := float(idx) / float(mix_rate)
+		var attack := minf(1.0, time_s * 420.0)
+		var decay := exp(-time_s * 14.5)
+		var freq := lerpf(540.0, 1180.0, time_s / 0.07) if time_s < 0.07 else 880.0
+		pulse_phase += freq * TAU / float(mix_rate)
+		harm_phase += (freq * 1.5) * TAU / float(mix_rate)
+		sub_phase += 190.0 * TAU / float(mix_rate)
+		var synth := sin(pulse_phase) * 0.52 + sin(harm_phase) * 0.28
+		var sub_click := sin(sub_phase) * 0.34 * exp(-time_s * 46.0)
+		var air := (randf() * 2.0 - 1.0) * 0.16 * exp(-time_s * 34.0)
+		samples[idx] = clampf((synth + sub_click + air) * attack * decay * 0.92, -1.0, 1.0)
 	return _create_wav(samples, mix_rate)

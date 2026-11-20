@@ -14,6 +14,7 @@ const OceanComposition = preload("res://scripts/presentation/ocean_composition.g
 const ModelFinish = preload("res://scripts/presentation/model_finish.gd")
 const SafeArea = preload("res://scripts/presentation/safe_area.gd")
 const CombatVFX = preload("res://scripts/combat_vfx.gd")
+const BossAIController = preload("res://scripts/combat/boss_ai_controller.gd")
 const LABEL_FONT = preload("res://assets/fonts/NotoSansSC-Subset.otf")
 const LABEL_FONT_SIZE := 40
 const BOSS_ARENA_CENTER := Vector3(-50, -76, -170)
@@ -132,6 +133,8 @@ var boss_action_timer := 3.0
 var boss_cycle := 0
 var boss_charge_direction := Vector3.FORWARD
 var boss_warning := ""
+var boss_ai: BossAIController = BossAIController.new()
+var _combat_vfx_methods: Dictionary = {}
 var scope_view_enabled := false
 var scope_meshes: Array[GeometryInstance3D] = []
 var conquered_bosses: Dictionary = {}
@@ -1722,6 +1725,9 @@ func _spawn_predator(kind: String, center: Vector3, size: float) -> void:
 	creature.set_meta("patrol_speed", 2.2 if is_shark else 1.8)
 	creature.set_meta("bite_cooldown", 0.0)
 	creature.set_meta("stun_timer", 0.0)
+	creature.set_meta("windup_timer", 0.0)
+	creature.set_meta("attack_telegraph", false)
+	creature.set_meta("attack_parryable", is_shark)
 	creature.set_meta("dead", false)
 	creature.set_meta("state", "patrol")
 	creature.set_meta("flee_timer", 0.0)
@@ -1747,6 +1753,8 @@ func tick_predators(diver_pos: Vector3, delta: float, flashlight_on: bool = fals
 		if bool(p.get_meta("tamed", false)):
 			continue
 		if _is_immobile(p):
+			p.set_meta("windup_timer", 0.0)
+			p.set_meta("attack_telegraph", false)
 			continue
 
 		var bite_cd: float = float(p.get_meta("bite_cooldown", 0.0))
@@ -1754,6 +1762,9 @@ func tick_predators(diver_pos: Vector3, delta: float, flashlight_on: bool = fals
 			p.set_meta("bite_cooldown", maxf(0.0, bite_cd - delta))
 
 		var flee_t: float = float(p.get_meta("flee_timer", 0.0))
+		var windup_t: float = float(p.get_meta("windup_timer", 0.0))
+		var p_kind: String = str(p.get_meta("kind", "predator"))
+		var is_parryable: bool = p_kind != "abyss"
 		var dist_sq: float = p.global_position.distance_squared_to(diver_pos)
 		var detect_r: float = float(p.get_meta("detect_radius"))
 		var attack_r: float = float(p.get_meta("attack_radius"))
@@ -1762,6 +1773,8 @@ func tick_predators(diver_pos: Vector3, delta: float, flashlight_on: bool = fals
 
 		if flee_t > 0.0:
 			p.set_meta("flee_timer", maxf(0.0, flee_t - delta))
+			p.set_meta("windup_timer", 0.0)
+			p.set_meta("attack_telegraph", false)
 			p.set_meta("state", "flee")
 			var away := (p.global_position - diver_pos).normalized()
 			p.position += away * (speed * 1.3) * delta
@@ -1770,9 +1783,45 @@ func tick_predators(diver_pos: Vector3, delta: float, flashlight_on: bool = fals
 				p.look_at(p.global_position + away, up, true)
 			continue
 
+		if windup_t > 0.0:
+			var next_windup: float = maxf(0.0, windup_t - delta)
+			p.set_meta("windup_timer", next_windup)
+			p.set_meta("state", "windup")
+			p.set_meta("attack_telegraph", true)
+			p.set_meta("attack_parryable", is_parryable)
+			var to_d_wu := (diver_pos - p.global_position).normalized()
+			if to_d_wu.length_squared() > 0.001:
+				var up_wu := Vector3.UP if absf(to_d_wu.y) < 0.95 else Vector3.FORWARD
+				p.look_at(p.global_position + to_d_wu, up_wu, true)
+				p.position += to_d_wu * (speed * 0.35) * delta
+			if next_windup <= 0.0:
+				p.set_meta("attack_telegraph", false)
+				var strike_r: float = attack_r + 1.4
+				if p.global_position.distance_squared_to(diver_pos) <= strike_r * strike_r:
+					p.set_meta("bite_cooldown", 2.8)
+					p.set_meta("flee_timer", 1.8)
+					p.set_meta("has_attacked_player", true)
+					var player: AnimationPlayer = p.get_meta("animation_player", null)
+					if is_instance_valid(player):
+						player.speed_scale = 1.0
+						player.play("bite", 0.08)
+					bites.append({
+						"name": str(p.get_meta("name")),
+						"damage": float(p.get_meta("damage")),
+						"pos": p.global_position,
+						"attacker": p,
+						"parryable": is_parryable,
+						"status_type": "bleed" if p_kind == "abyss" else "",
+						"status_amount": 25.0 if p_kind == "abyss" else 0.0
+					})
+				else:
+					p.set_meta("bite_cooldown", 1.1)
+			continue
+
 		if dist_sq < detect_r * detect_r:
 			if dist_sq > 11.0 * 11.0 and not flashlight_on:
 				p.set_meta("state", "warn")
+				p.set_meta("attack_telegraph", false)
 				var phase_val: float = float(p.get_meta("phase", 0.0))
 				var orbit_t: float = float(p.get_meta("motion_clock", clock)) * 1.4 + phase_val
 				var orbit_target := diver_pos + Vector3(sin(orbit_t) * 14.5, sin(orbit_t * 1.6) * 2.2, cos(orbit_t) * 14.5)
@@ -1789,21 +1838,14 @@ func tick_predators(diver_pos: Vector3, delta: float, flashlight_on: bool = fals
 					var up := Vector3.UP if absf(to_diver.y) < 0.95 else Vector3.FORWARD
 					p.look_at(p.global_position + to_diver, up, true)
 				if dist_sq < attack_r * attack_r and bite_cd <= 0.0:
-					p.set_meta("bite_cooldown", 2.8)
-					p.set_meta("flee_timer", 1.8)
-					p.set_meta("has_attacked_player", true)
-					var player: AnimationPlayer = p.get_meta("animation_player", null)
-					if is_instance_valid(player):
-						player.speed_scale = 1.0
-						player.play("bite", 0.08)
-					bites.append({
-						"name": str(p.get_meta("name")),
-						"damage": float(p.get_meta("damage")),
-						"pos": p.global_position,
-						"attacker": p
-					})
+					p.set_meta("windup_timer", 0.45)
+					p.set_meta("attack_telegraph", true)
+					p.set_meta("attack_parryable", is_parryable)
+					p.set_meta("state", "windup")
+					_spawn_combat_telegraph(p.global_position, attack_r + 1.2, not is_parryable, 0.45)
 		else:
 			p.set_meta("state", "patrol")
+			p.set_meta("attack_telegraph", false)
 			var phase: float = float(p.get_meta("phase"))
 			var patrol_spd: float = float(p.get_meta("patrol_speed"))
 			var t: float = float(p.get_meta("motion_clock", clock)) * patrol_spd * 0.2 + phase
@@ -2200,7 +2242,7 @@ func trace_laser(from: Vector3, direction: Vector3, max_range: float, excluded: 
 		creature = collider as Node3D
 	return {"position": result["position"], "creature": creature, "collider": collider}
 
-func damage_creature(creature: Node3D, damage: float, impulse := Vector3.ZERO, instant_kill := false) -> Dictionary:
+func damage_creature(creature: Node3D, damage: float, impulse := Vector3.ZERO, instant_kill := false, options: Dictionary = {}) -> Dictionary:
 	if not is_instance_valid(creature) or bool(creature.get_meta("dead", false)):
 		return {}
 	# 自己契约的坐骑战兽无法被攻击造成伤害
@@ -2209,8 +2251,20 @@ func damage_creature(creature: Node3D, damage: float, impulse := Vector3.ZERO, i
 	var kind: String = str(creature.get_meta("kind", ""))
 	if kind == "water_dragon" and not boss_active and not instant_kill:
 		return {}
+	var non_lethal_stun: bool = bool(options.get("non_lethal_stun", false))
+	var stunned_for_capture := false
 	var health: float = float(creature.get_meta("health", 60.0))
-	health = 0.0 if instant_kill else maxf(0.0, health - damage)
+	var next_health: float = 0.0 if instant_kill else maxf(0.0, health - damage)
+	var force_non_lethal_stun: bool = bool(options.get("force_non_lethal_stun", false))
+	if non_lethal_stun and not instant_kill and (next_health <= 0.0 or force_non_lethal_stun):
+		next_health = minf(next_health, 1.0) if next_health > 0.0 else 1.0
+		stunned_for_capture = true
+		creature.set_meta("stun_timer", maxf(float(creature.get_meta("stun_timer", 0.0)), 3.0))
+		creature.set_meta("freeze_timer", maxf(float(creature.get_meta("freeze_timer", 0.0)), 3.0))
+		creature.set_meta("stunned_for_capture", true)
+		_ensure_stasis_aura(creature)
+		_update_creature_animation(creature)
+	health = next_health
 	creature.set_meta("health", health)
 	if not _is_boss_creature(creature) and float(creature.get_meta("freeze_timer", 0.0)) <= 0.0:
 		creature.position += impulse
@@ -2259,8 +2313,99 @@ func damage_creature(creature: Node3D, damage: float, impulse := Vector3.ZERO, i
 		"health_left": health, "is_sonic": false, "hit_count": 1,
 		"hit_names": [creature_name], "killed_names": [creature_name] if killed else [],
 		"dropped_items": drops, "hit_positions": [at], "hit_kinds": [kind],
-		"catch_stars": catch_stars
+		"catch_stars": catch_stars, "stunned_for_capture": stunned_for_capture
 	}
+
+func _resolve_boss_id(creature: Node3D) -> String:
+	if not is_instance_valid(creature):
+		return ""
+	for b_id in boss_nodes:
+		if boss_nodes[b_id] == creature:
+			return str(b_id)
+	var kind: String = str(creature.get_meta("kind", ""))
+	match kind:
+		"water_dragon":
+			return "water_dragon"
+		"boss_flying_fish", "flying_fish":
+			return "flying_fish"
+		"boss_kraken", "kraken":
+			return "kraken"
+		"boss_turtle", "colossus_turtle":
+			return "colossus_turtle"
+	return ""
+
+func get_creature_weakpoint_pos(creature: Node3D) -> Vector3:
+	if not is_instance_valid(creature):
+		return Vector3.ZERO
+	if _is_boss_creature(creature):
+		return boss_ai.get_weakpoint_world_pos(_resolve_boss_id(creature), creature)
+	var kind: String = str(creature.get_meta("kind", "fish"))
+	var local_offset := Vector3(0.0, 0.08, 0.45)
+	match kind:
+		"predator":
+			local_offset = Vector3(0.0, 0.1, 1.45)
+		"abyss":
+			local_offset = Vector3(0.0, 0.45, 1.35)
+		"sea_wolf":
+			local_offset = Vector3(0.0, 0.15, 2.2)
+		"sea_spider":
+			local_offset = Vector3(0.0, 0.8, 0.5)
+		"sea_turtle":
+			local_offset = Vector3(0.0, -0.25, 0.7)
+		"crab":
+			local_offset = Vector3(0.0, 0.25, 0.35)
+		"squid":
+			local_offset = Vector3(0.0, 0.0, 1.1)
+		"manta_ray":
+			local_offset = Vector3(0.0, 0.1, 0.6)
+		"jellyfish":
+			local_offset = Vector3(0.0, 0.55, 0.0)
+	var xform: Transform3D = creature.global_transform if creature.is_inside_tree() else creature.transform
+	return xform * local_offset
+
+func get_creature_max_poise(creature: Node3D) -> float:
+	if not is_instance_valid(creature):
+		return 50.0
+	if _is_boss_creature(creature):
+		return boss_ai.get_max_poise(_resolve_boss_id(creature))
+	var kind: String = str(creature.get_meta("kind", "fish"))
+	match kind:
+		"sea_wolf":
+			return 95.0
+		"abyss":
+			return 85.0
+		"predator":
+			return 65.0
+		"sea_turtle", "crab":
+			return 60.0
+		"sea_spider", "seal":
+			return 55.0
+		"manta_ray", "squid":
+			return 45.0
+		_:
+			return 30.0
+
+func get_creature_armor(creature: Node3D) -> float:
+	if not is_instance_valid(creature):
+		return 0.0
+	if _is_boss_creature(creature):
+		return boss_ai.get_base_armor(_resolve_boss_id(creature))
+	var kind: String = str(creature.get_meta("kind", "fish"))
+	match kind:
+		"sea_turtle":
+			return 0.35
+		"crab":
+			return 0.30
+		"abyss":
+			return 0.15
+		"sea_spider":
+			return 0.12
+		"sea_wolf":
+			return 0.08
+		"predator":
+			return 0.05
+		_:
+			return 0.0
 
 func find_nearby_oxygen_clam(pos: Vector3, max_dist: float = 4.8) -> Node3D:
 	var best: Node3D = null
@@ -2324,6 +2469,33 @@ func salvage_creature_with_drone(creature: Node3D) -> Dictionary:
 		"dropped_items": drops
 	}
 
+func _ensure_stasis_aura(creature: Node3D) -> void:
+	if not is_instance_valid(creature):
+		return
+	if not bool(creature.get_meta("has_stasis_aura", false)) and not creature.has_node("StasisAura"):
+		if _stasis_aura_mat == null:
+			_stasis_aura_mat = StandardMaterial3D.new()
+			_stasis_aura_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			_stasis_aura_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			_stasis_aura_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+			_stasis_aura_mat.albedo_color = Color(0.08, 0.4, 1.0, 0.14)
+			_stasis_sphere_small = SphereMesh.new()
+			_stasis_sphere_small.radius = 1.2
+			_stasis_sphere_small.height = 2.4
+			_stasis_sphere_small.radial_segments = 16
+			_stasis_sphere_small.rings = 8
+			_stasis_sphere_boss = SphereMesh.new()
+			_stasis_sphere_boss.radius = 6.0
+			_stasis_sphere_boss.height = 12.0
+			_stasis_sphere_boss.radial_segments = 16
+			_stasis_sphere_boss.rings = 8
+		var aura := MeshInstance3D.new()
+		aura.name = "StasisAura"
+		aura.mesh = _stasis_sphere_boss if _is_boss_creature(creature) else _stasis_sphere_small
+		aura.material_override = _stasis_aura_mat
+		creature.add_child(aura)
+		creature.set_meta("has_stasis_aura", true)
+
 func freeze_creatures(at: Vector3, radius: float, duration: float) -> int:
 	var count := 0
 	for creature in get_creatures():
@@ -2336,29 +2508,7 @@ func freeze_creatures(at: Vector3, radius: float, duration: float) -> int:
 			creature.set_meta("freeze_timer", duration)
 		if prev_freeze <= 0.0:
 			_update_creature_animation(creature)
-		if not bool(creature.get_meta("has_stasis_aura", false)) and not creature.has_node("StasisAura"):
-			if _stasis_aura_mat == null:
-				_stasis_aura_mat = StandardMaterial3D.new()
-				_stasis_aura_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-				_stasis_aura_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-				_stasis_aura_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-				_stasis_aura_mat.albedo_color = Color(0.08, 0.4, 1.0, 0.14)
-				_stasis_sphere_small = SphereMesh.new()
-				_stasis_sphere_small.radius = 1.2
-				_stasis_sphere_small.height = 2.4
-				_stasis_sphere_small.radial_segments = 16
-				_stasis_sphere_small.rings = 8
-				_stasis_sphere_boss = SphereMesh.new()
-				_stasis_sphere_boss.radius = 6.0
-				_stasis_sphere_boss.height = 12.0
-				_stasis_sphere_boss.radial_segments = 16
-				_stasis_sphere_boss.rings = 8
-			var aura := MeshInstance3D.new()
-			aura.name = "StasisAura"
-			aura.mesh = _stasis_sphere_boss if _is_boss_creature(creature) else _stasis_sphere_small
-			aura.material_override = _stasis_aura_mat
-			creature.add_child(aura)
-			creature.set_meta("has_stasis_aura", true)
+		_ensure_stasis_aura(creature)
 		count += 1
 	return count
 
@@ -2478,7 +2628,15 @@ func _tick_sea_spiders(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 		if dist_sq < 2.6 * 2.6 and cooldown <= 0.0:
 			spider.set_meta("bite_cooldown", 2.0)
 			spider.set_meta("has_attacked_player", true)
-			attacks.append({"name": "海蜘蛛足刺", "damage": 12.0, "pos": spider.global_position, "attacker": spider})
+			attacks.append({
+				"name": "海蜘蛛足刺",
+				"damage": 12.0,
+				"pos": spider.global_position,
+				"attacker": spider,
+				"parryable": true,
+				"status_type": "",
+				"status_amount": 0.0
+			})
 	return attacks
 
 func _tick_seals_vs_sharks(delta: float) -> void:
@@ -2519,7 +2677,8 @@ func check_boss_encounter(diver_pos: Vector3) -> void:
 			active_boss_node = b_node
 			boss_active = true
 			boss_action = "circle"
-			boss_action_timer = 2.5
+			boss_ai.reset_boss(b_id)
+			boss_action_timer = boss_ai.get_boss_timer(b_id)
 			boss_warning = "%s 苏醒！进入领地决战" % str(b_node.get_meta("name", "巨兽"))
 			boss_encounter_started.emit()
 			return
@@ -2532,11 +2691,16 @@ func reset_boss_encounter() -> void:
 	boss_action_timer = 3.0
 	boss_cycle = 0
 	boss_warning = ""
+	boss_ai.reset()
 	if is_instance_valid(active_boss_node):
 		var max_h: float = float(active_boss_node.get_meta("max_health", BOSS_MAX_HEALTH))
 		active_boss_node.set_meta("health", max_h)
 		active_boss_node.set_meta("enraged", false)
+		active_boss_node.set_meta("boss_phase", 1)
 		active_boss_node.set_meta("freeze_timer", 0.0)
+		active_boss_node.set_meta("stun_timer", 0.0)
+		active_boss_node.set_meta("staggered", false)
+		active_boss_node.set_meta("stagger_timer", 0.0)
 		if active_boss_id == "water_dragon":
 			active_boss_node.position = BOSS_ARENA_CENTER + Vector3(0, 3.0, -6)
 		elif boss_arena_centers.has(active_boss_id):
@@ -2544,68 +2708,121 @@ func reset_boss_encounter() -> void:
 
 func get_boss_status() -> Dictionary:
 	var b: Node3D = active_boss_node if is_instance_valid(active_boss_node) else water_dragon
+	var b_id: String = active_boss_id if not active_boss_id.is_empty() else _resolve_boss_id(b)
+	if b_id.is_empty():
+		b_id = "water_dragon"
+	var cur_hp: float = float(b.get_meta("health", 0.0)) if is_instance_valid(b) else 0.0
+	var max_hp: float = float(b.get_meta("max_health", BOSS_MAX_HEALTH)) if is_instance_valid(b) else BOSS_MAX_HEALTH
+	var hp_ratio: float = cur_hp / maxf(1.0, max_hp)
+	var phase: int = int(b.get_meta("boss_phase", 3 if hp_ratio <= 0.35 else (2 if hp_ratio <= 0.65 else 1))) if is_instance_valid(b) else 1
+	var weakpoint_pos: Vector3 = boss_ai.get_weakpoint_world_pos(b_id, b) if is_instance_valid(b) else Vector3.ZERO
 	return {
 		"active": boss_active, "defeated": conquered_bosses.has("water_dragon") or (conquered_bosses.size() >= 4),
 		"all_cleared": conquered_bosses.size() >= 4,
 		"conquered_count": conquered_bosses.size(),
 		"conquered_ids": conquered_bosses.keys(),
-		"health": float(b.get_meta("health", 0.0)) if is_instance_valid(b) else 0.0,
-		"max_health": float(b.get_meta("max_health", BOSS_MAX_HEALTH)) if is_instance_valid(b) else BOSS_MAX_HEALTH,
+		"health": cur_hp,
+		"max_health": max_hp,
 		"name": str(b.get_meta("name", "深渊水龙 · 潮汐君主")) if is_instance_valid(b) else "深渊水龙 · 潮汐君主",
 		"warning": boss_warning,
-		"frozen": float(b.get_meta("freeze_timer", 0.0)) if is_instance_valid(b) else 0.0
+		"frozen": float(b.get_meta("freeze_timer", 0.0)) if is_instance_valid(b) else 0.0,
+		"boss_id": b_id,
+		"phase": phase,
+		"weakpoint_pos": weakpoint_pos,
+		"weakpoint_label": boss_ai.get_weakpoint_label(b_id),
+		"base_armor": boss_ai.get_base_armor(b_id),
+		"max_poise": boss_ai.get_max_poise(b_id)
 	}
+
+func _combat_vfx_arg_count(method_name: String) -> int:
+	if _combat_vfx_methods.is_empty():
+		var vfx_script: Script = CombatVFX
+		for info in vfx_script.get_script_method_list():
+			var m_name: String = str(info.get("name", ""))
+			var m_args: Array = info.get("args", [])
+			_combat_vfx_methods[m_name] = m_args.size()
+	return int(_combat_vfx_methods.get(method_name, -1))
+
+func _spawn_combat_telegraph(pos: Vector3, radius: float, unblockable: bool, duration: float) -> void:
+	if not is_inside_tree():
+		return
+	var vfx_script: Script = CombatVFX
+	if _combat_vfx_arg_count("spawn_telegraph_ring") == 5:
+		vfx_script.call("spawn_telegraph_ring", self, pos, radius, unblockable, duration)
+		return
+	if _combat_vfx_arg_count("spawn_attack_telegraph") == 5:
+		vfx_script.call("spawn_attack_telegraph", self, pos, radius, unblockable, duration)
+		return
+	var col := Color(0.96, 0.22, 0.16) if unblockable else Color(1.0, 0.82, 0.22)
+	CombatVFX.spawn_stasis_burst(self, pos, clampf(radius, 1.8, 12.0), clampf(duration, 0.35, 0.85), col)
+
+func _dispatch_boss_vfx(event: Dictionary) -> void:
+	if not is_inside_tree():
+		return
+	var vfx_script: Script = CombatVFX
+	var kind: String = str(event.get("kind", "burst"))
+	var pos: Vector3 = event.get("pos", Vector3.ZERO)
+	var to: Vector3 = event.get("to", pos)
+	var radius: float = maxf(0.5, float(event.get("radius", 8.0)))
+	var col: Color = event.get("color", Color(0.25, 0.78, 1.0))
+	match kind:
+		"beam":
+			CombatVFX.spawn_laser(self, pos, to, col)
+		"ink":
+			if _combat_vfx_arg_count("spawn_ink_cloud") == 4:
+				vfx_script.call("spawn_ink_cloud", self, pos, radius, col)
+			else:
+				CombatVFX.spawn_stasis_burst(self, pos, minf(radius, 16.0), 1.35, col)
+		"vortex":
+			if _combat_vfx_arg_count("spawn_vortex_ring") == 4:
+				vfx_script.call("spawn_vortex_ring", self, pos, radius, col)
+			else:
+				CombatVFX.spawn_stasis_burst(self, pos, minf(radius, 16.0), 0.95, col)
+		_:
+			CombatVFX.spawn_stasis_burst(self, pos, minf(radius, 18.0), 0.7, col)
 
 func _tick_boss(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 	var attacks: Array[Dictionary] = []
 	var b: Node3D = active_boss_node if is_instance_valid(active_boss_node) else water_dragon
 	if not boss_active or not is_instance_valid(b) or _is_immobile(b) or bool(b.get_meta("tamed", false)):
 		return attacks
-	var b_max: float = float(b.get_meta("max_health", BOSS_MAX_HEALTH))
-	var enraged: bool = float(b.get_meta("health")) <= b_max * 0.5
-	b.set_meta("enraged", enraged)
+	var b_id: String = active_boss_id if not active_boss_id.is_empty() else _resolve_boss_id(b)
+	if b_id.is_empty():
+		b_id = "water_dragon"
 	var cooldown: float = maxf(0.0, float(b.get_meta("bite_cooldown", 0.0)) - delta)
 	b.set_meta("bite_cooldown", cooldown)
-	boss_action_timer -= delta
-	var to_diver: Vector3 = diver_pos - b.global_position
-	if boss_action == "circle":
-		var t: float = float(b.get_meta("motion_clock", clock)) * 0.4
-		var destination := diver_pos + Vector3(sin(t) * 18.0, 2.0 + sin(t * 1.3) * 3.0, cos(t) * 18.0)
-		b.position = b.position.move_toward(destination, delta * (8.0 if enraged else 5.5))
-		boss_warning = "狂暴阶段 · 冲刺速度提升" if enraged else "%s 正在盘旋 · 蓄力球可冻结它" % str(b.get_meta("name", "巨兽"))
-		if boss_action_timer <= 0.0:
-			boss_cycle += 1
-			boss_action = "pulse_windup" if boss_cycle % 3 == 0 else "charge_windup"
-			boss_action_timer = 1.2
-	elif boss_action == "charge_windup":
-		boss_warning = "巨兽冲刺蓄势！向侧面闪避 / Q 冲刺"
-		if boss_action_timer <= 0.0:
-			boss_charge_direction = to_diver.normalized()
-			boss_action = "charge"
-			boss_action_timer = 1.35
-	elif boss_action == "charge":
-		boss_warning = "巨兽猛烈冲刺！"
-		b.position += boss_charge_direction * delta * (25.0 if enraged else 18.0)
-		if to_diver.length() < 6.0 and cooldown <= 0.0:
-			b.set_meta("bite_cooldown", 1.0)
+	var is_staggered: bool = bool(b.get_meta("staggered", false)) or float(b.get_meta("stagger_timer", 0.0)) > 0.0
+	var floor_y: float = floor_height(b.position.x, b.position.z)
+	var ai_res: Dictionary = boss_ai.tick_boss(b_id, b, diver_pos, floor_y, delta, clock, is_staggered)
+	boss_warning = str(ai_res.get("warning", ""))
+	boss_action = str(ai_res.get("action", "circle"))
+	boss_action_timer = float(ai_res.get("timer", boss_action_timer))
+	var phase: int = int(ai_res.get("phase", 1))
+	b.set_meta("boss_phase", phase)
+	b.set_meta("enraged", phase >= 2)
+	var min_clear: float = 2.35 if (b_id == "colossus_turtle" and boss_action == "seismic_stomp") else 3.0
+	b.position.y = clampf(b.position.y, floor_height(b.position.x, b.position.z) + min_clear, -2.0)
+
+	for tele in ai_res.get("telegraphs", []):
+		if tele is Dictionary:
+			_spawn_combat_telegraph(
+				tele.get("pos", b.global_position),
+				float(tele.get("radius", 8.0)),
+				bool(tele.get("unblockable", false)),
+				float(tele.get("duration", 0.8))
+			)
+	for vfx_ev in ai_res.get("vfx_events", []):
+		if vfx_ev is Dictionary:
+			_dispatch_boss_vfx(vfx_ev)
+	for atk in ai_res.get("attacks", []):
+		if atk is Dictionary:
 			b.set_meta("has_attacked_player", true)
-			attacks.append({"name": "%s 猛撞" % str(b.get_meta("name", "巨兽")), "damage": 38.0 if enraged else 26.0, "pos": b.global_position, "attacker": b})
-		if boss_action_timer <= 0.0:
-			boss_action = "circle"
-			boss_action_timer = 2.4
-	elif boss_action == "pulse_windup":
-		boss_warning = "高能震荡波蓄势！远离巨兽 18 米"
-		if boss_action_timer <= 0.0:
-			if to_diver.length() < 18.0:
-				b.set_meta("has_attacked_player", true)
-				attacks.append({"name": "巨兽震荡狂涛", "damage": 32.0 if enraged else 22.0, "pos": b.global_position, "attacker": b})
-			CombatVFX.spawn_stasis_burst(self, b.global_position, 18.0, 0.7, Color(1.0, 0.3, 0.12))
-			boss_action = "circle"
-			boss_action_timer = 3.0
-	if to_diver.length_squared() > 0.001:
-		var forward: Vector3 = boss_charge_direction if boss_action == "charge" else to_diver.normalized()
-		b.look_at(b.position + forward, Vector3.UP if absf(forward.y) < 0.95 else Vector3.FORWARD, true)
-	b.position.y = clampf(b.position.y, floor_height(b.position.x, b.position.z) + 3.0, -2.0)
+			var entry: Dictionary = atk.duplicate()
+			if not entry.has("parryable"):
+				entry["parryable"] = false
+			if not entry.has("attacker"):
+				entry["attacker"] = b
+			attacks.append(entry)
 	return attacks
 
 func _spawn_fragment(kind: String, at: Vector3) -> Node3D:
@@ -3208,6 +3425,8 @@ func _tick_sea_wolves(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 		if not is_instance_valid(wolf):
 			continue
 		if _tick_status(wolf, delta):
+			wolf.set_meta("windup_timer", 0.0)
+			wolf.set_meta("attack_telegraph", false)
 			continue
 		wolf.animate(delta)
 		if bool(wolf.get_meta("tamed", false)):
@@ -3216,8 +3435,38 @@ func _tick_sea_wolves(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 		var spd: float = float(wolf.get_meta("speed", 13.5))
 		var cd: float = maxf(0.0, float(wolf.get_meta("bite_cooldown", 0.0)) - delta)
 		wolf.set_meta("bite_cooldown", cd)
+		var windup_t: float = float(wolf.get_meta("windup_timer", 0.0))
 		var dist_sq: float = wolf.global_position.distance_squared_to(diver_pos)
 		var detect_r: float = float(wolf.get_meta("detect_radius", 26.0))
+		var attack_r: float = float(wolf.get_meta("attack_radius", 4.2))
+		if windup_t > 0.0:
+			var next_wu: float = maxf(0.0, windup_t - delta)
+			wolf.set_meta("windup_timer", next_wu)
+			wolf.set_meta("attack_telegraph", true)
+			wolf.set_meta("attack_parryable", true)
+			var lunge_dir := (diver_pos - wolf.global_position).normalized()
+			if lunge_dir.length_squared() > 0.001:
+				var up_wu := Vector3.UP if absf(lunge_dir.y) < 0.95 else Vector3.FORWARD
+				wolf.look_at(wolf.position + lunge_dir, up_wu, true)
+				wolf.position += lunge_dir * (spd * 0.35) * delta
+			if next_wu <= 0.0:
+				wolf.set_meta("attack_telegraph", false)
+				var strike_r: float = attack_r + 1.5
+				if wolf.global_position.distance_squared_to(diver_pos) <= strike_r * strike_r:
+					wolf.set_meta("bite_cooldown", 2.2)
+					wolf.set_meta("has_attacked_player", true)
+					bites.append({
+						"name": "海狼撕咬",
+						"damage": float(wolf.get_meta("damage", 22.0)),
+						"pos": wolf.global_position,
+						"attacker": wolf,
+						"parryable": true,
+						"status_type": "",
+						"status_amount": 0.0
+					})
+				else:
+					wolf.set_meta("bite_cooldown", 1.0)
+			continue
 		var target_pos := center
 		var clock_val: float = float(wolf.get_meta("motion_clock", clock))
 		var phase: float = float(wolf.get_meta("phase", 0.0))
@@ -3226,12 +3475,13 @@ func _tick_sea_wolves(diver_pos: Vector3, delta: float) -> Array[Dictionary]:
 			var angle: float = clock_val * 1.2 + pack_idx * (TAU / 3.0)
 			var orbit_dist: float = 10.0 if (pack_idx != 0 or cd > 0.0) else 2.5
 			target_pos = diver_pos + Vector3(cos(angle) * orbit_dist, sin(clock_val * 2.0) * 1.5, sin(angle) * orbit_dist)
-			var attack_r: float = float(wolf.get_meta("attack_radius", 4.2))
 			if dist_sq < attack_r * attack_r and cd <= 0.0:
-				wolf.set_meta("bite_cooldown", 2.2)
-				wolf.set_meta("has_attacked_player", true)
-				bites.append({"name": "海狼撕咬", "damage": float(wolf.get_meta("damage", 22.0)), "pos": wolf.global_position, "attacker": wolf})
+				wolf.set_meta("windup_timer", 0.45)
+				wolf.set_meta("attack_telegraph", true)
+				wolf.set_meta("attack_parryable", true)
+				_spawn_combat_telegraph(wolf.global_position, attack_r, false, 0.45)
 		else:
+			wolf.set_meta("attack_telegraph", false)
 			target_pos = center + Vector3(cos(clock_val * 0.4 + phase) * 18.0, sin(clock_val * 0.3) * 3.5, sin(clock_val * 0.4 + phase) * 18.0)
 		var next_pos: Vector3 = wolf.position.move_toward(target_pos, delta * spd)
 		var move_dir := next_pos - wolf.position
