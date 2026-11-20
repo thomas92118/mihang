@@ -3,7 +3,7 @@ extends SceneTree
 ## with the circular GPT-generated touch icon buttons for visual QA.
 
 func _initialize() -> void:
-	create_timer(30.0).timeout.connect(func() -> void:
+	create_timer(45.0).timeout.connect(func() -> void:
 		printerr("MOBILE_UI_VISUAL_TIMEOUT")
 		quit(1)
 	)
@@ -24,7 +24,11 @@ func _run() -> void:
 
 	var packed := load("res://scenes/main.tscn") as PackedScene
 	var game := packed.instantiate()
-	game.voyage_save_path = "user://temp_mobile_ui_visual.json"
+	var temp_save_path := "user://temp_mobile_ui_visual.json"
+	var temp_save_abs := ProjectSettings.globalize_path(temp_save_path)
+	if FileAccess.file_exists(temp_save_path):
+		DirAccess.remove_absolute(temp_save_abs)
+	game.voyage_save_path = temp_save_path
 	game.gameplay_guide.persist_enabled = false
 	vp.add_child(game)
 	await process_frame
@@ -32,6 +36,15 @@ func _run() -> void:
 
 	game.input_controller.apply_settings({"touch_mode": "on", "touch_scale": 1.0, "touch_opacity": 0.88}, false)
 	game.input_controller.notify_device("touch")
+	game._set_screen("main")
+	game.reset_title_showcase_angles()
+
+	# 0a. Mobile portrait title screen showcase (390x844)
+	await _capture_view(vp, game, Vector2i(390, 844), out_dir.path_join("main_portrait_390x844.png"))
+
+	# 0b. Mobile landscape title screen showcase (844x390)
+	await _capture_view(vp, game, Vector2i(844, 390), out_dir.path_join("main_landscape_844x390.png"))
+
 	game._start("survival")
 	game.diver.global_position = Vector3(13.5, game.ocean.floor_height(13.5, 21.0) + 2.6, 21.0)
 	if not game.state.weapons.has("sonic"):
@@ -75,7 +88,14 @@ func _capture_view(vp: SubViewport, game: Node, target_size: Vector2i, file_path
 	game.touch_controls.size = Vector2(target_size)
 	game.touch_controls._rebuild_layout()
 	game._sync_touch_context_and_margins(true)
+	if game.screen == "main":
+		game.hud._apply_layout()
+		for _step in range(60):
+			game._update_title_camera(0.016)
 	for _i in range(5):
+		await process_frame
+	if game.screen == "main":
+		game._update_title_camera(0.016)
 		await process_frame
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()

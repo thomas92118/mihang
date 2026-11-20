@@ -6,6 +6,7 @@ const OceanUiTheme = preload("res://scripts/presentation/ocean_ui_theme.gd")
 const CharacterRoster = preload("res://scripts/presentation/character_roster.gd")
 const GameplayGuide = preload("res://scripts/gameplay_guide.gd")
 const GuidePanel = preload("res://scripts/presentation/guide_panel.gd")
+const QuestPanel = preload("res://scripts/presentation/quest_panel.gd")
 const SafeArea = preload("res://scripts/presentation/safe_area.gd")
 const SCOPE_EXIT_ICON: Texture2D = preload("res://assets/ui/touch_icons/scope_exit.png")
 
@@ -37,6 +38,11 @@ signal showcase_dragged(relative: Vector2)
 signal close_requested
 signal onboarding_restart_requested
 signal onboarding_skip_requested
+signal open_quests_requested
+signal quest_track_requested(quest_id: String, objective_id: String)
+signal quest_tracker_toggle_requested
+signal quest_nav_requested(world_pos: Vector3, label: String, open_map: bool)
+signal quest_bounty_refresh_requested
 
 const INK := Art.PAPER
 const MUTED := Art.MUTED
@@ -46,7 +52,10 @@ const AMBER_GOLD := Art.AMBER
 const PANEL := Art.PANEL
 const WARM_PANEL := Color(0.075, 0.10, 0.12, 0.97)
 const GRAPHICS_QUALITY_VALUES := ["auto", "performance", "high"]
-const MODAL_MENU_KEYS := ["pause", "craft", "sushi", "mount_board", "map", "quick", "controls", "guide"]
+const MODAL_MENU_KEYS := ["pause", "craft", "sushi", "mount_board", "map", "quick", "controls", "guide", "quests"]
+const QUEST_BANNER_DURATION := 3.2
+const QUEST_BANNER_FADE_IN := 0.25
+const QUEST_BANNER_FADE_OUT := 0.45
 
 var _detail_time := 5.0
 var _previous_weapon := ""
@@ -173,6 +182,15 @@ var main_char_buttons: Dictionary = {}
 var pause_char_btn: Button
 var _displayed_character_id := ""
 var guide_view: Dictionary = {}
+var quest_view: Dictionary = {}
+var _quest_journal_synced := false
+var quest_banner_panel: Panel
+var _quest_banner_accent: ColorRect
+var _quest_banner_title: Label
+var _quest_banner_detail: Label
+var _quest_banner_queue: Array[Dictionary] = []
+var _quest_banner_current: Dictionary = {}
+var _quest_banner_timer := 0.0
 var onboarding_panel: Panel
 var onboarding_badge: Label
 var onboarding_title: Label
@@ -231,6 +249,7 @@ const QUICK_ACTIONS := [
 	["char_rotate_left", "角色左旋"], ["char_rotate_right", "角色右旋"],
 	["char_tilt_up", "角色上仰"], ["char_tilt_down", "角色下俯"],
 	["char_roll_left", "角色左倾"], ["char_roll_right", "角色右倾"],
+	["quest_log", "潜航任务日志"],
 	["gameplay_guide", "潜航指南"]
 ]
 
@@ -262,9 +281,10 @@ func _ready() -> void:
 	_build_quick()
 	_build_controls()
 	_build_guide()
+	_build_quests()
 	_prepare_menu_scrolling()
 	_cache_instrument_layout()
-	_hint_regex.compile("(?<![A-Za-z0-9])(WASD|W/S|A/D|A D|空格/Ctrl|空格 Ctrl|L / F1|L/F1|T/Y|1—4|按住鼠标右键|鼠标右键|方向键|Home|Shift|Ctrl|Tab|Esc|F1|空格|按 1|按 2|按 3|按 4|4(?=\\s*指示枪)|W(?=\\s*前进)|[RTYCEMNOGZVHQFBPKL])(?![A-Za-z0-9₂:.]|\\s*轴|\\s*北|\\s*东)")
+	_hint_regex.compile("(?<![A-Za-z0-9])(WASD|W/S|A/D|A D|空格/Ctrl|空格 Ctrl|L / F1|L/F1|T/Y|1—4|按住鼠标右键|鼠标右键|方向键|Home|Shift|Ctrl|Tab|Esc|F1|空格|按 1|按 2|按 3|按 4|4(?=\\s*指示枪)|W(?=\\s*前进)|[RTYCEMNOGZVHQFBPKLU])(?![A-Za-z0-9₂:.]|\\s*轴|\\s*北|\\s*东)")
 	root.resized.connect(_apply_layout)
 	toast_label = _label(root, "", Rect2(-390, 130, 780, 44), 15, CYAN, Vector2(0.5, 0))
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -309,9 +329,10 @@ func _process(delta: float) -> void:
 		toast_time = maxf(0.0, toast_time - delta)
 		_layout_toast()
 		toast_label.modulate.a = minf(toast_time * 2.0, 1.0)
-		toast_label.visible = toast_time > 0.0 and active_screen in ["play", "craft", "sushi", "mount_board", "map"]
+		toast_label.visible = toast_time > 0.0 and active_screen in ["play", "craft", "sushi", "mount_board", "map", "quests"]
 	elif is_instance_valid(toast_label) and toast_label.visible:
 		toast_label.hide()
+	_process_quest_banner(delta)
 	if hit_marker_timer > 0.0:
 		hit_marker_timer = maxf(0.0, hit_marker_timer - delta)
 		if is_instance_valid(hit_marker):
@@ -362,9 +383,21 @@ func _build_instruments() -> void:
 	instruments.name = "FlightInstruments"
 	_journal_bar = _line(instruments, Rect2(28, 27, 3, 22), AMBER_GOLD)
 	_journal_heading = _label(instruments, "深 蓝 回 声   /   潜 航 日 志", Rect2(42, 26, 282, 22), 12, MUTED)
-	mission_title = _label(instruments, "探索未知海域", Rect2(28, 60, 300, 24), 14, INK)
-	mission_detail = _label(instruments, "M 勘测海图  /  N 声呐", Rect2(28, 90, 300, 38), 11, MUTED)
+	mission_title = _label(instruments, "探索未知海域", Rect2(28, 60, 320, 24), 14, INK)
+	mission_detail = _label(instruments, "M 勘测海图  /  N 声呐", Rect2(28, 88, 340, 72), 11, MUTED)
+	mission_detail.clip_text = false
 	mission_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	quest_banner_panel = _panel(instruments, Rect2(-240, 128, 480, 64), Vector2(0.5, 0))
+	quest_banner_panel.name = "QuestBannerInstrument"
+	quest_banner_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	quest_banner_panel.add_theme_stylebox_override("panel", _style(Color(Art.INK, 0.88), Color(CYAN, 0.56), 3))
+	_quest_banner_accent = _line(quest_banner_panel, Rect2(0, 0, 4, 64), CYAN)
+	_quest_banner_title = _label(quest_banner_panel, "", Rect2(16, 8, 448, 24), 14, CYAN)
+	_quest_banner_title.set_meta("_no_hint", true)
+	_quest_banner_detail = _label(quest_banner_panel, "", Rect2(16, 32, 448, 24), 14, INK)
+	_quest_banner_detail.clip_text = false
+	_quest_banner_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	quest_banner_panel.hide()
 	onboarding_panel = _panel(instruments, Rect2(28, 56, 268, 148))
 	onboarding_panel.name = "OnboardingInstrument"
 	onboarding_panel.add_theme_stylebox_override("panel", _style(Color(Art.INK, 0.72), Color(CYAN, 0.28), 3))
@@ -533,7 +566,7 @@ func _build_instruments() -> void:
 	tame_mount_label = _label(tame_panel, "O 生物应援板", Rect2(15, 34, 216, 20), 10, MUTED)
 	tame_panel.hide()
 	shield_label = _label(instruments, "C / 能量盾收起", Rect2(28, -178, 246, 22), 10, MUTED, Vector2(0, 1))
-	var hints := _label(instruments, "E 交互   Tab 制造   M 海图   N 声呐   L 指南   K 视角   P 角色   Esc 暂停", Rect2(-420, -30, 840, 22), 10, MUTED, Vector2(0.5, 1))
+	var hints := _label(instruments, "E 交互   Tab 制造   M 海图   U 任务   N 声呐   L 指南   K 视角   P 角色   Esc 暂停", Rect2(-440, -30, 880, 22), 10, MUTED, Vector2(0.5, 1))
 	hints.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_bottom_hints = hints
 
@@ -645,7 +678,7 @@ func _build_main() -> void:
 
 func _build_pause() -> void:
 	var menu := _menu("pause")
-	var card := _panel(menu, Rect2(0, 0, 500, 540))
+	var card := _panel(menu, Rect2(0, 0, 500, 564))
 	card.mouse_filter = Control.MOUSE_FILTER_PASS
 	_modal_cards["pause"] = card
 	var accent := _line(card, Rect2(28, 28, 26, 2), AMBER_GOLD)
@@ -658,33 +691,36 @@ func _build_pause() -> void:
 	var map_button := _button(card, "M / 勘测海图", Rect2(28, 226, 444, 44), func() -> void: open_map_requested.emit())
 	map_button.name = "OpenSeaChartButton"
 	map_button.custom_minimum_size = Vector2(0, 44)
-	var guide_button := _button(card, "L / 潜航指南与引导", Rect2(28, 280, 444, 44), func() -> void: action_requested.emit("gameplay_guide"))
+	var quests_button := _button(card, "U / 潜航任务日志", Rect2(28, 278, 444, 44), func() -> void: open_quests_requested.emit())
+	quests_button.name = "OpenQuestsButton"
+	quests_button.custom_minimum_size = Vector2(0, 44)
+	var guide_button := _button(card, "L / 潜航指南与引导", Rect2(28, 330, 444, 44), func() -> void: action_requested.emit("gameplay_guide"))
 	guide_button.name = "OpenGuideButton"
 	guide_button.custom_minimum_size = Vector2(0, 44)
-	var p_prev := _button(card, "◀", Rect2(28, 334, 52, 44), func() -> void: character_cycled.emit(-1))
+	var p_prev := _button(card, "◀", Rect2(28, 382, 52, 44), func() -> void: character_cycled.emit(-1))
 	p_prev.custom_minimum_size = Vector2(44, 44)
 	p_prev.set_meta("_no_hint", true)
-	pause_char_btn = _button(card, "P / 角色：珊瑚晨曦人鱼", Rect2(88, 334, 324, 44), func() -> void: character_cycled.emit(1))
+	pause_char_btn = _button(card, "P / 角色：珊瑚晨曦人鱼", Rect2(88, 382, 324, 44), func() -> void: character_cycled.emit(1))
 	pause_char_btn.name = "PauseCharacterButton"
 	pause_char_btn.custom_minimum_size = Vector2(0, 44)
 	pause_char_btn.clip_text = true
-	var p_next := _button(card, "▶", Rect2(420, 334, 52, 44), func() -> void: character_cycled.emit(1))
+	var p_next := _button(card, "▶", Rect2(420, 382, 52, 44), func() -> void: character_cycled.emit(1))
 	p_next.custom_minimum_size = Vector2(44, 44)
 	p_next.set_meta("_no_hint", true)
-	var controls_btn := _button(card, "操作设置", Rect2(28, 390, 216, 44), func() -> void: action_requested.emit("controls"))
+	var controls_btn := _button(card, "操作设置", Rect2(28, 434, 216, 44), func() -> void: action_requested.emit("controls"))
 	controls_btn.custom_minimum_size = Vector2(0, 44)
-	var fullscreen_btn := _button(card, "全屏显示", Rect2(256, 390, 216, 44), func() -> void: action_requested.emit("toggle_fullscreen"))
+	var fullscreen_btn := _button(card, "全屏显示", Rect2(256, 434, 216, 44), func() -> void: action_requested.emit("toggle_fullscreen"))
 	fullscreen_btn.name = "PauseFullscreenButton"
 	fullscreen_btn.custom_minimum_size = Vector2(0, 44)
 	fullscreen_btn.set_meta("_no_hint", true)
 	var header_close := _add_modal_close_button(card, "PauseHeaderCloseButton")
-	var restart_btn := _button(card, "重新开始", Rect2(28, 444, 444, 44), func() -> void: restart_requested.emit())
+	var restart_btn := _button(card, "重新开始", Rect2(28, 486, 444, 44), func() -> void: restart_requested.emit())
 	restart_btn.custom_minimum_size = Vector2(0, 44)
-	var hint_lbl := _label(card, "Esc 返回海底", Rect2(28, 498, 444, 22), 10, MUTED)
+	var hint_lbl := _label(card, "Esc 返回海底", Rect2(28, 536, 444, 22), 10, MUTED)
 	hint_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_pause_ui = {
 		"card": card, "accent": accent, "eyebrow": eyebrow, "title": title, "desc": desc,
-		"resume_btn": resume_btn, "map_btn": map_button, "guide_btn": guide_button,
+		"resume_btn": resume_btn, "map_btn": map_button, "quests_btn": quests_button, "guide_btn": guide_button,
 		"p_prev": p_prev, "p_next": p_next, "controls_btn": controls_btn,
 		"fullscreen_btn": fullscreen_btn, "restart_btn": restart_btn,
 		"header_close": header_close, "hint_lbl": hint_lbl,
@@ -1251,6 +1287,20 @@ func _build_guide() -> void:
 	if guide_view.has("card") and is_instance_valid(guide_view["card"]):
 		_modal_cards["guide"] = guide_view["card"]
 
+func _build_quests() -> void:
+	var menu := _menu("quests")
+	quest_view = QuestPanel.build(menu, {
+		"on_close": func() -> void: close_requested.emit(),
+		"on_track": func(qid: String, oid: String) -> void: quest_track_requested.emit(qid, oid),
+		"on_toggle_tracker": func() -> void: quest_tracker_toggle_requested.emit(),
+		"on_navigate": func(pos: Vector3, lbl: String, open_map: bool) -> void: quest_nav_requested.emit(pos, lbl, open_map),
+		"on_pin_recipe": func(rid: String) -> void: pin_requested.emit(rid),
+		"on_refresh_bounties": func() -> void: quest_bounty_refresh_requested.emit(),
+		"format_text": Callable(self, "format_input_text"),
+	})
+	if quest_view.has("card") and is_instance_valid(quest_view["card"]):
+		_modal_cards["quests"] = quest_view["card"]
+
 func _setting_slider(parent: Control, key: String, title: String, _y: float, minimum: float, maximum: float, increment: float) -> void:
 	var row := BoxContainer.new()
 	row.vertical = false
@@ -1382,6 +1432,7 @@ func update_hud(data: Dictionary) -> void:
 		"submarines": data.get("map_submarines", []),
 		"relics": data.get("map_relics", []),
 		"pinged_targets": data.get("pinged_targets", {}),
+		"quest_markers": data.get("quest_markers", []),
 		"has_waypoint": has_wp,
 		"waypoint_pos": wp_pos
 	}
@@ -1726,11 +1777,26 @@ func update_hud(data: Dictionary) -> void:
 	shield_label.text = "C / 能量盾防御中" if is_shield else "C / 能量盾收起"
 	_set_font_color(shield_label, CYAN if is_shield else MUTED)
 
+	var q_tracker_raw: Variant = data.get("quest_tracker", {})
+	var q_tracker: Dictionary = q_tracker_raw if q_tracker_raw is Dictionary else {}
+	var has_q_tracker := not q_tracker.is_empty()
+	var q_tracker_visible := has_q_tracker and bool(q_tracker.get("visible", false))
+	var wp_dist: int = roundi(p_pos.distance_to(wp_pos)) if has_wp else 0
+
 	if fighting:
 		var b_title := str(boss.get("name", "深渊领主"))
 		mission_title.text = ("巨兽领域 · %s (残血可静滞契约)" % b_title) if _is_compact else ("巨兽领域 / %s" % b_title)
 		mission_detail.text = "残血时蓄力静滞，靠近按 E 契约驯服。"
-	elif bool(data.get("mother_tree_active", false)) and not bool(data.get("escape_crafted", false)):
+	elif q_tracker_visible:
+		var act_lbl := str(q_tracker.get("act_label", "")).strip_edges()
+		var q_title := str(q_tracker.get("title", "")).strip_edges()
+		var prog_txt := str(q_tracker.get("progress_text", "")).strip_edges()
+		if _is_compact:
+			mission_title.text = ("%s (%s)" % [q_title, prog_txt]) if not prog_txt.is_empty() else q_title
+		else:
+			mission_title.text = ("%s · %s" % [act_lbl, q_title]) if not act_lbl.is_empty() else q_title
+		mission_detail.text = _format_quest_tracker_detail(q_tracker, has_wp, wp_dist)
+	elif not has_q_tracker and bool(data.get("mother_tree_active", false)) and not bool(data.get("escape_crafted", false)):
 		var items_cnt: int = int(data.get("tree_items_collected", 0))
 		if items_cnt >= 3:
 			mission_title.text = "母树圣物 (3/3) · 返回母港" if _is_compact else "母树圣物齐集 / 返回母港"
@@ -1740,7 +1806,6 @@ func update_hud(data: Dictionary) -> void:
 			mission_title.text = ("母树圣所 %dm · 圣物 (%d/3)" % [roundi(dist_tree), items_cnt]) if _is_compact else "潜入母树圣所"
 			mission_detail.text = "深海极渊母树 %d 米 · 收集核心物资 (%d/3)" % [roundi(dist_tree), items_cnt]
 	elif has_wp:
-		var wp_dist: int = roundi(p_pos.distance_to(wp_pos))
 		mission_title.text = ("✦ 标点 %dm · 探索 %d%%" % [wp_dist, exp_pct]) if _is_compact else ("沿标点继续勘测 / %d%%" % exp_pct)
 		mission_detail.text = "✦ 距离目标标点 %d 米 · 按 M 查看海图或切换跃迁点" % wp_dist
 	else:
@@ -1769,8 +1834,8 @@ func update_hud(data: Dictionary) -> void:
 	sync_onboarding_state(onboarding)
 	var ob_active := bool(onboarding.get("active", false))
 	var show_onboarding := ob_active and not scoped and not fighting and not in_sub
-	var story_route := bool(data.get("mother_tree_active", false)) and not bool(data.get("escape_crafted", false))
-	var show_mission := ((has_wp or fighting or story_route) if _touch_layout else (has_wp or fighting or details or story_route)) and not show_onboarding
+	var story_route := q_tracker_visible if has_q_tracker else (bool(data.get("mother_tree_active", false)) and not bool(data.get("escape_crafted", false)))
+	var show_mission := ((has_wp or fighting or story_route) if _touch_layout else (has_wp or fighting or details or story_route)) and not show_onboarding and not scoped
 	mission_title.visible = show_mission
 	mission_detail.visible = show_mission
 	explore_summary_label.visible = details
@@ -1820,6 +1885,7 @@ func update_hud(data: Dictionary) -> void:
 	home_value.modulate.a = 0.68 if quiet_explore else 0.92
 	if is_instance_valid(_bottom_hints):
 		_bottom_hints.modulate.a = 0.48 if quiet_explore else 0.86
+	_layout_quest_banner()
 	_layout_toast()
 	var seconds := int(data.get("elapsed", 0.0))
 	if bool(data.get("escape_crafted", false)):
@@ -1828,20 +1894,194 @@ func update_hud(data: Dictionary) -> void:
 		win_time.text = "本次潜航  %02d:%02d  /  母树终章完成 · 逃生成功" % [floori(float(seconds) / 60.0), seconds % 60]
 	elif bool(boss.get("defeated", false)):
 		win_title.text = "深渊水龙已被击败"
-		win_desc.text = "潮汐君主沉入深渊，海域终于恢复平静。\n潜航任务完成，感谢游玩《深蓝回声》。"
-		win_time.text = "本次潜航  %02d:%02d  /  终章完成 · 游戏结束" % [floori(float(seconds) / 60.0), seconds % 60]
+		win_desc.text = "潮汐君主沉入深渊，海域终于恢复平静。\n主线航程已抵达里程碑，你仍可继续探索深渊海域。"
+		win_time.text = "本次潜航  %02d:%02d  /  领主平息 · 航程里程碑" % [floori(float(seconds) / 60.0), seconds % 60]
 	elif is_explore:
 		win_title.text = "全海域勘测已完成"
-		win_desc.text = "你已探明浅海、暮光海沟与百米深渊的热液喷口全部核心地标。\n深蓝海域向勇敢的探险家致敬！"
+		win_desc.text = "你已探明阳光浅礁、暮光海沟与深海极渊的全部核心地标。\n深渊海域向勇敢的潜航勘测员致敬！"
 		win_time.text = "本次探险  %02d:%02d  /  勘测度 100%%" % [floori(float(seconds) / 60.0), seconds % 60]
 	else:
 		win_title.text = "深海收到了回声"
-		win_desc.text = "求救信标已重新上线。\n救援船正在驶来，你将平安返航。"
-		win_time.text = "本次潜航  %02d:%02d  /  救援协议已启动" % [floori(float(seconds) / 60.0), seconds % 60]
+		win_desc.text = "远洋科考回波信号已全频段上线。\n本次深海航程阶段目标已达成，可继续探索海域与回波委托。"
+		win_time.text = "本次潜航  %02d:%02d  /  科考航程里程碑达成" % [floori(float(seconds) / 60.0), seconds % 60]
+	var raw_journal: Variant = data.get("quest_journal", {})
+	if raw_journal is Dictionary and not (raw_journal as Dictionary).is_empty():
+		if active_screen == "quests" or not _quest_journal_synced:
+			sync_quest_journal(raw_journal as Dictionary)
 	if data.has("character_id"):
 		set_selected_character(str(data["character_id"]))
 	_apply_device_hints()
 	_apply_touch_visibility()
+
+func _format_quest_tracker_detail(q_tracker: Dictionary, has_wp: bool, wp_dist: int) -> String:
+	var raw_objs: Variant = q_tracker.get("objectives", [])
+	var objs: Array = raw_objs if raw_objs is Array else []
+	var ordered: Array[Dictionary] = []
+	for item in objs:
+		if item is Dictionary and not bool(item.get("done", false)):
+			ordered.append(item)
+	for item in objs:
+		if item is Dictionary and bool(item.get("done", false)):
+			ordered.append(item)
+	var lines: PackedStringArray = []
+	var limit := mini(2, ordered.size())
+	for i in range(limit):
+		var obj: Dictionary = ordered[i]
+		var done := bool(obj.get("done", false))
+		var mark := "✓" if done else "○"
+		var lbl := str(obj.get("label", "")).strip_edges()
+		var cur := int(obj.get("current", 0))
+		var req := int(obj.get("required", 0))
+		var dist_m := int(obj.get("distance_m", -1))
+		var meta_parts: PackedStringArray = []
+		if req > 1:
+			meta_parts.append("%d/%d" % [mini(cur, req) if done else cur, req])
+		if not done and dist_m >= 0:
+			meta_parts.append("%dm" % dist_m)
+		var line := "%s %s" % [mark, lbl]
+		if not meta_parts.is_empty():
+			line += " (%s)" % " · ".join(meta_parts)
+		lines.append(line)
+	if lines.is_empty():
+		var fallback_prog := str(q_tracker.get("progress_text", "")).strip_edges()
+		lines.append("进度 %s" % fallback_prog if not fallback_prog.is_empty() else "查看任务详情")
+	var suffix := " · U 日志"
+	if has_wp:
+		suffix += " · ✦ 标点 %dm" % wp_dist
+	lines[lines.size() - 1] = lines[lines.size() - 1] + suffix
+	return "\n".join(lines)
+
+func sync_quest_journal(journal_payload: Dictionary) -> void:
+	if quest_view.is_empty() or journal_payload.is_empty():
+		return
+	QuestPanel.update_data(quest_view, journal_payload)
+	_quest_journal_synced = true
+
+func push_quest_banners(banners: Array) -> void:
+	for raw in banners:
+		if not (raw is Dictionary):
+			continue
+		var title := str(raw.get("title", "")).strip_edges()
+		var detail := str(raw.get("detail", "")).strip_edges()
+		if title.is_empty() and detail.is_empty():
+			continue
+		_quest_banner_queue.append({
+			"kind": str(raw.get("kind", "info")),
+			"title": title,
+			"detail": detail,
+			"accent": str(raw.get("accent", "cyan")),
+		})
+	if _quest_banner_timer <= 0.0 and not _quest_banner_queue.is_empty():
+		_advance_quest_banner()
+
+func _advance_quest_banner() -> void:
+	if _quest_banner_queue.is_empty():
+		_quest_banner_current = {}
+		_quest_banner_timer = 0.0
+		if is_instance_valid(quest_banner_panel):
+			quest_banner_panel.hide()
+		return
+	_quest_banner_current = _quest_banner_queue.pop_front()
+	_quest_banner_timer = QUEST_BANNER_DURATION
+	if not is_instance_valid(quest_banner_panel):
+		return
+	var accent_key := str(_quest_banner_current.get("accent", "cyan")).to_lower()
+	var kind_key := str(_quest_banner_current.get("kind", "")).to_lower()
+	var accent_color := CYAN
+	if accent_key in ["gold", "amber"] or kind_key == "quest_complete":
+		accent_color = AMBER_GOLD
+	elif accent_key in ["done", "green"]:
+		accent_color = Color("63e0b8")
+	quest_banner_panel.add_theme_stylebox_override("panel", _style(Color(Art.INK, 0.92), Color(accent_color, 0.62), 3))
+	if is_instance_valid(_quest_banner_accent):
+		_quest_banner_accent.color = accent_color
+	if is_instance_valid(_quest_banner_title):
+		_quest_banner_title.text = str(_quest_banner_current.get("title", ""))
+		_set_font_color(_quest_banner_title, accent_color)
+	if is_instance_valid(_quest_banner_detail):
+		var raw_detail := str(_quest_banner_current.get("detail", ""))
+		_quest_banner_detail.set_meta("_hint_source", raw_detail)
+		_quest_banner_detail.text = format_input_text(raw_detail)
+		_quest_banner_detail.set_meta("_hint_rendered", _quest_banner_detail.text)
+		_quest_banner_detail.set_meta("_hint_generation", _hint_generation)
+	quest_banner_panel.modulate.a = 1.0
+	quest_banner_panel.visible = active_screen == "play"
+	_layout_quest_banner()
+	_layout_toast()
+
+func _process_quest_banner(delta: float) -> void:
+	if not is_instance_valid(quest_banner_panel):
+		return
+	if _quest_banner_timer > 0.0:
+		if active_screen != "play":
+			quest_banner_panel.hide()
+			return
+		_quest_banner_timer = maxf(0.0, _quest_banner_timer - delta)
+		if _quest_banner_timer <= 0.0:
+			if not _quest_banner_queue.is_empty():
+				_advance_quest_banner()
+			else:
+				_quest_banner_current = {}
+				quest_banner_panel.hide()
+				if is_instance_valid(toast_label) and toast_label.visible:
+					_layout_toast()
+			return
+		var elapsed := QUEST_BANNER_DURATION - _quest_banner_timer
+		var alpha := 1.0
+		if elapsed < QUEST_BANNER_FADE_IN:
+			alpha = clampf(elapsed / QUEST_BANNER_FADE_IN, 0.0, 1.0)
+		elif _quest_banner_timer < QUEST_BANNER_FADE_OUT:
+			alpha = clampf(_quest_banner_timer / QUEST_BANNER_FADE_OUT, 0.0, 1.0)
+		_layout_quest_banner()
+		quest_banner_panel.modulate.a = alpha
+		quest_banner_panel.visible = true
+	elif not _quest_banner_queue.is_empty() and active_screen == "play":
+		_advance_quest_banner()
+	elif quest_banner_panel.visible:
+		quest_banner_panel.hide()
+
+func _layout_quest_banner() -> void:
+	if not is_instance_valid(quest_banner_panel) or not is_instance_valid(root):
+		return
+	var safe := _safe_area_rect()
+	var max_w := safe.size.x - (240.0 if (_touch_layout and _is_short and not _is_portrait) else 32.0)
+	var width := minf(480.0, maxf(210.0, max_w))
+	var left := floorf((safe.size.x - width) * 0.5)
+	var detail_text := _quest_banner_detail.text if is_instance_valid(_quest_banner_detail) else ""
+	var has_detail := not detail_text.is_empty()
+	var inner_w := maxf(140.0, width - 30.0)
+	var detail_h := 0.0
+	if has_detail:
+		var font := _quest_banner_detail.get_theme_font("font") if is_instance_valid(_quest_banner_detail) else null
+		var est_w := font.get_string_size(detail_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x if font != null else float(detail_text.length()) * 13.0
+		var lines := clampi(ceili(est_w / maxf(120.0, inner_w)), 1, 2)
+		detail_h = float(lines) * 19.0 + 2.0
+	var height := (32.0 + detail_h + 8.0) if has_detail else 42.0
+	var top := 74.0 if (_touch_layout and _is_short) else 128.0
+	var avoid_nodes: Array[Control] = [compass_strip, depth_value, status_value, boss_panel, onboarding_panel]
+	if _is_portrait:
+		avoid_nodes.append(minimap_radar)
+		avoid_nodes.append(_compact_pin_label)
+	var banner_g_left := safe.position.x + left
+	var banner_g_right := banner_g_left + width
+	for node: Control in avoid_nodes:
+		if not is_instance_valid(node):
+			continue
+		if not (node.is_visible_in_tree() or (instruments.visible and node.visible)):
+			continue
+		var g_rect := node.get_global_rect()
+		if banner_g_left < g_rect.end.x and banner_g_right > g_rect.position.x:
+			top = maxf(top, g_rect.end.y - safe.position.y + 8.0)
+	top = minf(top, maxf(8.0, safe.size.y - height - 8.0))
+	_set_control_rect(quest_banner_panel, Rect2(left, top, width, height))
+	if is_instance_valid(_quest_banner_accent):
+		_set_control_rect(_quest_banner_accent, Rect2(0.0, 0.0, 4.0, height))
+	if is_instance_valid(_quest_banner_title):
+		_set_control_rect(_quest_banner_title, Rect2(16.0, 8.0 if has_detail else 10.0, inner_w, 24.0))
+	if is_instance_valid(_quest_banner_detail):
+		_quest_banner_detail.visible = has_detail
+		if has_detail:
+			_set_control_rect(_quest_banner_detail, Rect2(16.0, 32.0, inner_w, detail_h))
 
 func set_selected_character(character_id: String) -> void:
 	var cid := CharacterRoster.normalize_id(character_id)
@@ -2032,8 +2272,12 @@ func set_screen(screen: String) -> void:
 		menu.mouse_filter = Control.MOUSE_FILTER_STOP if menu.visible else Control.MOUSE_FILTER_IGNORE
 	if screen == "map" and is_instance_valid(sea_chart):
 		sea_chart.center_on_player()
+	if screen == "quests" and not quest_view.is_empty():
+		QuestPanel.refresh_layout(quest_view)
 	if screen != "play":
 		toast_label.hide()
+		if is_instance_valid(quest_banner_panel):
+			quest_banner_panel.hide()
 	if screen == "controls":
 		_sync_input_settings()
 	_refresh_navigation.call_deferred()
@@ -2044,7 +2288,7 @@ func toast(message: String) -> void:
 	toast_label.set_meta("_hint_rendered", toast_label.text)
 	toast_time = 3.6
 	toast_label.modulate.a = 1.0
-	toast_label.visible = active_screen in ["play", "craft", "sushi", "mount_board", "map"]
+	toast_label.visible = active_screen in ["play", "craft", "sushi", "mount_board", "map", "quests"]
 	_layout_toast()
 
 func _layout_toast() -> void:
@@ -2067,6 +2311,10 @@ func _layout_toast() -> void:
 		var boss_rect := boss_panel.get_global_rect()
 		if left < boss_rect.end.x and left + width > boss_rect.position.x:
 			top = maxf(top, boss_rect.end.y + 10.0)
+	if is_instance_valid(quest_banner_panel) and (quest_banner_panel.is_visible_in_tree() or (instruments.visible and quest_banner_panel.visible)):
+		var qb_rect := quest_banner_panel.get_global_rect()
+		if left < qb_rect.end.x and left + width > qb_rect.position.x:
+			top = maxf(top, qb_rect.end.y + 8.0)
 	if _is_portrait and is_instance_valid(minimap_radar) and (minimap_radar.is_visible_in_tree() or (instruments.visible and minimap_radar.visible)):
 		var rd_rect := minimap_radar.get_global_rect()
 		if left < rd_rect.end.x and left + width > rd_rect.position.x:
@@ -2121,7 +2369,7 @@ func _on_input_settings_changed() -> void:
 func get_input_hint(action: String) -> String:
 	if is_instance_valid(input_controller):
 		return str(input_controller.hint(action))
-	return str({"forward": "W", "backward": "S", "left": "A", "right": "D", "ascend": "空格", "descend": "Ctrl", "attack": "R", "aim": "T", "scope": "Y", "interact": "E", "craft_menu": "Tab", "pause_game": "Esc", "world_map": "M", "sonar_ping": "N", "mount_board": "O", "toggle_shield": "C", "dash": "Q", "booster": "H", "lamp": "F", "sprint": "Shift", "recall_pets": "Z", "mount_toggle": "G", "salvage_drone": "V", "sushi_menu": "B", "character_switch": "P", "character_angle": "K", "char_angle_reset": "Home", "weapon_1": "1", "weapon_2": "2", "weapon_3": "3", "weapon_4": "4", "weapon_cycle": "1-4", "quick_menu": "快捷操作", "gameplay_guide": "L"}.get(action, action))
+	return str({"forward": "W", "backward": "S", "left": "A", "right": "D", "ascend": "空格", "descend": "Ctrl", "attack": "R", "aim": "T", "scope": "Y", "interact": "E", "craft_menu": "Tab", "pause_game": "Esc", "world_map": "M", "sonar_ping": "N", "mount_board": "O", "toggle_shield": "C", "dash": "Q", "booster": "H", "lamp": "F", "sprint": "Shift", "recall_pets": "Z", "mount_toggle": "G", "salvage_drone": "V", "sushi_menu": "B", "character_switch": "P", "character_angle": "K", "char_angle_reset": "Home", "weapon_1": "1", "weapon_2": "2", "weapon_3": "3", "weapon_4": "4", "weapon_cycle": "1-4", "quick_menu": "快捷操作", "gameplay_guide": "L", "quest_log": "U"}.get(action, action))
 
 func _join_hints(first_action: String, second_action: String, separator := "/") -> String:
 	var first := get_input_hint(first_action)
@@ -2166,7 +2414,7 @@ func format_input_text(text: String) -> String:
 			"Y": get_input_hint("scope"), "C": get_input_hint("toggle_shield"), "E": get_input_hint("interact"),
 			"M": get_input_hint("world_map"), "N": get_input_hint("sonar_ping"), "O": get_input_hint("mount_board"),
 			"G": get_input_hint("mount_toggle"), "Z": get_input_hint("recall_pets"), "V": get_input_hint("salvage_drone"),
-			"H": get_input_hint("booster"), "Q": get_input_hint("dash"), "F": get_input_hint("lamp"), "B": get_input_hint("sushi_menu"), "P": get_input_hint("character_switch"), "K": get_input_hint("character_angle"), "L": get_input_hint("gameplay_guide")
+			"H": get_input_hint("booster"), "Q": get_input_hint("dash"), "F": get_input_hint("lamp"), "B": get_input_hint("sushi_menu"), "P": get_input_hint("character_switch"), "K": get_input_hint("character_angle"), "L": get_input_hint("gameplay_guide"), "U": get_input_hint("quest_log")
 		}
 	var result := ""
 	var cursor := 0
@@ -2251,6 +2499,7 @@ func _apply_device_hints() -> void:
 	if is_instance_valid(minimap_radar):
 		minimap_radar.map_hint = get_input_hint("world_map")
 	var guide_changed := false
+	var quest_changed := false
 	for node in root.find_children("*", "Control", true, false):
 		if not (node is Label or node is Button):
 			continue
@@ -2272,8 +2521,12 @@ func _apply_device_hints() -> void:
 			node.text = rendered
 			if menus.has("guide") and menus["guide"].is_ancestor_of(node):
 				guide_changed = true
+			if menus.has("quests") and menus["quests"].is_ancestor_of(node):
+				quest_changed = true
 	if guide_changed and not guide_view.is_empty():
 		GuidePanel.refresh_layout(guide_view)
+	if quest_changed and not quest_view.is_empty():
+		QuestPanel.refresh_layout(quest_view)
 
 func _sync_input_settings() -> void:
 	if settings_controls.is_empty():
@@ -2389,7 +2642,7 @@ func _refresh_navigation() -> void:
 			controls[0].grab_focus()
 
 func _prepare_menu_scrolling() -> void:
-	menu_min_sizes = {"main": Vector2(860, 740), "pause": Vector2(532, 568), "craft": Vector2(932, 732), "sushi": Vector2(1032, 748), "mount_board": Vector2(972, 732), "map": Vector2(1092, 760), "win": Vector2(712, 512), "quick": Vector2(892, 748), "controls": Vector2(732, 672), "guide": Vector2(992, 732)}
+	menu_min_sizes = {"main": Vector2(860, 740), "pause": Vector2(532, 568), "craft": Vector2(932, 732), "sushi": Vector2(1032, 748), "mount_board": Vector2(972, 732), "map": Vector2(1092, 760), "win": Vector2(712, 512), "quick": Vector2(892, 748), "controls": Vector2(732, 672), "guide": Vector2(992, 732), "quests": Vector2(992, 732)}
 	for key: String in menus:
 		var menu: Control = menus[key]
 		var children := menu.get_children()
@@ -2724,6 +2977,7 @@ func _apply_layout() -> void:
 
 	_layout_onboarding()
 	_apply_touch_visibility()
+	_layout_quest_banner()
 	_layout_toast()
 	_refresh_navigation.call_deferred()
 
@@ -3026,6 +3280,12 @@ func _layout_menus(frame: Rect2, safe_size: Vector2) -> void:
 	menu_contents["guide"].custom_minimum_size = frame.size
 	menu_contents["guide"].size = frame.size
 
+	menu_scrolls["quests"].vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	QuestPanel.set_touch_mode(quest_view, _touch_layout)
+	QuestPanel.set_responsive_layout(quest_view, frame.size)
+	menu_contents["quests"].custom_minimum_size = frame.size
+	menu_contents["quests"].size = frame.size
+
 	_place_modal_card("pause", _pause_ui["card"], _layout_pause_card(frame.size), frame.size)
 	_place_modal_card("craft", _craft_ui["card"], _layout_craft_card(frame.size), frame.size)
 	_place_modal_card("sushi", _sushi_ui["card"], _layout_sushi_card(frame.size), frame.size)
@@ -3304,16 +3564,17 @@ func _layout_pause_card(avail: Vector2) -> Vector2:
 	_set_control_rect(_pause_ui["desc"], Rect2(pad, 110.0, iw, 40.0))
 	_set_control_rect(_pause_ui["resume_btn"], Rect2(pad, 160.0, iw, 46.0))
 	_set_control_rect(_pause_ui["map_btn"], Rect2(pad, 214.0, iw, 44.0))
-	_set_control_rect(_pause_ui["guide_btn"], Rect2(pad, 266.0, iw, 44.0))
-	_set_control_rect(_pause_ui["p_prev"], Rect2(pad, 318.0, 48.0, 44.0))
-	_set_control_rect(pause_char_btn, Rect2(pad + 54.0, 318.0, maxf(100.0, iw - 108.0), 44.0))
-	_set_control_rect(_pause_ui["p_next"], Rect2(pad + iw - 48.0, 318.0, 48.0, 44.0))
+	_set_control_rect(_pause_ui["quests_btn"], Rect2(pad, 266.0, iw, 44.0))
+	_set_control_rect(_pause_ui["guide_btn"], Rect2(pad, 318.0, iw, 44.0))
+	_set_control_rect(_pause_ui["p_prev"], Rect2(pad, 370.0, 48.0, 44.0))
+	_set_control_rect(pause_char_btn, Rect2(pad + 54.0, 370.0, maxf(100.0, iw - 108.0), 44.0))
+	_set_control_rect(_pause_ui["p_next"], Rect2(pad + iw - 48.0, 370.0, 48.0, 44.0))
 	var half := floorf((iw - 10.0) * 0.5)
-	_set_control_rect(_pause_ui["controls_btn"], Rect2(pad, 372.0, half, 44.0))
-	_set_control_rect(_pause_ui["fullscreen_btn"], Rect2(pad + half + 10.0, 372.0, iw - half - 10.0, 44.0))
-	_set_control_rect(_pause_ui["restart_btn"], Rect2(pad, 424.0, iw, 44.0))
-	_set_control_rect(_pause_ui["hint_lbl"], Rect2(pad, 476.0, iw, 22.0))
-	return Vector2(w, 512.0)
+	_set_control_rect(_pause_ui["controls_btn"], Rect2(pad, 424.0, half, 44.0))
+	_set_control_rect(_pause_ui["fullscreen_btn"], Rect2(pad + half + 10.0, 424.0, iw - half - 10.0, 44.0))
+	_set_control_rect(_pause_ui["restart_btn"], Rect2(pad, 476.0, iw, 44.0))
+	_set_control_rect(_pause_ui["hint_lbl"], Rect2(pad, 528.0, iw, 22.0))
+	return Vector2(w, 564.0)
 
 func _layout_craft_card(avail: Vector2) -> Vector2:
 	var w := minf(900.0, avail.x)

@@ -19,6 +19,8 @@ const DANGER := ArtDirection.DANGER
 const PANEL := ArtDirection.PANEL
 const MUTED := ArtDirection.MUTED
 const HARBOR_SAGE := Color("8eaa74")
+const QUEST_MAIN_COLOR := Color("ffd166")
+const QUEST_SIDE_COLOR := Color("6ce5e8")
 const BOSS_LANDMARK_IDS := ["altar", "storm_ridge", "kraken_trench", "turtle_basin", "obsidian_caldera"]
 
 const REGION_LABELS := [
@@ -275,6 +277,7 @@ class MinimapRadar extends Control:
 	var submarines: Array = []
 	var relics: Array = []
 	var pinged_targets: Dictionary = {}
+	var quest_markers: Array = []
 	var has_waypoint: bool = false
 	var waypoint_pos: Vector3 = Vector3.ZERO
 	var radar_range: float = 220.0
@@ -303,9 +306,14 @@ class MinimapRadar extends Control:
 		submarines = data.get("submarines", [])
 		relics = data.get("relics", [])
 		pinged_targets = data.get("pinged_targets", {})
+		var raw_quest_markers: Variant = data.get("quest_markers", [])
+		quest_markers = raw_quest_markers if raw_quest_markers is Array else []
 		has_waypoint = bool(data.get("has_waypoint", false))
 		waypoint_pos = data.get("waypoint_pos", Vector3.ZERO)
 		queue_redraw()
+
+	func update_data(data: Dictionary, delta: float = 0.0) -> void:
+		update_radar(data, delta)
 
 	func _world_to_radar(wx: float, wz: float, center: Vector2, half_r: float) -> Vector2:
 		var dx := (wx - player_pos.x) / radar_range * half_r
@@ -407,6 +415,36 @@ class MinimapRadar extends Control:
 		hp.y = clampf(hp.y, map_rect.position.y + 4.0, map_rect.end.y - 4.0)
 		draw_circle(hp, 3.6, HARBOR_SAGE)
 
+		var radar_pulse_t := pulse_clock if pulse_clock > 0.0 else float(Time.get_ticks_msec()) * 0.001
+		for raw_qm in quest_markers:
+			if not (raw_qm is Dictionary):
+				continue
+			var qm: Dictionary = raw_qm
+			var qpos_v: Variant = qm.get("pos", null)
+			if not (qpos_v is Vector3):
+				continue
+			var qpos: Vector3 = qpos_v
+			var is_focused: bool = bool(qm.get("focused", false))
+			var rp := _world_to_radar(qpos.x, qpos.z, center, half_r)
+			if not map_rect.has_point(rp):
+				if not is_focused:
+					continue
+				rp.x = clampf(rp.x, map_rect.position.x + 5.0, map_rect.end.x - 5.0)
+				rp.y = clampf(rp.y, map_rect.position.y + 5.0, map_rect.end.y - 5.0)
+			var qcol := QUEST_MAIN_COLOR if str(qm.get("category", "main")) == "main" else QUEST_SIDE_COLOR
+			var q_radius := 4.8 if is_focused else 3.8
+			if is_focused:
+				var pulse := 0.5 + 0.5 * sin(radar_pulse_t * 4.2)
+				draw_arc(rp, q_radius + 2.2 + pulse * 3.4, 0.0, TAU, 24, Color(qcol, lerpf(0.86, 0.20, pulse)), 1.35)
+			var q_dia := PackedVector2Array([
+				rp + Vector2(0.0, -q_radius),
+				rp + Vector2(q_radius, 0.0),
+				rp + Vector2(0.0, q_radius),
+				rp + Vector2(-q_radius, 0.0)
+			])
+			draw_colored_polygon(q_dia, qcol)
+			draw_polyline(PackedVector2Array([q_dia[0], q_dia[1], q_dia[2], q_dia[3], q_dia[0]]), Color(INK, 0.9), 1.1)
+
 		if has_waypoint:
 			var wp := _world_to_radar(waypoint_pos.x, waypoint_pos.z, center, half_r)
 			wp.x = clampf(wp.x, map_rect.position.x + 5.0, map_rect.end.x - 5.0)
@@ -461,6 +499,7 @@ class SeaChartCanvas extends Control:
 	var submarines: Array = []
 	var relics: Array = []
 	var pinged_targets: Dictionary = {}
+	var quest_markers: Array = []
 	var has_waypoint: bool = false
 	var waypoint_pos: Vector3 = Vector3.ZERO
 	var selected_node: Dictionary = {}
@@ -525,6 +564,10 @@ class SeaChartCanvas extends Control:
 	func _process(delta: float) -> void:
 		if not is_visible_in_tree():
 			return
+		for raw_qm in quest_markers:
+			if raw_qm is Dictionary and bool((raw_qm as Dictionary).get("focused", false)):
+				queue_redraw()
+				break
 		if _touches.size() == 1 and not _had_multitouch and not _long_press_checked:
 			var idx: int = int(_touches.keys()[0])
 			var pt: Vector2 = _touches[idx]
@@ -602,9 +645,14 @@ class SeaChartCanvas extends Control:
 		submarines = data.get("submarines", [])
 		relics = data.get("relics", [])
 		pinged_targets = data.get("pinged_targets", {})
+		var raw_quest_markers: Variant = data.get("quest_markers", [])
+		quest_markers = raw_quest_markers if raw_quest_markers is Array else []
 		has_waypoint = bool(data.get("has_waypoint", false))
 		waypoint_pos = data.get("waypoint_pos", Vector3.ZERO)
 		queue_redraw()
+
+	func update_data(data: Dictionary) -> void:
+		update_chart(data)
 
 	func _world_to_canvas(wx: float, wz: float) -> Vector2:
 		var half_vis := WORLD_HALF / zoom
@@ -665,6 +713,41 @@ class SeaChartCanvas extends Control:
 				"name": str(sub.get("name", "深海潜艇")),
 				"desc": "海面/水下系泊载具 · 可设为标点前往登舰驾驶",
 				"pos": sub["pos"],
+				"can_travel": false
+			})
+		for idx in range(quest_markers.size()):
+			var raw_qm: Variant = quest_markers[idx]
+			if not (raw_qm is Dictionary):
+				continue
+			var qm: Dictionary = raw_qm
+			var qpos_v: Variant = qm.get("pos", null)
+			if not (qpos_v is Vector3):
+				continue
+			var qpos: Vector3 = qpos_v
+			var qid := str(qm.get("quest_id", ""))
+			var oid := str(qm.get("objective_id", ""))
+			var title := str(qm.get("title", "潜航任务"))
+			var label := str(qm.get("label", ""))
+			var category := str(qm.get("category", "main"))
+			var is_focused := bool(qm.get("focused", false))
+			var cat_tag := "主线任务" if category == "main" else ("海域委托" if category == "bounty" else "支线任务")
+			var desc_text := "[%s]%s" % [cat_tag, " · 当前追踪" if is_focused else ""]
+			if not label.is_empty():
+				desc_text += "\n目标：%s" % label
+			desc_text += "\n点击「设为导航标点」可在潜航 HUD 与罗盘指引航向。"
+			var node_id := "quest_%s_%s" % [qid, oid] if (not qid.is_empty() or not oid.is_empty()) else ("quest_%d" % idx)
+			list.append({
+				"id": node_id,
+				"kind": "quest",
+				"quest_id": qid,
+				"objective_id": oid,
+				"title": title,
+				"label": label,
+				"category": category,
+				"focused": is_focused,
+				"name": "◆ %s" % title,
+				"desc": desc_text,
+				"pos": qpos,
 				"can_travel": false
 			})
 		return list
@@ -856,6 +939,9 @@ class SeaChartCanvas extends Control:
 					selection_changed.emit(hit)
 					if mb.double_click and bool(hit.get("can_travel", false)):
 						fast_travel_requested.emit(str(hit["id"]), hit["pos"], str(hit["name"]))
+					elif mb.double_click and str(hit.get("kind", "")) == "quest":
+						var qp: Vector3 = hit["pos"]
+						waypoint_set.emit(Vector2(qp.x, qp.z))
 					queue_redraw()
 				else:
 					var w_xz := _canvas_to_world(mb.position)
@@ -971,6 +1057,7 @@ class SeaChartCanvas extends Control:
 					draw_arc(cp, 6.8, 0.0, TAU, 20, Color(DANGER, 0.36), 1.0)
 
 		var nodes := _collect_interactive_nodes()
+		var quest_label_rects: Array[Rect2] = []
 		for item in nodes:
 			var p3: Vector3 = item["pos"]
 			var cp := _world_to_canvas(p3.x, p3.z)
@@ -1006,6 +1093,50 @@ class SeaChartCanvas extends Control:
 					if font and (is_hov or is_sel or zoom >= 1.45):
 						var lbl_col := DANGER.lightened(0.14) if (is_disc and is_hazard) else (PAPER if is_disc else AMBER)
 						draw_string(font, cp + Vector2(8, 5), str(item["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12 if compact_chart else 13, lbl_col)
+				"quest":
+					var category := str(item.get("category", "main"))
+					var is_focused := bool(item.get("focused", false))
+					var qcol := QUEST_MAIN_COLOR if category == "main" else QUEST_SIDE_COLOR
+					var q_radius := 7.6 if is_focused else 6.2
+					if is_focused:
+						var pulse := 0.5 + 0.5 * sin(float(Time.get_ticks_msec()) * 0.0042)
+						draw_arc(cp, q_radius + 3.0 + pulse * 5.8, 0.0, TAU, 28, Color(qcol, lerpf(0.86, 0.18, pulse)), 1.6)
+						draw_arc(cp, q_radius + 2.2, 0.0, TAU, 24, Color(qcol, 0.45), 1.0)
+					var q_dia := PackedVector2Array([
+						cp + Vector2(0.0, -q_radius),
+						cp + Vector2(q_radius, 0.0),
+						cp + Vector2(0.0, q_radius),
+						cp + Vector2(-q_radius, 0.0)
+					])
+					draw_colored_polygon(q_dia, qcol)
+					draw_polyline(PackedVector2Array([q_dia[0], q_dia[1], q_dia[2], q_dia[3], q_dia[0]]), Color(INK, 0.92), 1.3)
+					if font:
+						var q_label := str(item.get("label", ""))
+						if q_label.is_empty():
+							q_label = str(item.get("title", "任务目标"))
+						var show_q_label := is_focused or is_hov or is_sel or zoom >= 1.45
+						if not compact_chart and zoom >= 1.15:
+							show_q_label = true
+						if show_q_label:
+							var max_chars := 10 if compact_chart else 16
+							var display_lbl := q_label if q_label.length() <= max_chars else (q_label.substr(0, max_chars - 1) + "…")
+							var txt := "◆ " + display_lbl
+							var fsz := 12 if compact_chart else 13
+							var txt_pos := cp + Vector2(q_radius + 4.0, 4.5)
+							var est_w := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fsz).x
+							if txt_pos.x + est_w > size.x - 6.0:
+								txt_pos.x = maxf(6.0, cp.x - q_radius - 4.0 - est_w)
+							var lbl_rect := Rect2(txt_pos.x - 2.0, txt_pos.y - float(fsz), est_w + 4.0, float(fsz) + 4.0)
+							var overlaps_other := false
+							if not (is_focused or is_hov or is_sel):
+								for prev_rect: Rect2 in quest_label_rects:
+									if prev_rect.intersects(lbl_rect):
+										overlaps_other = true
+										break
+							if not overlaps_other:
+								quest_label_rects.append(lbl_rect)
+								draw_string(font, txt_pos + Vector2(1.0, 1.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, Color(INK, 0.85))
+								draw_string(font, txt_pos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, qcol)
 
 		var player_cp := _world_to_canvas(player_pos.x, player_pos.z)
 		if has_waypoint:
@@ -1034,6 +1165,22 @@ class SeaChartCanvas extends Control:
 			])
 			draw_colored_polygon(p_chev, PAPER)
 			draw_polyline(PackedVector2Array([p_chev[0], p_chev[1], p_chev[2], p_chev[3], p_chev[0]]), CYAN, 1.4)
+
+		if font and size.x >= 180.0 and size.y >= 160.0:
+			var leg_fsz := 11 if compact_chart else 12
+			var main_leg := "◆ 任务目标"
+			var side_leg := "  ◆ 支线/委托"
+			var main_w := font.get_string_size(main_leg, HORIZONTAL_ALIGNMENT_LEFT, -1, leg_fsz).x
+			var show_side := size.x >= 260.0
+			var side_w := font.get_string_size(side_leg, HORIZONTAL_ALIGNMENT_LEFT, -1, leg_fsz).x if show_side else 0.0
+			var pill_w := minf(size.x - 16.0, main_w + side_w + 16.0)
+			var pill_h := 22.0
+			var pill_rect := Rect2(8.0, size.y - pill_h - 8.0, pill_w, pill_h)
+			draw_rect(pill_rect, Color(PANEL.r, PANEL.g, PANEL.b, 0.84), true)
+			draw_rect(pill_rect, Color(CYAN, 0.24), false, 1.0)
+			draw_string(font, Vector2(pill_rect.position.x + 8.0, pill_rect.position.y + 15.0), main_leg, HORIZONTAL_ALIGNMENT_LEFT, pill_w - 16.0, leg_fsz, QUEST_MAIN_COLOR)
+			if show_side and main_w + side_w + 16.0 <= pill_w + 1.0:
+				draw_string(font, Vector2(pill_rect.position.x + 8.0 + main_w, pill_rect.position.y + 15.0), side_leg, HORIZONTAL_ALIGNMENT_LEFT, pill_w - 16.0 - main_w, leg_fsz, QUEST_SIDE_COLOR)
 
 		draw_rect(rect, Color(CYAN, 0.30), false, 1.5)
 		if has_focus():

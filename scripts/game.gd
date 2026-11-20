@@ -14,6 +14,7 @@ const GameInput = preload("res://scripts/input_controller.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 const CharacterRoster = preload("res://scripts/presentation/character_roster.gd")
 const GameplayGuide = preload("res://scripts/gameplay_guide.gd")
+const QuestManager = preload("res://scripts/quests/quest_manager.gd")
 const SafeArea = preload("res://scripts/presentation/safe_area.gd")
 
 const VOYAGE_SAVE_PATH := "user://voyage_save.json"
@@ -62,6 +63,8 @@ var hud: CanvasLayer
 var state = Survival.new()
 var title_camera: Camera3D
 var title_showcase_diver: CharacterBody3D = null
+var _title_key_light: OmniLight3D = null
+var _title_rim_light: OmniLight3D = null
 var _title_clock := 0.0
 var title_showcase_yaw: float = 0.0
 var title_showcase_pitch: float = 0.0
@@ -87,6 +90,9 @@ var touch_layer: CanvasLayer
 var controls_return_screen := "pause"
 var gameplay_guide = GameplayGuide.new()
 var guide_return_screen := "main"
+var quest_manager = QuestManager.new()
+var quests_return_screen := "play"
+var _last_pushed_quest_version: int = -1
 var _prev_diver_pos := Vector3.ZERO
 var _has_prev_diver_pos := false
 var _was_overweight := false
@@ -203,6 +209,16 @@ func _ready() -> void:
 	hud.map_waypoint_cleared.connect(_on_map_waypoint_cleared)
 	hud.fast_travel_requested.connect(_on_fast_travel_requested)
 	hud.sonar_ping_requested.connect(_trigger_sonar_ping)
+	if hud.has_signal("open_quests_requested"):
+		hud.connect("open_quests_requested", _open_quests_screen)
+	if hud.has_signal("quest_track_requested"):
+		hud.connect("quest_track_requested", _on_quest_track_requested)
+	if hud.has_signal("quest_tracker_toggle_requested"):
+		hud.connect("quest_tracker_toggle_requested", _on_quest_tracker_toggle_requested)
+	if hud.has_signal("quest_nav_requested"):
+		hud.connect("quest_nav_requested", _on_quest_nav_requested)
+	if hud.has_signal("quest_bounty_refresh_requested"):
+		hud.connect("quest_bounty_refresh_requested", _on_quest_bounty_refresh_requested)
 	_setup_touch_controls()
 	state.reveal_world_area(diver.position, 135.0)
 	_setup_audio()
@@ -252,6 +268,7 @@ func _setup_input() -> void:
 		"mount_slot_5": KEY_9,
 		"mount_slot_6": KEY_0,
 		"gameplay_guide": KEY_L,
+		"quest_log": KEY_U,
 		"character_switch": KEY_P,
 		"character_angle": KEY_K,
 		"char_angle_reset": KEY_HOME,
@@ -479,6 +496,8 @@ func _close_input_screen() -> void:
 		_set_screen(controls_return_screen)
 	elif screen == "guide":
 		_set_screen(guide_return_screen)
+	elif screen == "quests":
+		_set_screen(quests_return_screen)
 	elif screen != "main" and screen != "win":
 		_set_screen("play")
 
@@ -489,10 +508,158 @@ func _open_guide_screen() -> void:
 	if screen == "controls":
 		if controls_return_screen != "guide":
 			guide_return_screen = controls_return_screen
+	elif screen == "quests":
+		if quests_return_screen != "guide":
+			guide_return_screen = quests_return_screen
 	else:
 		guide_return_screen = screen if screen in ["main", "pause", "quick", "craft", "sushi", "mount_board", "map", "play"] else "play"
 	_set_screen("guide")
 	_apply_guide_result(gameplay_guide.notify_event("guide_opened"))
+
+func _open_quests_screen() -> void:
+	if screen == "quests":
+		_close_input_screen()
+		return
+	if screen == "controls":
+		if controls_return_screen != "quests":
+			quests_return_screen = controls_return_screen
+	elif screen == "guide":
+		if guide_return_screen != "quests":
+			quests_return_screen = guide_return_screen
+	else:
+		quests_return_screen = screen if screen in ["main", "pause", "quick", "craft", "sushi", "mount_board", "map", "play"] else "play"
+	_set_screen("quests")
+	_sync_quest_journal_now()
+
+func _sync_quest_journal_now() -> void:
+	_last_pushed_quest_version = -1
+	if not is_instance_valid(hud):
+		return
+	if hud.has_method("sync_quest_journal"):
+		var q_snap := _build_quest_snapshot()
+		var player_pos: Vector3 = (diver.global_position if diver.is_inside_tree() else diver.position) if is_instance_valid(diver) else Vector3.ZERO
+		hud.call("sync_quest_journal", quest_manager.get_journal_payload(player_pos, q_snap))
+		_last_pushed_quest_version = quest_manager.version
+
+func _on_quest_track_requested(quest_id: String, objective_id: String = "") -> void:
+	if quest_manager.set_tracked_quest(quest_id, objective_id):
+		_sync_quest_journal_now()
+		save_voyage()
+
+func _on_quest_tracker_toggle_requested() -> void:
+	quest_manager.toggle_tracker_hidden()
+	_sync_quest_journal_now()
+	save_voyage()
+
+func _on_quest_nav_requested(world_pos: Vector3, label: String, open_map: bool = false) -> void:
+	state.set_custom_waypoint(world_pos)
+	if is_instance_valid(hud):
+		hud.toast("【航向标点已设定】%s" % (label if not label.is_empty() else "任务目标"))
+	if open_map:
+		_set_screen("map")
+	else:
+		_set_screen("play")
+	save_voyage()
+
+func _on_quest_bounty_refresh_requested() -> void:
+	if quest_manager.refresh_bounties():
+		if is_instance_valid(hud):
+			hud.toast("【回波委托已刷新】已同步最新科考委托")
+		_sync_quest_journal_now()
+		save_voyage()
+
+func _build_quest_snapshot() -> Dictionary:
+	var total_landmarks := LANDMARKS.size()
+	var total_outposts := Ocean.OUTPOST_SPECS.size()
+	var total_relics := Ocean.RELIC_SPECS.size()
+	var player_pos: Vector3 = (diver.global_position if diver.is_inside_tree() else diver.position) if is_instance_valid(diver) else Vector3.ZERO
+	var has_nearest_outpost := false
+	var nearest_outpost_pos := Vector3.ZERO
+	var nearest_outpost_name := ""
+	if is_instance_valid(ocean):
+		var best_dist_sq := INF
+		for out: Node3D in ocean.outposts:
+			if not is_instance_valid(out):
+				continue
+			var out_id := str(out.get_meta("outpost_id", ""))
+			if bool(out.get_meta("activated", false)) or state.unlocked_outposts.has(out_id):
+				continue
+			var out_pos: Vector3 = out.global_position if out.is_inside_tree() else out.position
+			var dist_sq: float = player_pos.distance_squared_to(out_pos)
+			if dist_sq < best_dist_sq:
+				best_dist_sq = dist_sq
+				has_nearest_outpost = true
+				nearest_outpost_pos = out_pos
+				nearest_outpost_name = str(out.get_meta("name", ""))
+	var exp_pct := int(roundf(state.get_exploration_progress(total_landmarks, total_outposts, total_relics) * 100.0))
+	var rank_lv := maxi(state.explorer_rank_level, state.get_explorer_rank_level(total_landmarks, total_outposts, total_relics))
+	var rank_name := state.get_explorer_rank(total_landmarks, total_outposts, total_relics)
+	return {
+		"mode": state.mode,
+		"black_box_read": state.black_box_read,
+		"rescued": state.rescued,
+		"escape_crafted": state.escape_crafted,
+		"mother_tree_active": state.mother_tree_active or (is_instance_valid(ocean) and ocean.mother_tree_spawned_flag),
+		"tank": state.tank,
+		"fins": state.fins,
+		"rebreather": state.rebreather,
+		"weapons": state.weapons,
+		"inventory": state.inventory,
+		"conquered_bosses": ocean.conquered_bosses if is_instance_valid(ocean) else {},
+		"outposts_count": state.unlocked_outposts.size(),
+		"relics_count": state.collected_relics.size(),
+		"landmarks_count": state.landmarks_discovered.size(),
+		"dishes_served": state.dishes_served,
+		"marinca_species_count": state.marinca_cards.size(),
+		"marinca_three_star_count": state.get_three_star_count(),
+		"tamed_beasts_count": maxi(tamed_beasts.size(), state.tamed_beast_count),
+		"explorer_rank_level": rank_lv,
+		"nearest_outpost_pos": nearest_outpost_pos,
+		"nearest_outpost_name": nearest_outpost_name,
+		"has_nearest_outpost": has_nearest_outpost,
+		"exploration_pct": exp_pct,
+		"explorer_rank": rank_name
+	}
+
+func _apply_quest_result(res: Dictionary) -> void:
+	if res.is_empty() or not bool(res.get("changed", false)):
+		return
+	var granted_gold: int = int(res.get("granted_gold", 0))
+	if granted_gold > 0:
+		state.gold += granted_gold
+	var raw_items: Variant = res.get("granted_items", {})
+	if raw_items is Dictionary:
+		var granted_items: Dictionary = raw_items
+		for item_key in granted_items:
+			var key_str := str(item_key)
+			var qty := int(granted_items[item_key])
+			if qty > 0 and state.inventory.has(key_str):
+				state.inventory[key_str] = int(state.inventory.get(key_str, 0)) + qty
+	var banners: Array = res.get("banners", [])
+	if not banners.is_empty() and is_instance_valid(hud):
+		if hud.has_method("push_quest_banners"):
+			hud.call("push_quest_banners", banners)
+		var completed_quests: Array = res.get("completed_quests", [])
+		if not completed_quests.is_empty() and is_inside_tree():
+			UnderwaterAudio.play_sound(get_tree(), "tame_success", -6.0, 1.12)
+	_last_pushed_quest_version = -1
+
+func _emit_quest_event(event_id: String, ctx: Dictionary = {}) -> void:
+	var res: Dictionary = quest_manager.notify_event(event_id, ctx, _build_quest_snapshot())
+	_apply_quest_result(res)
+
+func _reconcile_quests(silent: bool = false) -> void:
+	var res: Dictionary = quest_manager.reconcile(_build_quest_snapshot(), silent)
+	_apply_quest_result(res)
+
+func _emit_catch_quest_events(stars: int) -> void:
+	if stars >= 3:
+		_emit_quest_event("perfect_catch")
+		_emit_quest_event("quality_catch")
+	elif stars == 2:
+		_emit_quest_event("quality_catch")
+	else:
+		_reconcile_quests(false)
 
 func _on_onboarding_restart_requested() -> void:
 	gameplay_guide.restart_onboarding(state.mode)
@@ -540,8 +707,11 @@ func _on_hud_action_requested(action: String) -> void:
 	if action == "gameplay_guide":
 		_open_guide_screen()
 		return
+	if action == "quest_log":
+		_open_quests_screen()
+		return
 	if action == "controls":
-		controls_return_screen = screen if screen in ["main", "pause", "quick", "guide", "play"] else "play"
+		controls_return_screen = screen if screen in ["main", "pause", "quick", "guide", "quests", "play"] else "play"
 		_set_screen("controls")
 		return
 	if action == "toggle_fullscreen":
@@ -649,6 +819,8 @@ func _start(chosen_mode: String = "survival") -> void:
 		_reset_position()
 	state.reveal_world_area(diver.position, 140.0)
 	gameplay_guide.start_voyage(chosen_mode)
+	quest_manager.reset(chosen_mode)
+	_reconcile_quests(true)
 	voyage_started = true
 	_set_screen("play")
 	_prev_diver_pos = diver.global_position
@@ -663,15 +835,19 @@ func _start(chosen_mode: String = "survival") -> void:
 		hud.toast("欢迎来到开放深蓝海域 · 按 M 海图导航/跃迁 · N 声呐寻宝 · E 采集或激活科考前哨站 · Tab 制造台")
 
 func _restart() -> void:
+	quest_manager.reset(state.mode)
+	_reconcile_quests(true)
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 
 func _setup_title_showcase(initial_char: String) -> void:
 	title_showcase_diver = Diver.new()
 	title_showcase_diver.name = "TitleShowcaseDiver"
+	add_child(title_showcase_diver)
 	title_showcase_diver.set_process(false)
 	title_showcase_diver.set_physics_process(false)
-	add_child(title_showcase_diver)
+	title_showcase_diver.set_process_input(false)
+	title_showcase_diver.set_process_unhandled_input(false)
 	title_showcase_diver.collision_layer = 0
 	title_showcase_diver.collision_mask = 0
 	if is_instance_valid(title_showcase_diver.body_collision):
@@ -688,6 +864,7 @@ func _setup_title_showcase(initial_char: String) -> void:
 	key_light.light_energy = 0.52
 	key_light.omni_range = 4.2
 	title_camera.add_child(key_light)
+	_title_key_light = key_light
 	var rim_light := OmniLight3D.new()
 	rim_light.name = "TitleShowcaseRimLight"
 	rim_light.position = Vector3(-0.65, 0.55, -2.95)
@@ -695,6 +872,7 @@ func _setup_title_showcase(initial_char: String) -> void:
 	rim_light.light_energy = 0.65
 	rim_light.omni_range = 4.0
 	title_camera.add_child(rim_light)
+	_title_rim_light = rim_light
 
 func _cycle_character(step: int = 1) -> void:
 	var next_char := CharacterRoster.next_id(diver.current_character if is_instance_valid(diver) else state.selected_character, step)
@@ -773,7 +951,7 @@ func _set_screen(value: String) -> void:
 	elif is_instance_valid(diver):
 		_prev_diver_pos = diver.global_position
 		_has_prev_diver_pos = true
-	get_tree().paused = screen in ["pause", "craft", "sushi", "mount_board", "map", "win", "quick", "controls", "guide"]
+	get_tree().paused = screen in ["pause", "craft", "sushi", "mount_board", "map", "win", "quick", "controls", "guide", "quests"]
 	hud.set_screen(screen)
 	_sync_input_presentation()
 	if screen == "main":
@@ -848,6 +1026,7 @@ func _check_landmarks() -> void:
 				hud.toast("【发现新海域地标】%s · %s (已解锁海图跃迁 · +35G)" % [str(landmark["name"]), str(landmark["desc"])])
 				effect.play()
 				_check_explorer_rank_up()
+				_reconcile_quests(false)
 				save_voyage()
 				if state.landmarks_discovered.size() >= LANDMARKS.size():
 					hud.toast("【全域二十四景勘测达成】你已探明整片开放大洋的全部生态地标！")
@@ -893,10 +1072,12 @@ func _handle_action_event(event: InputEvent) -> void:
 	if event.is_action_pressed("pause_game"):
 		if screen == "play":
 			_set_screen("pause")
-		elif screen in ["pause", "craft", "sushi", "mount_board", "map", "quick", "controls", "guide"]:
+		elif screen in ["pause", "craft", "sushi", "mount_board", "map", "quick", "controls", "guide", "quests"]:
 			_close_input_screen()
 	elif event.is_action_pressed("gameplay_guide") and screen != "win":
 		_open_guide_screen()
+	elif event.is_action_pressed("quest_log") and screen != "win":
+		_open_quests_screen()
 	elif event.is_action_pressed("world_map") and screen in ["play", "craft", "sushi", "mount_board", "map"]:
 		_set_screen("play" if screen == "map" else "map")
 	elif event.is_action_pressed("sonar_ping") and screen in ["play", "map"]:
@@ -1219,6 +1400,7 @@ func _fire_submarine_weapon() -> void:
 	_sync_touch_context_and_margins(false)
 	UnderwaterAudio.play_sound(get_tree(), "sub_torpedo_launch", -4.0, 1.0)
 	hud.toast("【车载鱼雷已射出】正在沿瞄准线飞向目标！")
+	_emit_quest_event("torpedo_fired")
 
 func _detonate_stasis(at: Vector3, radius: float, duration: float) -> void:
 	if screen != "play":
@@ -1319,6 +1501,7 @@ func _on_boss_defeated() -> void:
 		hud.toast("【神迹降临】四大巨兽全部制伏！远古母树于深海极渊 (坐标 0, -125, -340) 苏醒！游向母树！")
 	elif state.mode == "explore" and c_cnt == 1:
 		state.boss_defeated = true
+	_reconcile_quests(false)
 	save_voyage()
 
 func _present_attack_hit(atk: Dictionary, hit: Dictionary, from: Vector3, dir: Vector3) -> void:
@@ -1451,6 +1634,8 @@ func _process(delta: float) -> void:
 
 	if screen == "play":
 		gameplay_guide.tick(delta)
+		var depth_res: Dictionary = quest_manager.tick_depth(delta, maxf(0.0, -diver.global_position.y))
+		_apply_quest_result(depth_res)
 		if is_instance_valid(ocean):
 			nearby_outpost = ocean.find_nearby_outpost(diver.global_position, 9.5)
 			near_active_outpost = is_instance_valid(nearby_outpost) and bool(nearby_outpost.get_meta("activated", false))
@@ -1635,6 +1820,13 @@ func _process(delta: float) -> void:
 		elif distance < 7.0:
 			prompt = "安全区 · 正在补氧    Tab  使用制造台" if state.mode != "explore" else "逃生舱基地    Tab  使用制造台"
 
+	var q_snap: Dictionary = _build_quest_snapshot()
+	var quest_player_pos: Vector3 = (diver.global_position if diver.is_inside_tree() else diver.position) if is_instance_valid(diver) else Vector3.ZERO
+	var quest_journal_payload: Dictionary = {}
+	if screen == "quests" or _last_pushed_quest_version != quest_manager.version:
+		quest_journal_payload = quest_manager.get_journal_payload(quest_player_pos, q_snap)
+		_last_pushed_quest_version = quest_manager.version
+
 	hud.update_hud({
 		"mode": state.mode,
 		"oxygen": state.oxygen,
@@ -1725,7 +1917,10 @@ func _process(delta: float) -> void:
 		"has_waypoint": state.has_custom_waypoint,
 		"waypoint_pos": state.custom_waypoint,
 		"sonar_cooldown": state.sonar_cooldown,
-		"onboarding": _get_onboarding_hud_payload()
+		"onboarding": _get_onboarding_hud_payload(),
+		"quest_tracker": quest_manager.get_hud_tracker_payload(quest_player_pos, q_snap),
+		"quest_markers": quest_manager.get_map_markers(q_snap),
+		"quest_journal": quest_journal_payload
 	})
 	if screen == "play":
 		_update_home_marker(distance)
@@ -1842,6 +2037,7 @@ func _interact() -> void:
 		state.black_box_read = true
 		hud.toast("【科考日志 #04】：已记录深渊祭坛坐标。共鸣阵列需石英与晶核能量，方可激发全频段呼救信标！")
 		effect.play()
+		_emit_quest_event("black_box_read")
 		return
 	if kind == "fish_small":
 		var result: Dictionary = state.eat_fish()
@@ -1855,6 +2051,7 @@ func _interact() -> void:
 		effect.play()
 		_apply_guide_result(gameplay_guide.notify_event("fish_eaten"))
 		_notify_food_progress()
+		_emit_catch_quest_events(3)
 		return
 
 	if kind == "shark_fragment" or kind == "abyss_fragment":
@@ -1869,6 +2066,7 @@ func _interact() -> void:
 		ocean.remove_fragment(target)
 		target = null
 		effect.play()
+		_emit_quest_event("fragment_absorbed", {"kind": kind})
 		return
 
 	if state.collect(kind):
@@ -1878,6 +2076,7 @@ func _interact() -> void:
 		target = null
 		effect.play()
 		_apply_guide_result(gameplay_guide.notify_event("resource_collected"))
+		_emit_quest_event("mineral_collected", {"kind": kind})
 
 func _loot_corpse(body: Node3D) -> void:
 	body.set_meta("looted", true)
@@ -1901,6 +2100,7 @@ func _loot_corpse(body: Node3D) -> void:
 	])
 	_apply_guide_result(gameplay_guide.notify_event("loot_collected"))
 	_notify_food_progress()
+	_emit_catch_quest_events(stars)
 	var tw := create_tween()
 	tw.tween_interval(1.5)
 	tw.tween_property(body, "scale", Vector3.ZERO, 0.4)
@@ -1969,6 +2169,7 @@ func _trigger_drone_salvage() -> void:
 	])
 	_apply_guide_result(gameplay_guide.notify_event("loot_collected"))
 	_notify_food_progress()
+	_emit_catch_quest_events(3)
 
 func _on_sushi_cook(dish_id: String) -> void:
 	var res: Dictionary = state.cook_and_serve_sushi(dish_id)
@@ -1980,6 +2181,7 @@ func _on_sushi_cook(dish_id: String) -> void:
 	hud.toast("◆【班乔料理出锅】已售出【%s】！收入 +%d 金币 · %s" % [
 		str(res.get("name", "料理")), int(res.get("gold_earned", 0)), str(res.get("buff", ""))
 	])
+	_emit_quest_event("dish_served", {"recipe": dish_id})
 	save_voyage()
 
 func _on_sushi_serve_all() -> void:
@@ -1991,6 +2193,7 @@ func _on_sushi_serve_all() -> void:
 	hud.toast("★【班乔寿司吧夜营业大捷】共售出 %d 份深海料理！赚取 +%d 金币 · 背包负重已清空！" % [
 		int(res.get("plates", 1)), int(res.get("gold_earned", 0))
 	])
+	_emit_quest_event("dish_served", {"recipe": "surplus_all", "amount": maxi(1, int(res.get("plates", 1)))})
 	save_voyage()
 
 func _on_cobra_buy(item_id: String) -> void:
@@ -2026,6 +2229,7 @@ func _board_submarine(sub: Node3D) -> void:
 		hud.toast("【已登舰驾驶】%s · 左摇杆航行 / 上浮下潜升降 / %s / 离舰退出" % [active_submarine.sub_name, sub_wpn_hint])
 	else:
 		hud.toast("【已登舰驾驶】" + active_submarine.sub_name + " · WASD 航行 / 空格 Ctrl 升降 / R 鱼雷 / E 离舰")
+	_emit_quest_event("submarine_boarded")
 
 func _disembark_submarine() -> void:
 	if not is_instance_valid(active_submarine):
@@ -2058,7 +2262,7 @@ func _craft(recipe: String) -> void:
 	effect.play()
 	diver.damage_bonus = state.weapon_attack_bonus
 	if recipe == "beacon":
-		hud.toast("信标已修复！最终目标：前往深渊祭坛，击败水龙后返航。")
+		hud.toast("求救信标已上线！信号遭深渊生物电场干扰，请建立远洋前哨中继网并平息四方领主。")
 		_set_screen("play")
 	else:
 		match recipe:
@@ -2085,6 +2289,9 @@ func _craft(recipe: String) -> void:
 				hud.toast("【载具强化】生物高能电池已激活！潜艇与助推器航速提升 25%")
 			"serrated_blade":
 				hud.toast("【武器精工】深海锯齿骨刃已研磨！全武器伤害额外 +25！")
+	_emit_quest_event("recipe_crafted", {"recipe": recipe})
+	if recipe in ["reinforce_sharp", "reinforce_sonic", "biomod_dash"]:
+		_emit_quest_event("deep_forge_done", {"recipe": recipe})
 	save_voyage()
 
 func _setup_audio() -> void:
@@ -2258,6 +2465,7 @@ func _check_explorer_rank_up() -> void:
 		UnderwaterAudio.play_sound(get_tree(), "tame_success", -2.0, 1.15)
 		CombatVFX.spawn_tame_ring(self, diver.global_position, 5.5)
 		hud.toast("★【探索家晋升 Lv.%d】荣获头衔「%s」！协会嘉奖 +%dG" % [new_lv, rank_title, reward_g])
+		_reconcile_quests(false)
 
 func _interact_outpost(outpost: Node3D) -> void:
 	if not is_instance_valid(outpost):
@@ -2286,6 +2494,7 @@ func _interact_outpost(outpost: Node3D) -> void:
 		outpost_name, int(res.get("gold_reward", 150))
 	])
 	_apply_guide_result(gameplay_guide.notify_event("outpost_activated"))
+	_reconcile_quests(false)
 	save_voyage()
 
 func _collect_explorer_relic(relic: Node3D) -> void:
@@ -2310,6 +2519,7 @@ func _collect_explorer_relic(relic: Node3D) -> void:
 		relic_name, int(res.get("collected_count", state.collected_relics.size())), Ocean.RELIC_SPECS.size()
 	])
 	_apply_guide_result(gameplay_guide.notify_event("relic_collected"))
+	_reconcile_quests(false)
 	save_voyage()
 
 func _trigger_sonar_ping() -> bool:
@@ -2359,6 +2569,7 @@ func _trigger_sonar_ping() -> bool:
 	else:
 		hud.toast("⬡【广域声呐回波】周边 220m 海图扇区已完整测绘！")
 	_apply_guide_result(gameplay_guide.notify_event("sonar_pinged"))
+	_emit_quest_event("sonar_pinged")
 	return true
 
 func _on_map_waypoint_set(world_xz: Vector2) -> void:
@@ -2731,6 +2942,7 @@ func _tame_creature(c: Node3D) -> void:
 	else:
 		var cur_mult := pow(2.0, maxf(0.0, float(tamed_beasts.size() - 1)))
 		hud.toast("【契约缔结】成功驯服【%s】！(已契约: %d/20 · 全体攻击力提高至: ×%.0f)" % [c_name, tamed_beasts.size(), cur_mult])
+	_reconcile_quests(false)
 	save_voyage()
 
 func _mount_beast(idx: int) -> void:
@@ -3068,6 +3280,7 @@ func _fire_marker_gun(atk: Dictionary) -> void:
 		has_target_pos = true
 		companion_attack_target = null
 		hud.toast("【光标红点标记】已指定进攻位置！战宠奔赴坐标点！")
+	_emit_quest_event("marker_commanded")
 
 func _collect_mother_tree_item(item: Node3D) -> void:
 	if not is_instance_valid(item):
@@ -3088,6 +3301,7 @@ func _collect_mother_tree_item(item: Node3D) -> void:
 		hud.toast("【母树遗物齐集】3大圣物全部获得！立即返回逃生舱基地的中央控制台制作逃生舰！")
 	else:
 		hud.toast("【遗物收取】已获得【%s】！已集齐 %d / 3" % [item_name, collected])
+	_reconcile_quests(false)
 	save_voyage()
 
 func _interact_escape_console() -> void:
@@ -3096,6 +3310,7 @@ func _interact_escape_console() -> void:
 	var has_sed := int(state.inventory.get("tree_seed", 0))
 	if has_ess >= 1 and has_cor >= 1 and has_sed >= 1:
 		state.craft("abyssal_escape_engine", true)
+		_reconcile_quests(false)
 		UnderwaterAudio.play_sound(get_tree(), "warp_escape")
 		CombatVFX.spawn_tame_ring(self, Ocean.HOME + Vector3(2.2, 0.4, 1.4), 6.0)
 		hud.toast("【跃迁核心注入完成】逃生舰系统全面启动！准备星际跃迁！")
@@ -3245,6 +3460,7 @@ func save_voyage() -> bool:
 		"conquered_bosses": boss_ids,
 		"tamed_beasts": beast_defs,
 		"gameplay_guide": guide_data,
+		"quests": quest_manager.to_save_dict(),
 		"survival": state.to_save_dict()
 	}
 
@@ -3458,6 +3674,13 @@ func load_voyage() -> bool:
 					gameplay_guide.seen_tips[str(tk)] = true
 	gameplay_guide.start_voyage(state.mode)
 
+	var quest_snap := _build_quest_snapshot()
+	if data.has("quests") and data["quests"] is Dictionary:
+		quest_manager.from_save_dict(data["quests"], quest_snap)
+	else:
+		quest_manager.migrate_from_legacy(quest_snap)
+	_last_pushed_quest_version = -1
+
 	voyage_started = true
 	_set_screen("play")
 	if is_instance_valid(diver):
@@ -3470,6 +3693,27 @@ func load_voyage() -> bool:
 
 func _continue_voyage() -> void:
 	load_voyage()
+
+func _get_portrait_title_stage_bounds(vp_size: Vector2) -> Vector2:
+	var stage_top := vp_size.y * 0.16
+	var stage_bot := vp_size.y * 0.66
+	if is_instance_valid(hud) and hud._main_ui is Dictionary:
+		var en_ctrl: Control = hud._main_ui.get("en_lbl", null) as Control
+		var title_ctrl: Control = hud._main_ui.get("title_lbl", null) as Control
+		var top_ctrl: Control = en_ctrl if (is_instance_valid(en_ctrl) and en_ctrl.visible) else title_ctrl
+		var card_ctrl: Control = hud._main_ui.get("char_card", null) as Control
+		if is_instance_valid(top_ctrl):
+			var top_rect := top_ctrl.get_global_rect()
+			if top_rect.size.y > 4.0 and top_rect.end.y > 0.0 and top_rect.end.y < vp_size.y * 0.5:
+				stage_top = top_rect.end.y
+		if is_instance_valid(card_ctrl):
+			var card_rect := card_ctrl.get_global_rect()
+			if card_rect.size.y > 40.0 and card_rect.position.y > stage_top + 60.0 and card_rect.position.y < vp_size.y:
+				stage_bot = card_rect.position.y
+	if stage_bot - stage_top < 120.0:
+		stage_top = vp_size.y * 0.16
+		stage_bot = vp_size.y * 0.66
+	return Vector2(stage_top, stage_bot)
 
 func _update_title_camera(delta: float) -> void:
 	_title_clock += delta
@@ -3488,10 +3732,11 @@ func _update_title_camera(delta: float) -> void:
 	var vp := get_viewport()
 	var vp_size := vp.get_visible_rect().size if vp != null else Vector2(1280.0, 800.0)
 	var aspect := (vp_size.x / vp_size.y) if (vp_size.x > 1.0 and vp_size.y > 1.0) else 1.6
+	var is_portrait := vp_size.x < vp_size.y
+	var is_compact_land := (not is_portrait) and (vp_size.y < 650.0 or vp_size.x < 920.0)
 	var target_title_fov := 62.0
 	if aspect < 1.25:
-		var narrow_mult := minf(1.35 / maxf(aspect, 0.38), 1.48)
-		target_title_fov = clampf(rad_to_deg(2.0 * atan(tan(deg_to_rad(62.0) * 0.5) * narrow_mult)), 62.0, 82.0)
+		target_title_fov = clampf(lerpf(62.0, 68.0, clampf((1.25 - aspect) / 0.75, 0.0, 1.0)), 62.0, 70.0)
 	elif aspect > 1.90:
 		var max_title_hfov := deg_to_rad(104.0)
 		var cur_title_hfov := 2.0 * atan(tan(deg_to_rad(62.0) * 0.5) * aspect)
@@ -3501,10 +3746,30 @@ func _update_title_camera(delta: float) -> void:
 	if is_instance_valid(title_showcase_diver) and title_showcase_diver.visible:
 		var bob := sin(_title_clock * 1.35) * 0.035
 		var cam_xf := title_camera.global_transform
-		var desktop_pos := Vector3(0.20, 0.63 + bob, -2.54)
-		var portrait_pos := Vector3(0.0, 0.72 + bob, -3.25)
-		var portrait_blend := 1.0 if aspect < 1.0 else (clampf((1.22 - aspect) / 0.22, 0.0, 1.0) if aspect < 1.22 else 0.0)
-		var local_pos := desktop_pos.lerp(portrait_pos, portrait_blend)
-		var local_basis := Basis(Vector3.UP, deg_to_rad(156.0 + sin(_title_clock * 0.65) * 5.0) + title_showcase_yaw) * Basis(Vector3.RIGHT, title_showcase_pitch)
+		var local_pos := Vector3(0.22, 0.68 + bob, -2.54)
+		if is_portrait:
+			var stage_bounds := _get_portrait_title_stage_bounds(vp_size)
+			var stage_top := stage_bounds.x
+			var stage_bot := stage_bounds.y
+			var stage_h := maxf(140.0, stage_bot - stage_top)
+			var stage_mid_y := (stage_top + stage_bot) * 0.5
+			var tan_half_fov := tan(deg_to_rad(target_title_fov) * 0.5)
+			var dist := clampf((1.76 * vp_size.y) / maxf(2.0 * tan_half_fov * 0.76 * stage_h, 1.0), 2.85, 4.45)
+			var ndc_y := 1.0 - 2.0 * (stage_mid_y / maxf(vp_size.y, 1.0))
+			var cam_y := dist * tan_half_fov * ndc_y
+			local_pos = Vector3(0.0, cam_y + 0.84 + bob, -dist)
+		elif is_compact_land:
+			local_pos = Vector3(0.0, 0.74 + bob, -2.58)
+		elif aspect < 1.22:
+			var narrow_blend := clampf((1.22 - aspect) / 0.22, 0.0, 1.0)
+			local_pos = local_pos.lerp(Vector3(0.0, 0.72 + bob, -2.72), narrow_blend)
+		var is_mobile_title := is_portrait or is_compact_land
+		var base_yaw_deg := 180.0 if is_mobile_title else 166.0
+		var idle_sway_deg := sin(_title_clock * 0.65) * (3.0 if is_mobile_title else 4.0)
+		var local_basis := Basis(Vector3.RIGHT, title_showcase_pitch) * Basis(Vector3.UP, deg_to_rad(base_yaw_deg + idle_sway_deg) + title_showcase_yaw)
 		title_showcase_diver.global_transform = Transform3D(cam_xf.basis * local_basis, cam_xf * local_pos)
+		if is_instance_valid(_title_key_light):
+			_title_key_light.position = local_pos + Vector3(-0.06, -0.29, 0.89)
+		if is_instance_valid(_title_rim_light):
+			_title_rim_light.position = local_pos + Vector3(-0.85, -0.08, -0.41)
 		title_showcase_diver.apply_showcase_pose(delta)

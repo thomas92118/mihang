@@ -1,6 +1,7 @@
 extends SceneTree
 
 const SafeArea = preload("res://scripts/presentation/safe_area.gd")
+const CharacterRoster = preload("res://scripts/presentation/character_roster.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 const InputController = preload("res://scripts/input_controller.gd")
 const GameplayGuide = preload("res://scripts/gameplay_guide.gd")
@@ -33,9 +34,17 @@ const ALL_SCREENS := [
 	"map", "win", "quick", "controls", "guide",
 ]
 
+var _saved_character_before_test := ""
+
+func _cleanup_global_test_state() -> void:
+	SafeArea.clear_mock_insets()
+	if not _saved_character_before_test.is_empty():
+		CharacterRoster.save_character(_saved_character_before_test)
+		_saved_character_before_test = ""
+
 func _initialize() -> void:
 	create_timer(60.0).timeout.connect(func() -> void:
-		SafeArea.clear_mock_insets()
+		_cleanup_global_test_state()
 		printerr("FAIL: mobile_adaptation test timed out")
 		quit(1)
 	)
@@ -46,17 +55,18 @@ func _control_rect_in_viewport(ctrl: Control) -> Rect2:
 
 func _check(cond: bool, msg: String) -> void:
 	if not cond:
-		SafeArea.clear_mock_insets()
+		_cleanup_global_test_state()
 		printerr("MOBILE_ADAPTATION_FAIL: " + msg)
 		quit(1)
 
 func _run() -> void:
 	await _verify_touch_and_hud_matrix()
 	await _verify_menus_responsive_matrix()
+	await _test_mobile_title_showcase_alignment()
 	await _verify_loading_screen_safe_area()
 	await _verify_voyage_autosave_and_continue()
-	SafeArea.clear_mock_insets()
-	print("MOBILE_ADAPTATION_OK: phone/tablet/foldable safe areas, scale 1.0/1.5 HUD anti-overlap, menu scroll hold, loading safe area, touch prompts, and voyage save/resume")
+	_cleanup_global_test_state()
+	print("MOBILE_ADAPTATION_OK: phone/tablet/foldable safe areas, scale 1.0/1.5 HUD anti-overlap, menu scroll hold, mobile title showcase alignment, loading safe area, touch prompts, and voyage save/resume")
 	quit(0)
 
 func _verify_touch_and_hud_matrix() -> void:
@@ -274,6 +284,127 @@ func _verify_menus_responsive_matrix() -> void:
 	_check(int(cont_box["count"]) == 1, "Continue voyage button must emit continue_requested")
 
 	SafeArea.clear_mock_insets()
+	viewport.queue_free()
+	await process_frame
+
+func _test_mobile_title_showcase_alignment() -> void:
+	_saved_character_before_test = CharacterRoster.load_saved_character()
+	var temp_save := "user://test_mobile_title_showcase_unused.json"
+	if FileAccess.file_exists(temp_save):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_save))
+
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(390, 844)
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	root.add_child(viewport)
+
+	var packed := load("res://scenes/main.tscn") as PackedScene
+	_check(packed != null, "scenes/main.tscn must load cleanly for title showcase test")
+	var game := packed.instantiate()
+	game.voyage_save_path = temp_save
+	game.gameplay_guide.persist_enabled = false
+	viewport.add_child(game)
+	await process_frame
+	await process_frame
+
+	game.input_controller.apply_settings({"touch_mode": "on"}, false)
+	game.input_controller.notify_device("touch")
+	game._set_screen("main")
+	await process_frame
+
+	var view_cases: Array[Dictionary] = [
+		{"name": "portrait_390x844_dynamic_island", "res": Vector2i(390, 844), "insets": [59.0, 0.0, 34.0, 0.0]},
+		{"name": "portrait_360x740_zero_insets", "res": Vector2i(360, 740), "insets": [0.0, 0.0, 0.0, 0.0]},
+		{"name": "landscape_844x390_safe_insets", "res": Vector2i(844, 390), "insets": [0.0, 59.0, 21.0, 59.0]},
+		{"name": "landscape_640x360_zero_insets", "res": Vector2i(640, 360), "insets": [0.0, 0.0, 0.0, 0.0]},
+	]
+	var char_ids: Array[String] = ["coral_mermaid", "expedition_diver"]
+
+	for case_info: Dictionary in view_cases:
+		var case_name: String = str(case_info["name"])
+		var res: Vector2i = case_info["res"]
+		var ins: Array = case_info["insets"]
+		if ins[0] == 0.0 and ins[1] == 0.0 and ins[2] == 0.0 and ins[3] == 0.0:
+			SafeArea.clear_mock_insets()
+		else:
+			SafeArea.set_mock_insets(ins[0], ins[1], ins[2], ins[3])
+
+		viewport.size = res
+		game.hud.root.size = Vector2(res)
+		game.touch_controls.size = Vector2(res)
+		game.touch_controls._rebuild_layout()
+		game._sync_touch_context_and_margins(true)
+		game.hud._apply_layout()
+		await process_frame
+
+		for cid: String in char_ids:
+			var label := "%s [%s]" % [case_name, cid]
+			game._select_character(cid, false)
+			game.reset_title_showcase_angles()
+			_check(game.screen == "main", "Title showcase test must stay on main screen (%s)" % label)
+			_check(is_instance_valid(game.title_showcase_diver) and game.title_showcase_diver.visible, "Title showcase diver must be visible on main screen (%s)" % label)
+			_check(game.title_showcase_diver.current_character == cid, "Title showcase character mismatch (%s): got %s" % [label, game.title_showcase_diver.current_character])
+
+			for _step in range(60):
+				game._update_title_camera(0.016)
+			await process_frame
+
+			var showcase: CharacterBody3D = game.title_showcase_diver
+			var cam: Camera3D = game.title_camera
+			_check(is_instance_valid(cam), "title_camera must be valid (%s)" % label)
+			_check(is_instance_valid(showcase.body_pivot) and is_instance_valid(showcase.diver_model), "Showcase body_pivot/diver_model must be valid (%s)" % label)
+			_check(is_instance_valid(showcase.head_pivot) and is_instance_valid(showcase.left_fin_pivot) and is_instance_valid(showcase.right_fin_pivot), "Showcase head/fin pivots must be valid (%s)" % label)
+
+			var body_rot: Vector3 = showcase.body_pivot.rotation
+			_check(absf(body_rot.x) < 0.03 and absf(body_rot.z) < 0.03, "Showcase body_pivot must stay upright (%s): rot=%s" % [label, body_rot])
+			var model_z: float = showcase.diver_model.position.z
+			_check(absf(model_z) < 0.01, "Showcase diver_model.position.z must stay centered on spin axis (%s): z=%.4f" % [label, model_z])
+
+			var head_world: Vector3 = showcase.head_pivot.global_position
+			var body_world: Vector3 = showcase.body_pivot.global_position
+			var fin_world: Vector3 = (showcase.left_fin_pivot.global_position + showcase.right_fin_pivot.global_position) * 0.5
+			_check(not cam.is_position_behind(head_world) and not cam.is_position_behind(body_world) and not cam.is_position_behind(fin_world), "Showcase pivots must be in front of title_camera (%s)" % label)
+
+			var hp: Vector2 = cam.unproject_position(head_world)
+			var bp: Vector2 = cam.unproject_position(body_world)
+			var fp: Vector2 = cam.unproject_position(fin_world)
+			var tilt_hb: float = rad_to_deg(atan2(bp.x - hp.x, maxf(1.0, bp.y - hp.y)))
+			var tilt_hf: float = rad_to_deg(atan2(fp.x - hp.x, maxf(1.0, fp.y - hp.y)))
+			_check(absf(tilt_hb) < 1.5, "Showcase head-to-body tilt %.2f deg exceeds 1.5 deg (%s): hp=%s bp=%s" % [tilt_hb, label, hp, bp])
+			_check(absf(tilt_hf) < 1.5, "Showcase head-to-fin tilt %.2f deg exceeds 1.5 deg (%s): hp=%s fp=%s" % [tilt_hf, label, hp, fp])
+
+			var vp_w := float(res.x)
+			_check(absf(hp.x - vp_w * 0.5) <= vp_w * 0.035, "Showcase head not horizontally centered (%s): hp.x=%.1f vs %.1f (tol=%.1f)" % [label, hp.x, vp_w * 0.5, vp_w * 0.035])
+			_check(absf(fp.x - vp_w * 0.5) <= vp_w * 0.035, "Showcase fin midpoint not horizontally centered (%s): fp.x=%.1f vs %.1f (tol=%.1f)" % [label, fp.x, vp_w * 0.5, vp_w * 0.035])
+
+			if res.x < res.y:
+				var title_en_ctrl: Control = game.hud._main_ui["en_lbl"]
+				var char_card_ctrl: Control = game.hud._main_ui["char_card"]
+				var title_en_rect := _control_rect_in_viewport(title_en_ctrl)
+				var char_card_rect := _control_rect_in_viewport(char_card_ctrl)
+				_check(hp.y > title_en_rect.end.y, "Portrait showcase head overlaps title (%s): hp.y=%.1f <= title_en.end.y=%.1f" % [label, hp.y, title_en_rect.end.y])
+				_check(fp.y < char_card_rect.position.y, "Portrait showcase fin pivot overlaps bottom character card (%s): fp.y=%.1f >= char_card.y=%.1f" % [label, fp.y, char_card_rect.position.y])
+
+			if res == Vector2i(390, 844):
+				game.rotate_title_showcase(PI * 0.5)
+				game._update_title_camera(0.016)
+				await process_frame
+				var hp_rot: Vector2 = cam.unproject_position(showcase.head_pivot.global_position)
+				var bp_rot: Vector2 = cam.unproject_position(showcase.body_pivot.global_position)
+				var fp_rot: Vector2 = cam.unproject_position((showcase.left_fin_pivot.global_position + showcase.right_fin_pivot.global_position) * 0.5)
+				var tilt_hb_rot: float = rad_to_deg(atan2(bp_rot.x - hp_rot.x, maxf(1.0, bp_rot.y - hp_rot.y)))
+				var tilt_hf_rot: float = rad_to_deg(atan2(fp_rot.x - hp_rot.x, maxf(1.0, fp_rot.y - hp_rot.y)))
+				_check(absf(hp_rot.x - vp_w * 0.5) <= vp_w * 0.035, "Showcase rotated 90 deg drifted off center (%s): hp.x=%.1f vs %.1f" % [label, hp_rot.x, vp_w * 0.5])
+				_check(absf(bp_rot.x - vp_w * 0.5) <= vp_w * 0.035, "Showcase rotated 90 deg torso drifted off center (%s): bp.x=%.1f vs %.1f" % [label, bp_rot.x, vp_w * 0.5])
+				_check(absf(tilt_hb_rot) < 1.5, "Showcase rotated 90 deg spine tilted %.2f deg (%s): hp=%s bp=%s" % [tilt_hb_rot, label, hp_rot, bp_rot])
+				if cid != "expedition_diver":
+					_check(absf(tilt_hf_rot) < 1.5, "Showcase rotated 90 deg tilted %.2f deg (%s): hp=%s fp=%s" % [tilt_hf_rot, label, hp_rot, fp_rot])
+				game.reset_title_showcase_angles()
+				await process_frame
+
+	_cleanup_global_test_state()
+	if FileAccess.file_exists(temp_save):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_save))
 	viewport.queue_free()
 	await process_frame
 

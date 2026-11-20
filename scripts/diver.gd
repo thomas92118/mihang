@@ -358,16 +358,43 @@ func set_character(character_id: String) -> Dictionary:
 
 func apply_showcase_pose(delta: float) -> void:
 	velocity = Vector3.ZERO
-	_animate_diver_model(maxf(delta, 0.016))
-	if reference_model_active and is_instance_valid(left_arm_pivot) and is_instance_valid(right_arm_pivot):
-		var sway := sin(swim_clock * 0.5)
-		head_pivot.rotation_degrees = Vector3(3.5, sway * 4.0, -sway * 2.2)
-		left_arm_pivot.rotation_degrees = Vector3(8.0 + sway * 3.0, 8.0, 4.5 - sway * 1.6)
-		right_arm_pivot.rotation_degrees = Vector3(10.0 - sway * 3.0, -8.0, -4.5 + sway * 1.6)
-		if is_instance_valid(left_forearm_pivot):
-			left_forearm_pivot.rotation_degrees = Vector3(24.0 + sway * 2.5, 10.0, -6.0)
-		if is_instance_valid(right_forearm_pivot):
-			right_forearm_pivot.rotation_degrees = Vector3(22.0 - sway * 2.5, -10.0, 6.0)
+	swim_motion_blend = 0.0
+	if not is_instance_valid(diver_model) or not is_instance_valid(body_pivot):
+		return
+	swim_clock += maxf(delta, 0.016) * 2.0
+	var sway := sin(swim_clock * 0.5)
+	diver_model.position = Vector3(0.0, -0.58 + sway * 0.014, 0.0)
+	diver_model.rotation = Vector3.ZERO
+	body_pivot.rotation = Vector3.ZERO
+	if is_instance_valid(head_pivot):
+		head_pivot.rotation_degrees = Vector3(1.5, sway * 3.0, 0.0)
+	if is_instance_valid(left_arm_pivot):
+		left_arm_pivot.rotation_degrees = Vector3(8.0 + sway * 2.0, 8.0, 4.0 - sway * 1.0)
+	if is_instance_valid(right_arm_pivot):
+		right_arm_pivot.rotation_degrees = Vector3(8.0 - sway * 2.0, -8.0, -4.0 + sway * 1.0)
+	if is_instance_valid(left_forearm_pivot):
+		left_forearm_pivot.rotation_degrees = Vector3(20.0 + sway * 1.5, 8.0, -4.0)
+	if is_instance_valid(right_forearm_pivot):
+		right_forearm_pivot.rotation_degrees = Vector3(20.0 - sway * 1.5, -8.0, 4.0)
+	right_wrist_rot = Vector3.ZERO
+	left_wrist_rot = Vector3.ZERO
+	var tail_wave := sin(swim_clock * 0.65) * 0.022
+	if is_instance_valid(left_leg_pivot):
+		left_leg_pivot.rotation = Vector3(tail_wave, 0.0, 0.0)
+	if is_instance_valid(right_leg_pivot):
+		right_leg_pivot.rotation = Vector3(tail_wave, 0.0, 0.0)
+	if is_instance_valid(left_knee_pivot):
+		left_knee_pivot.rotation = Vector3(-absf(tail_wave) * 0.3, 0.0, 0.0)
+	if is_instance_valid(right_knee_pivot):
+		right_knee_pivot.rotation = Vector3(-absf(tail_wave) * 0.3, 0.0, 0.0)
+	if is_instance_valid(left_fin_pivot):
+		left_fin_pivot.rotation = Vector3(deg_to_rad(4.0) + tail_wave * 0.35, 0.0, 0.0)
+	if is_instance_valid(right_fin_pivot):
+		right_fin_pivot.rotation = Vector3(deg_to_rad(4.0) + tail_wave * 0.35, 0.0, 0.0)
+	if is_instance_valid(backpack_thruster_bubbles):
+		backpack_thruster_bubbles.emitting = false
+	if reference_model_active:
+		ReferenceDiver.update_mermaid_depth_lighting(diver_model, maxf(0.0, -global_position.y) if is_inside_tree() else 8.0)
 		ReferenceDiver.sync_skin(diver_model, _reference_drivers)
 
 func trigger_dash(oxygen_available: float = 90.0) -> Dictionary:
